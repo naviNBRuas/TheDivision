@@ -2239,6 +2239,7 @@ fn to_approval_info(a: single_core::preferences::Approval) -> single_protocol::A
         single_core::preferences::ApprovalStatus::Pending => "pending",
         single_core::preferences::ApprovalStatus::Allowed => "allowed",
         single_core::preferences::ApprovalStatus::Denied => "denied",
+        single_core::preferences::ApprovalStatus::Used => "used",
     };
     single_protocol::ApprovalInfo {
         id: a.id,

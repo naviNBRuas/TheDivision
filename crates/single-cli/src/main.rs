@@ -3006,6 +3006,15 @@ fn wait_for_approval(conn: &rusqlite::Connection, id: i64) -> anyhow::Result<ser
             single_core::preferences::ApprovalStatus::Denied => {
                 return Ok(hook_deny_json("denied via `single approval resolve`"))
             }
+            // Consumed by an unrelated evaluate_and_learn call for the
+            // same resource before this poll observed the Allowed/Denied
+            // state — vanishingly unlikely for the hook-wait path (which
+            // polls its own specific approval id, not a shared resource
+            // string another caller re-evaluates), but fail closed rather
+            // than loop on a status this branch can never see resolve.
+            single_core::preferences::ApprovalStatus::Used => {
+                return Ok(hook_deny_json("approval was already consumed by another caller"))
+            }
             single_core::preferences::ApprovalStatus::Pending => {
                 if std::time::Instant::now() >= deadline {
                     return Ok(hook_deny_json(&format!(

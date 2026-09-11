@@ -129,6 +129,18 @@ pub enum ApprovalStatus {
     Pending,
     Allowed,
     Denied,
+    /// A one-time `resolve(.., remember: false)` decision that has already
+    /// been consumed by the retried MCP call it was meant for. Live-
+    /// verification finding: before this status existed, `evaluate_and_learn`
+    /// had no way to see that a plain `--allow` (no `--remember`) had just
+    /// resolved this exact resource, so the immediate retry of the same
+    /// `task_run`/`orchestrate_*` call re-escalated into a brand-new
+    /// pending approval every time — `--allow` alone could never actually
+    /// let a call through, only `--remember` (a standing preference) could.
+    /// `Used` marks a one-time grant as spent so it can unblock exactly the
+    /// one retry it was resolved for, without granting every future call
+    /// the way a learned preference does.
+    Used,
 }
 
 pub struct Approval {
@@ -145,6 +157,7 @@ fn status_as_str(s: ApprovalStatus) -> &'static str {
         ApprovalStatus::Pending => "pending",
         ApprovalStatus::Allowed => "allowed",
         ApprovalStatus::Denied => "denied",
+        ApprovalStatus::Used => "used",
     }
 }
 
@@ -153,6 +166,7 @@ fn parse_status(s: &str) -> Result<ApprovalStatus> {
         "pending" => ApprovalStatus::Pending,
         "allowed" => ApprovalStatus::Allowed,
         "denied" => ApprovalStatus::Denied,
+        "used" => ApprovalStatus::Used,
         other => anyhow::bail!("unknown approval status: {other}"),
     })
 }
@@ -213,8 +227,8 @@ pub fn resolve(conn: &Connection, id: i64, allow: bool, remember: bool) -> Resul
 
 /// What a caller should actually do about `resource`, per the full
 /// pipeline: static `permissions.toml` rules, then learned preferences,
-/// then (only if neither has a confident answer) a real pending-approval
-/// record — never a silent guess.
+/// then an unconsumed one-time approval, then (only if none of those has
+/// an answer) a real pending-approval record — never a silent guess.
 pub enum Verdict {
     Allow,
     Deny,
@@ -222,6 +236,33 @@ pub enum Verdict {
     /// approval list`/the TUI) rather than block indefinitely; MCP tool
     /// calls in particular can't block a synchronous request forever.
     PendingApproval(i64),
+}
+
+/// The most recently resolved-but-unconsumed one-time (`--allow`/`--deny`
+/// without `--remember`) approval for `resource`, if any, immediately
+/// marked `Used` so it can only unblock one retry. Exact-string match only
+/// — unlike `lookup`'s prefix match for learned preferences, a one-time
+/// grant is scoped to the specific resource it was raised for, not a
+/// pattern.
+fn take_unconsumed_resolution(conn: &Connection, resource: &str) -> Result<Option<Decision>> {
+    let row: Option<(i64, String)> = conn
+        .query_row(
+            "SELECT id, status FROM approvals
+             WHERE resource = ?1 AND status IN ('allowed', 'denied')
+             ORDER BY resolved_at DESC LIMIT 1",
+            params![resource],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .context("looking up unconsumed one-time approval")?;
+    let Some((id, status_str)) = row else { return Ok(None) };
+    conn.execute("UPDATE approvals SET status = ?1 WHERE id = ?2", params![status_as_str(ApprovalStatus::Used), id])
+        .context("marking one-time approval as used")?;
+    Ok(Some(match parse_status(&status_str)? {
+        ApprovalStatus::Allowed => Decision::Allow,
+        ApprovalStatus::Denied => Decision::Deny,
+        ApprovalStatus::Pending | ApprovalStatus::Used => unreachable!("query filters to allowed/denied only"),
+    }))
 }
 
 pub fn evaluate_and_learn(rules: &[Rule], conn: &Connection, resource: &str, context: Option<&str>) -> Result<Verdict> {
@@ -236,6 +277,13 @@ pub fn evaluate_and_learn(rules: &[Rule], conn: &Connection, resource: &str, con
             Decision::Deny => return Ok(Verdict::Deny),
             Decision::Ask => {} // stored but not confident enough to act on; fall through to escalate
         }
+    }
+    if let Some(decision) = take_unconsumed_resolution(conn, resource)? {
+        return Ok(match decision {
+            Decision::Allow => Verdict::Allow,
+            Decision::Deny => Verdict::Deny,
+            Decision::Ask => unreachable!("take_unconsumed_resolution never returns Ask"),
+        });
     }
     Ok(Verdict::PendingApproval(request_approval(conn, resource, context)?))
 }
@@ -298,6 +346,45 @@ mod tests {
         let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "mcp:once:do", None).unwrap() else { panic!("expected pending") };
         resolve(&conn, id, true, false).unwrap();
         assert!(list_preferences(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn one_time_allow_unblocks_exactly_one_retry_then_asks_again() {
+        let conn = test_conn();
+        // First call: nothing known yet, escalate.
+        let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+            panic!("expected pending")
+        };
+        // Human resolves with a plain one-time --allow (no --remember).
+        resolve(&conn, id, true, false).unwrap();
+
+        // The retried call (same resource, no new args tracked) must now
+        // go through — this is the exact `task_run` retry-after-approve
+        // loop that used to re-escalate into a brand-new pending approval
+        // every time because nothing ever consulted the resolved row.
+        let verdict = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap();
+        assert!(matches!(verdict, Verdict::Allow));
+
+        // A one-time grant is exactly that — one time. A further retry
+        // must escalate again, not silently keep allowing (that's what
+        // `--remember` is for).
+        let Verdict::PendingApproval(_) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+            panic!("expected the grant to be spent and a fresh pending approval raised")
+        };
+    }
+
+    #[test]
+    fn one_time_deny_also_blocks_exactly_one_retry_then_asks_again() {
+        let conn = test_conn();
+        let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+            panic!("expected pending")
+        };
+        resolve(&conn, id, false, false).unwrap();
+
+        assert!(matches!(evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap(), Verdict::Deny));
+        let Verdict::PendingApproval(_) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+            panic!("expected the grant to be spent and a fresh pending approval raised")
+        };
     }
 
     #[test]
