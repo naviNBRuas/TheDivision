@@ -1167,6 +1167,13 @@ enum ProviderCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Re-probes every already-keyed free-pool key (or just `--platform`'s) against its provider's validate_url, the same best-effort check `add-free` does at registration time -- for keys that were added before this existed, or whose status you want to refresh without waiting for a real single-pool task to happen to pick them. A provider with no validate_url quirk is skipped (nothing to probe), not errored. Prints the same table `key-status` does, reflecting the just-run probes.
+    Validate {
+        #[arg(long)]
+        platform: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2634,6 +2641,10 @@ fn main() -> anyhow::Result<()> {
                 let response = client::send(&socket_path, Request::ProviderKeyStatus { platform })?;
                 render::print(response, json);
             }
+            ProviderCommand::Validate { platform, json } => {
+                let response = client::send(&socket_path, Request::ProviderValidateKeys { platform })?;
+                render::print(response, json);
+            }
         },
         Command::Worktree { action } => match action {
             WorktreeCommand::Diff { task_id, json } => {
@@ -3566,6 +3577,23 @@ mod graph_task_parsing_tests {
                 assert_eq!(platform.as_deref(), Some("groq"));
             }
             _ => panic!("expected Command::Provider(KeyStatus)"),
+        }
+    }
+
+    #[test]
+    fn validate_parses_optional_platform() {
+        let cli = Cli::try_parse_from(["single", "provider", "validate"]).unwrap();
+        match cli.command {
+            Some(Command::Provider { action: ProviderCommand::Validate { platform, .. } }) => assert!(platform.is_none()),
+            _ => panic!("expected Command::Provider(Validate)"),
+        }
+
+        let cli = Cli::try_parse_from(["single", "provider", "validate", "--platform", "groq"]).unwrap();
+        match cli.command {
+            Some(Command::Provider { action: ProviderCommand::Validate { platform, .. } }) => {
+                assert_eq!(platform.as_deref(), Some("groq"));
+            }
+            _ => panic!("expected Command::Provider(Validate)"),
         }
     }
 }

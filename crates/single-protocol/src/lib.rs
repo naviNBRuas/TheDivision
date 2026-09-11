@@ -519,6 +519,16 @@ pub enum Request {
     ProviderKeyStatus {
         platform: Option<String>,
     },
+    /// Re-runs the same best-effort `quirks.validate_url` probe
+    /// `ProviderAddFree` does at registration time, against every
+    /// already-keyed key for `platform` (or every platform's keys, if
+    /// `platform` is `None`) — the only other way a key's
+    /// `valid`/`last_validated_at` fields ever update is from a real
+    /// `single-pool` task outcome. For a provider with no `validate_url`
+    /// quirk, its keys are skipped (nothing to probe) rather than errored.
+    ProviderValidateKeys {
+        platform: Option<String>,
+    },
     /// `single pool status` — every currently-benched `(platform, model,
     /// key_id)` plus a healthy-ratio snapshot (spec §6.5). The snapshot
     /// is stateless (no persisted entry/exit-grace hysteresis this

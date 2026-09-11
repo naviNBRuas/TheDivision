@@ -1304,19 +1304,8 @@ fn dispatch(
             // Best-effort key validation — a failed/absent probe just
             // leaves the key unvalidated, it never fails the command
             // (spec §5.3: validation is advisory, not a gate).
-            if let Some(path) = provider.quirks.validate_url {
-                if !provider.base_url.is_empty() {
-                    let url = format!("{}{}", provider.base_url, path);
-                    let client = reqwest::blocking::Client::new();
-                    let ok = client
-                        .get(&url)
-                        .bearer_auth(&key)
-                        .timeout(provider.timeout)
-                        .send()
-                        .map(|resp| resp.status().is_success())
-                        .unwrap_or(false);
-                    single_core::pool_keys::mark_validated(&conn, &id, &key_id, ok)?;
-                }
+            if let Some(ok) = probe_free_provider_key(provider, &key) {
+                single_core::pool_keys::mark_validated(&conn, &id, &key_id, ok)?;
             }
             Ok(ResponseData::Empty)
         }
@@ -1353,55 +1342,30 @@ fn dispatch(
         Request::ProviderKeyStatus { platform } => {
             let conn = crate::state::open(&ctx.dirs.db_path())?;
             crate::pool::ensure_pool_schema(&conn)?;
-            let pool_state = single_core::free_pool::load_pool_file(&ctx.dirs.free_pool_registry_file())?;
+            Ok(ResponseData::PoolKeyStatuses(pool_key_statuses(&conn, &ctx.dirs, platform.as_deref())?))
+        }
+        Request::ProviderValidateKeys { platform } => {
+            let conn = crate::state::open(&ctx.dirs.db_path())?;
+            crate::pool::ensure_pool_schema(&conn)?;
             let providers: Vec<_> = single_core::free_pool::FREE_PROVIDERS
                 .iter()
                 .filter(|p| platform.as_deref().is_none_or(|want| want == p.id))
                 .collect();
-            let now = crate::pool::ledger::now_ms();
-            let mut statuses = Vec::new();
-            for provider in providers {
-                let keys = single_core::pool_keys::list(&conn, Some(provider.id))?;
-                let key = keys.first();
-                let disabled_reason = single_core::free_pool::default_disabled_reason(provider.id)
-                    .map(str::to_string)
-                    .or_else(|| pool_state.get(provider.id).and_then(|e| e.disabled_reason.clone()));
-
-                // Cooldown/headroom are per (platform, model, key_id); this
-                // iteration has no live per-provider model list (D3 seam
-                // documented in pool_agent.rs), so `key-status` reports the
-                // one nominal model matching what `client.rs`/`pool_agent.rs`
-                // actually dispatch against: `provider.id` itself.
-                let key_id = key.map(|k| k.key_id.as_str()).unwrap_or("default");
-                let cooldown = match crate::pool::cooldown::is_benched(&conn, provider.id, provider.id, key_id, now) {
-                    Ok(Some(until_ms)) => {
-                        let remaining_s = (until_ms - now).max(0) / 1000;
-                        format!("benched {remaining_s}s")
+            let store = single_core::secrets::SecretTool;
+            for provider in &providers {
+                // No validate_url quirk means there's nothing to probe --
+                // leave those keys exactly as real usage last left them
+                // rather than guessing a probe endpoint.
+                let Some(_) = provider.quirks.validate_url else { continue };
+                for key in single_core::pool_keys::list(&conn, Some(provider.id))? {
+                    let secret_name = single_core::pool_keys::secret_name(provider.id, &key.key_id);
+                    let Some(secret) = single_core::secrets::SecretStore::get(&store, &secret_name)? else { continue };
+                    if let Some(ok) = probe_free_provider_key(provider, &secret) {
+                        single_core::pool_keys::mark_validated(&conn, provider.id, &key.key_id, ok)?;
                     }
-                    Ok(None) => "clear".to_string(),
-                    Err(_) => "n/a".to_string(),
-                };
-                let headroom = provider
-                    .limits
-                    .rpd
-                    .map(|limit| {
-                        let since = crate::pool::ledger::next_utc_midnight_ms(now) - 24 * 60 * 60 * 1000;
-                        let used: u64 = crate::pool::ledger::recorded_requests_since(&conn, provider.id, key_id, since).unwrap_or(0);
-                        format!("{}/{} rpd", limit.saturating_sub(used as u32), limit)
-                    })
-                    .unwrap_or_else(|| "unbounded/unknown".to_string());
-
-                statuses.push(single_protocol::PoolKeyStatusInfo {
-                    platform: provider.id.to_string(),
-                    keyed: key.is_some(),
-                    valid: key.map(|k| k.valid).unwrap_or(false),
-                    last_validated_at: key.and_then(|k| k.last_validated_at.clone()),
-                    disabled_reason,
-                    cooldown,
-                    headroom,
-                });
+                }
             }
-            Ok(ResponseData::PoolKeyStatuses(statuses))
+            Ok(ResponseData::PoolKeyStatuses(pool_key_statuses(&conn, &ctx.dirs, platform.as_deref())?))
         }
         Request::PoolStatus => {
             let conn = crate::state::open(&ctx.dirs.db_path())?;
@@ -2228,6 +2192,74 @@ fn write_settings_with_backup(
     Ok(())
 }
 
+/// Best-effort probe of one free-pool provider's key against its declared
+/// `quirks.validate_url`. `None` means "nothing to probe" (no quirk, or
+/// no base url) — distinct from `Some(false)`, an actual failed probe.
+/// Shared by `ProviderAddFree` (probe once at registration) and
+/// `ProviderValidateKeys` (re-probe on demand).
+fn probe_free_provider_key(provider: &single_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
+    let path = provider.quirks.validate_url?;
+    if provider.base_url.is_empty() {
+        return None;
+    }
+    let url = format!("{}{}", provider.base_url, path);
+    let client = reqwest::blocking::Client::new();
+    Some(client.get(&url).bearer_auth(key).timeout(provider.timeout).send().map(|resp| resp.status().is_success()).unwrap_or(false))
+}
+
+/// Builds the same `PoolKeyStatusInfo` rows `ProviderKeyStatus` and
+/// `ProviderValidateKeys` both return — factored out so validating first
+/// and then reporting status doesn't duplicate this per-provider
+/// cooldown/headroom computation.
+fn pool_key_statuses(conn: &rusqlite::Connection, dirs: &single_core::SingleDirs, platform: Option<&str>) -> anyhow::Result<Vec<single_protocol::PoolKeyStatusInfo>> {
+    let pool_state = single_core::free_pool::load_pool_file(&dirs.free_pool_registry_file())?;
+    let providers: Vec<_> = single_core::free_pool::FREE_PROVIDERS.iter().filter(|p| platform.is_none_or(|want| want == p.id)).collect();
+    let now = crate::pool::ledger::now_ms();
+    let mut statuses = Vec::new();
+    for provider in providers {
+        let keys = single_core::pool_keys::list(conn, Some(provider.id))?;
+        let key = keys.first();
+        let disabled_reason = single_core::free_pool::default_disabled_reason(provider.id)
+            .map(str::to_string)
+            .or_else(|| pool_state.get(provider.id).and_then(|e| e.disabled_reason.clone()));
+
+        // Cooldown/headroom are per (platform, model, key_id); this
+        // iteration has no live per-provider model list (D3 seam
+        // documented in pool_agent.rs), so `key-status` reports the
+        // one nominal model matching what `client.rs`/`pool_agent.rs`
+        // actually dispatch against: `provider.id` itself.
+        let key_id = key.map(|k| k.key_id.as_str()).unwrap_or("default");
+        let cooldown = match crate::pool::cooldown::is_benched(conn, provider.id, provider.id, key_id, now) {
+            Ok(Some(until_ms)) => {
+                let remaining_s = (until_ms - now).max(0) / 1000;
+                format!("benched {remaining_s}s")
+            }
+            Ok(None) => "clear".to_string(),
+            Err(_) => "n/a".to_string(),
+        };
+        let headroom = provider
+            .limits
+            .rpd
+            .map(|limit| {
+                let since = crate::pool::ledger::next_utc_midnight_ms(now) - 24 * 60 * 60 * 1000;
+                let used: u64 = crate::pool::ledger::recorded_requests_since(conn, provider.id, key_id, since).unwrap_or(0);
+                format!("{}/{} rpd", limit.saturating_sub(used as u32), limit)
+            })
+            .unwrap_or_else(|| "unbounded/unknown".to_string());
+
+        statuses.push(single_protocol::PoolKeyStatusInfo {
+            platform: provider.id.to_string(),
+            keyed: key.is_some(),
+            valid: key.map(|k| k.valid).unwrap_or(false),
+            last_validated_at: key.and_then(|k| k.last_validated_at.clone()),
+            disabled_reason,
+            cooldown,
+            headroom,
+        });
+    }
+    Ok(statuses)
+}
+
 fn preferences_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
     let conn = crate::state::open(&ctx.dirs.db_path())?;
     single_core::preferences::ensure_schema(&conn)?;
@@ -2494,6 +2526,40 @@ mod tests {
         // groq's catalog rpd limit is 1000 -- 3 recorded requests should
         // leave 997/1000 in the headroom string.
         assert_eq!(groq.headroom, "997/1000 rpd");
+    }
+
+    #[test]
+    fn provider_validate_keys_skips_a_provider_with_no_validate_url_quirk() {
+        // aihorde has no base_url/validate_url -- there's nothing to
+        // probe, so this must be a genuine no-op (never touch the
+        // network, never call mark_validated) rather than erroring or
+        // guessing an endpoint.
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(dir.path());
+        let conn = crate::state::open(&ctx.dirs.db_path()).unwrap();
+        crate::pool::ensure_pool_schema(&conn).unwrap();
+        single_core::pool_keys::add(&conn, "aihorde", "default").unwrap();
+
+        let response = handle(&ctx, Request::ProviderValidateKeys { platform: Some("aihorde".to_string()) });
+        let Response::Ok { data: ResponseData::PoolKeyStatuses(statuses) } = response else { panic!("unexpected response") };
+        let aihorde = statuses.iter().find(|s| s.platform == "aihorde").unwrap();
+        assert!(!aihorde.valid, "a skipped provider must not be marked valid");
+        assert!(aihorde.last_validated_at.is_none(), "a skipped provider must not get a validation timestamp");
+    }
+
+    #[test]
+    fn provider_validate_keys_only_touches_the_requested_platform() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(dir.path());
+        let conn = crate::state::open(&ctx.dirs.db_path()).unwrap();
+        crate::pool::ensure_pool_schema(&conn).unwrap();
+        single_core::pool_keys::add(&conn, "aihorde", "default").unwrap();
+        single_core::pool_keys::add(&conn, "groq", "default").unwrap();
+
+        let response = handle(&ctx, Request::ProviderValidateKeys { platform: Some("aihorde".to_string()) });
+        let Response::Ok { data: ResponseData::PoolKeyStatuses(statuses) } = response else { panic!("unexpected response") };
+        assert_eq!(statuses.len(), 1, "expected only the requested platform in the response, got {statuses:?}");
+        assert_eq!(statuses[0].platform, "aihorde");
     }
 
     #[test]
