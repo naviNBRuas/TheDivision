@@ -9,6 +9,54 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.15.5]
+
+- Fixed: `self_heal::infra::db_integrity`'s corruption restore copied the
+  backup straight over the live `single.db` with a plain
+  `std::fs::copy(&backup, &db_path)`. That's not atomic — this daemon's
+  systemd unit caps its cgroup at `MemoryMax=6G` as a runaway backstop and
+  has repeatedly SIGKILLed it under heavy concurrent-agent load (the same
+  trigger 0.15.4's `db_backup` fix addressed). A kill landing mid-copy
+  here left `single.db` itself truncated. Live-verification finding
+  (2026-09-11, well after 0.15.4 shipped): `single approval resolve`
+  failed with `disk I/O error: Error code 522: Unable to obtain number of
+  requested bytes (file truncated?)` against the live db, and a `single
+  daemon restart` was needed to trigger the startup self-heal pass before
+  the CLI worked again — 0.15.4 only made *producing* a good backup
+  crash-safe, not *restoring* one. Now copies the backup to a temp file
+  in the same directory first, then atomically `rename()`s it over
+  `db_path` — a kill mid-restore now only ever leaves a stray temp file,
+  never a half-written live db.
+- Fixed: `single approval resolve <id> --allow` (without `--remember`)
+  never actually let the call it was raised for proceed. `task_run` and
+  the other MCP-gated tools re-evaluate permission from scratch on every
+  invocation (`evaluate_and_learn`), which only ever consulted static
+  `permissions.toml` rules and *learned* preferences — a one-time
+  resolution recorded no state anywhere `evaluate_and_learn` looked, so
+  retrying the identical call after resolving its approval always raised
+  a brand-new pending approval instead of proceeding; only `--remember`
+  (a standing preference) ever actually unblocked anything. Live-
+  verification finding (2026-09-11): five consecutive approve-then-retry
+  cycles (ids 13→17) all re-escalated before `--remember` was used as a
+  workaround. Added a `Used` approval status and a one-time-resolution
+  lookup in `evaluate_and_learn`: a plain `--allow`/`--deny` now unblocks
+  exactly the one retry it was meant for, then is marked spent so a
+  further call escalates again rather than silently allowing forever
+  (that's what `--remember` remains for).
+- Fixed: custom agents defined with a `[run]` block in
+  `~/.config/single/agents/*.toml` (one-shot `single-agent run --provider
+  X --prompt "$2"` wrapper scripts, e.g. `single-cloudflare`,
+  `single-typhoon`) reported LLM chat prose as their "version" in `single
+  doctor` and `agent_list` — e.g. `single-cloudflare`'s version field held
+  text explaining how to read a file called `example.txt`. Root cause:
+  `discover()`'s generic `<command> --version` probe doesn't know these
+  wrapper scripts blindly forward whatever they're given as `--prompt`,
+  so probing them for a version fired a real, billed LLM call and the
+  model's free-text reply was reported back as a version string.
+  `GenericAdapter::discover()` now skips the version probe entirely for
+  any custom agent with a `run` spec (existence via `which` only, version
+  always `None`) instead of ever treating model output as a version.
+
 ## [0.15.4]
 
 - Fixed: `self_heal::infra::db_backup` forced `PRAGMA
