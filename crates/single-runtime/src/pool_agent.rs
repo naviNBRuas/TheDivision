@@ -118,6 +118,15 @@ pub fn execute(
                 }
                 cooldown::clear_hits(conn, &platform, &model, &key_id)?;
                 bandit::record_outcome(conn, &platform, &model, &key_id, true, resp.latency_ms, resp.usage_tokens.unwrap_or(0), now)?;
+                // Live-verification finding: a real successful dispatch
+                // never updated `pool_provider_keys` at all, so
+                // `single provider key-status` kept reporting "keyed,
+                // unvalidated" forever for a key that had already served
+                // real, successful requests -- only the one-time
+                // best-effort probe at `add-free` time ever called
+                // `mark_validated`. Real usage is strictly stronger
+                // evidence than that probe, so record it here too.
+                single_core::pool_keys::mark_validated(conn, &platform, &key_id, true).ok();
                 return Ok(PoolAgentOutcome::Ok(resp));
             }
             Err(err) => {
@@ -129,7 +138,15 @@ pub fn execute(
                     PoolError::RateLimited { retry: None } => cooldown::BenchKind::Escalated,
                     PoolError::PaymentRequired => cooldown::BenchKind::PaymentRequired,
                     PoolError::TierGate => cooldown::BenchKind::TierGate,
-                    PoolError::AuthFailed => cooldown::BenchKind::AuthBenched,
+                    PoolError::AuthFailed => {
+                        // A real auth rejection is authoritative evidence
+                        // the key itself is bad, not just rate-limited or
+                        // unlucky -- reflect that in key-status too, same
+                        // reasoning as the success-path mark_validated
+                        // call above.
+                        single_core::pool_keys::mark_validated(conn, &platform, &key_id, false).ok();
+                        cooldown::BenchKind::AuthBenched
+                    }
                     PoolError::Transport(_) => cooldown::BenchKind::Local,
                     // HedgeAbort is explicitly not a health signal (spec
                     // §6.6) -- no bench call at all for it.
@@ -410,6 +427,41 @@ mod tests {
         let (alpha, beta) = bandit::posterior(&conn, "groq", "groq", "default", now + 1000);
         assert!(alpha > 1.0);
         assert_eq!(beta, 1.0);
+    }
+
+    #[test]
+    fn execute_marks_the_key_validated_on_a_real_successful_dispatch() {
+        // Regression test: a real successful dispatch used to update the
+        // ledger and bandit but never `pool_provider_keys`, so `single
+        // provider key-status` kept reporting "keyed, unvalidated"
+        // forever even for keys that had already served real traffic.
+        let conn = test_conn();
+        seed_key(&conn, "groq", "default");
+
+        let handoff_store = HandoffStore::default();
+        let dispatch = |_: &PoolRequest, _: &FreeProvider, _: &str| {
+            Ok(PoolResponse { content: "ok".to_string(), tool_calls: vec![], finish_reason: None, truncated: false, usage_tokens: None, ttfb_ms: None, latency_ms: 1 })
+        };
+        let candidates = vec![("groq".to_string(), "groq".to_string(), "default".to_string())];
+        execute(&conn, "hi", &bandit::Strategy::Balanced, &candidates, None, &handoff_store, &always_resolve, &dispatch).unwrap();
+
+        let key = single_core::pool_keys::list(&conn, None).unwrap().into_iter().find(|k| k.key_id == "default").unwrap();
+        assert!(key.valid);
+        assert!(key.last_validated_at.is_some());
+    }
+
+    #[test]
+    fn execute_marks_the_key_invalid_on_a_real_auth_failure() {
+        let conn = test_conn();
+        seed_key(&conn, "groq", "default");
+        let handoff_store = HandoffStore::default();
+        let dispatch = |_: &PoolRequest, _: &FreeProvider, _: &str| Err(PoolError::AuthFailed);
+        let candidates = vec![("groq".to_string(), "groq".to_string(), "default".to_string())];
+        let _ = execute(&conn, "hi", &bandit::Strategy::Balanced, &candidates, None, &handoff_store, &always_resolve, &dispatch).unwrap();
+
+        let key = single_core::pool_keys::list(&conn, None).unwrap().into_iter().find(|k| k.key_id == "default").unwrap();
+        assert!(!key.valid);
+        assert!(key.last_validated_at.is_some());
     }
 
     #[test]
