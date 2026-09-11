@@ -9,6 +9,32 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.15.6]
+
+- Fixed: `single provider key-status` reported a free-pool key as "keyed,
+  unvalidated" forever even after it had served real, successful
+  `single-pool` task requests — `pool_agent::execute` updated the ledger
+  and bandit posterior on every outcome but never `pool_provider_keys`,
+  which only the one-time best-effort probe at `add-free` time ever
+  touched. A successful dispatch now marks the key valid; an
+  authoritative auth rejection marks it invalid.
+- Fixed: `single doctor` reported `single-pool` as "not installed" — the
+  default `discover()` shells `which single-pool`, but `single-pool` is
+  an HTTP-dispatch agent living inside `single-runtimed` that never
+  shells a binary at all (see its own adapter doc comment). This made a
+  build with the E28 pool engine fully working end-to-end read as
+  missing a feature. `PoolAdapter::discover()` now always reports
+  detected. Also fixed `key-status`'s help text, which still said
+  cooldown/headroom were "n/a until the pool engine lands" — both are
+  real, live per-provider state now, not placeholders.
+- Docs: `docs/architecture.md` never mentioned the E28 free-provider pool
+  (bandit, ledger, cooldown, backoff, degrade, handoff, client — ~2,500
+  lines) at all; the phase history stopped at Growth Phase 8. Added a
+  section documenting what it does and what's a real, working seam vs.
+  genuinely unfinished (no live per-provider model-catalog feed; a
+  completed pool task doesn't surface which provider/model/key served it
+  on the task record itself, only in the outcomes ledger).
+
 ## [0.15.5]
 
 - Fixed: `self_heal::infra::db_integrity`'s corruption restore copied the
