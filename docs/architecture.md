@@ -830,6 +830,44 @@ fixes/expansions:
   URL/env var pair confirmed against the vendor's own current docs, same
   bar as the original four.
 
+## E28: the free-provider pool
+
+`crates/single-runtime/src/pool/` (bandit, ledger, cooldown, backoff,
+degrade, handoff, client — ~2,500 lines) plus `single_core::free_pool`
+(the vendored ~90-provider catalog, `single provider list-free`) and
+`single_core::pool_keys` (per-provider labeled key storage) implement a
+real, working alternative to shelling an agent CLI: `single task run
+--agent single-pool "<prompt>"` picks a `(platform, model, key_id)` via a
+Thompson-sampling bandit (spec §6.4 — a decay-weighted Beta posterior over
+each candidate's 7-day outcome history, half-life 2 days), dispatches
+straight to that provider's HTTP API (no CLI process spawned at all — see
+`single_agent_sdk::adapters::PoolAdapter`'s doc comment for why its
+`run_prompt` is a placeholder and `single-runtime::task::execute`
+special-cases `agent == "single-pool"` before ever reaching adapter
+dispatch), and on a rate limit/5xx/auth failure benches that candidate and
+retries the next one before the caller ever sees a failure.
+
+- `single provider list-free` / `add-free` / `key-status` / `sync-pool`
+  manage the catalog and its keys. `add-free` best-effort validates a key
+  at registration time; a key's `valid`/`last_validated_at` fields are
+  now *also* updated from real task outcomes (a successful dispatch marks
+  it valid, an authoritative auth rejection marks it invalid) rather than
+  only from that one-time probe — fixed 2026-09-11 after live
+  verification found keys that had already served real, successful
+  requests still reporting "keyed, unvalidated" forever.
+- Cooldown and headroom in `key-status` are real, live state (per
+  `(platform, model, key_id)`, tracked in `pool_outcomes`/cooldown
+  tables) for providers with a declared rate limit — "unbounded/unknown"
+  for the (larger) set of providers with none, not a placeholder for
+  unfinished work.
+- **What's honestly still a seam, not a gap**: there is no live
+  per-provider model-catalog feed (each provider is treated as offering
+  exactly one nominal "model" — its own `provider.id`, spec §2/§17
+  non-goal this iteration), and a completed pool task doesn't record
+  which `(platform, model, key_id)` actually served it on the task record
+  itself (only in the `pool_outcomes` ledger, queryable but not surfaced
+  by `single task inspect`).
+
 ## ACP bridge (`single acp`)
 
 `crates/single-cli/src/acp.rs` implements a newline-delimited JSON-RPC 2.0
