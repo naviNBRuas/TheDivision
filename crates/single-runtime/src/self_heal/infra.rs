@@ -123,7 +123,30 @@ fn db_integrity(ctx: &Context, conn: &Connection, allow_db_restore: bool) -> Res
     }
 
     if let Some(backup) = newest_backup(db_dir, db_name)? {
-        std::fs::copy(&backup, &db_path).context("restoring db from backup")?;
+        // Live-verification finding (2026-09-11): this used to be a
+        // straight `std::fs::copy(&backup, &db_path)` -- overwriting the
+        // live db file's bytes in place. That is not atomic: this
+        // daemon's cgroup caps at `MemoryMax=6G` as a runaway backstop and
+        // has repeatedly SIGKILLed it under heavy concurrent-agent load
+        // (see db_backup's PASSIVE-checkpoint fix for the same trigger).
+        // A kill landing mid-copy here left `single.db` itself truncated
+        // -- confirmed live via `disk I/O error: Error code 522: Unable
+        // to obtain number of requested bytes (file truncated?)` on a
+        // plain `single approval resolve`, on the very day this was
+        // found, well after 0.15.4's backup-side PASSIVE-checkpoint fix
+        // (which only addressed producing a good backup, not restoring
+        // one crash-safely). Copy to a temp file in the same directory
+        // first, then atomically `rename()` it over `db_path` -- POSIX
+        // guarantees a same-filesystem rename is atomic, so a kill
+        // mid-copy now only ever leaves a stray temp file, never a
+        // half-written live db.
+        let tmp_path = db_dir.join(format!("{db_name}.restoring-{}", std::process::id()));
+        std::fs::copy(&backup, &tmp_path).context("copying backup to temp file before atomic restore")?;
+        let restore_result = std::fs::rename(&tmp_path, &db_path).context("atomically renaming restored db into place");
+        if restore_result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+        restore_result?;
         return Ok(format!("integrity_check failed ({result}); restored from {}", backup.display()));
     }
 
