@@ -187,25 +187,44 @@ fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Output> {
 }
 
 pub fn discover(command: &str) -> Discovery {
-    let which = output_within(Command::new("which").arg(command), WHICH_TIMEOUT);
-    let resolved_path = match which {
-        Some(out) if out.status.success() => {
-            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if path.is_empty() { None } else { Some(path) }
-        }
-        _ => None,
-    };
-
-    if resolved_path.is_none() {
+    let Some(resolved_path) = resolve_path(command) else {
         return Discovery { detected: false, resolved_path: None, version: None };
-    }
+    };
 
     let version = output_within(Command::new(command).arg("--version"), VERSION_TIMEOUT)
         .filter(|out| out.status.success())
         .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
         .filter(|v| !v.is_empty());
 
-    Discovery { detected: true, resolved_path, version }
+    Discovery { detected: true, resolved_path: Some(resolved_path), version }
+}
+
+/// Same existence check as `discover()`, but never runs `<command>
+/// --version`. Live-verification finding: for a `[run]`-mode custom agent
+/// (a one-shot `single-agent run --provider X --prompt "$2"` wrapper
+/// script — see `single-core::custom_agents`), the script blindly forwards
+/// whatever it's given as `--prompt`, so a real `--version` probe from
+/// `discover()` either sends an empty prompt or misparses `--version`
+/// itself as the prompt — either way it fires a real, billed LLM call and
+/// the model's free-text chat reply (e.g. "I'm ready to help... could you
+/// provide more details?") gets reported back as the agent's "version".
+/// Use this for any custom agent with a `run` spec instead.
+pub fn discover_detect_only(command: &str) -> Discovery {
+    match resolve_path(command) {
+        Some(resolved_path) => Discovery { detected: true, resolved_path: Some(resolved_path), version: None },
+        None => Discovery { detected: false, resolved_path: None, version: None },
+    }
+}
+
+fn resolve_path(command: &str) -> Option<String> {
+    let which = output_within(Command::new("which").arg(command), WHICH_TIMEOUT);
+    match which {
+        Some(out) if out.status.success() => {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if path.is_empty() { None } else { Some(path) }
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -215,6 +234,23 @@ mod tests {
     #[test]
     fn missing_command_is_not_detected() {
         let d = discover("single-cli-definitely-does-not-exist-xyz");
+        assert!(!d.detected);
+        assert!(d.version.is_none());
+    }
+
+    #[test]
+    fn detect_only_never_probes_version_even_for_a_present_command() {
+        // `echo` always exits 0 and would happily answer `--version` with
+        // literal output, so this proves detect_only truly skips the
+        // version probe rather than the command just failing to answer.
+        let d = discover_detect_only("echo");
+        assert!(d.detected);
+        assert!(d.version.is_none());
+    }
+
+    #[test]
+    fn detect_only_reports_undetected_for_a_missing_command() {
+        let d = discover_detect_only("single-cli-definitely-does-not-exist-xyz");
         assert!(!d.detected);
         assert!(d.version.is_none());
     }

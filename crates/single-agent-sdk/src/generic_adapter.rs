@@ -6,7 +6,7 @@
 use crate::adapter::AgentAdapter;
 use crate::backend::ExecBackend;
 use crate::backup::backup_before_write;
-use crate::discover::{discover, Discovery};
+use crate::discover::{discover, discover_detect_only, Discovery};
 use anyhow::Result;
 use serde_json::{Map, Value};
 use single_core::custom_agents::CustomAgentFile;
@@ -31,7 +31,17 @@ impl AgentAdapter for GenericAdapter {
     }
 
     fn discover(&self) -> Discovery {
-        discover(&self.def.command)
+        // `[run]`-mode custom agents are one-shot `single-agent run
+        // --provider X --prompt "$2"` wrapper scripts (see
+        // `custom_agents::to_agent_definition`'s `tools: false` for the
+        // same root cause): a real `--version` probe fires a billed LLM
+        // call and reports the model's chat reply as the version, so skip
+        // it and only check the command exists.
+        if self.def.run.is_some() {
+            discover_detect_only(&self.def.command)
+        } else {
+            discover(&self.def.command)
+        }
     }
 
     fn configure_mcp(&self, home: &Path, servers: &[McpServerSpec], dry_run: bool) -> Result<IntegrationWrite> {
