@@ -1160,7 +1160,7 @@ enum ProviderCommand {
     },
     /// Reconcile the vendored catalog into `providers.toml` (`single-<id>` presets) and `free-pool.toml` (enabled/disabled state). Idempotent.
     SyncPool,
-    /// Per free-pool provider: keyed?, last validation, disabled reason, cooldown/headroom (the latter two "n/a" until the pool engine lands).
+    /// Per free-pool provider: keyed?, last validation, disabled reason, live cooldown state, and headroom (a real remaining-quota count for providers with a declared rate limit, "unbounded/unknown" otherwise).
     KeyStatus {
         #[arg(long)]
         platform: Option<String>,

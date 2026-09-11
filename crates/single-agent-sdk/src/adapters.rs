@@ -1331,6 +1331,19 @@ impl AgentAdapter for PoolAdapter {
         "single-pool"
     }
 
+    // Live-verification finding: the trait's default `discover()` shells
+    // `which single-pool`, which never resolves to anything -- there is
+    // no `single-pool` binary on $PATH (see this adapter's doc comment:
+    // it dispatches over HTTP from inside single-runtimed, nothing is
+    // ever shelled). That made `single doctor` report "single-pool: not
+    // installed" even on a build where the E28 pool engine was fully
+    // wired up and working end-to-end, which reads as "you're missing a
+    // feature" rather than the truth: it's always available whenever
+    // single-runtimed itself is.
+    fn discover(&self) -> crate::discover::Discovery {
+        crate::discover::Discovery { detected: true, resolved_path: Some("(built into single-runtimed)".to_string()), version: None }
+    }
+
     fn configure_mcp(&self, home: &Path, _servers: &[McpServerSpec], _dry_run: bool) -> Result<IntegrationWrite> {
         Ok(unsupported_write("single-pool", home, "single-pool is an internal HTTP-dispatch agent, not an MCP-capable CLI; nothing to configure"))
     }
