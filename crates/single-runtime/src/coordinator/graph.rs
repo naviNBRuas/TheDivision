@@ -298,6 +298,19 @@ mod tests {
     }
 
     #[test]
+    fn sibling_status_excludes_self_and_reports_every_other_node() {
+        let mut g = TaskGraph { nodes: vec![node("s1", &[]), node("s2", &["s1"]), node("s3", &[])] };
+        g.find_mut("s1").unwrap().status = NodeStatus::Done;
+        g.find_mut("s3").unwrap().status = NodeStatus::Failed;
+
+        let siblings = g.sibling_status("s2");
+        assert_eq!(siblings.len(), 2);
+        assert!(!siblings.iter().any(|(id, _)| *id == "s2"));
+        assert!(siblings.contains(&("s1", NodeStatus::Done)));
+        assert!(siblings.contains(&("s3", NodeStatus::Failed)));
+    }
+
+    #[test]
     fn apply_patch_split_rewires_dependents() {
         let mut g = TaskGraph { nodes: vec![node("s1", &[]), node("s2", &["s1"])] };
         g.apply_patch(&[PatchOp::Split {
