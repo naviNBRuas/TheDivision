@@ -9,6 +9,31 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.4]
+
+- Fixed: a free-pool key confirmed bad by real evidence (an auth failure
+  during dispatch, or an explicit `single provider validate` probe —
+  `kilo` and `xkiro` both fail their probe) kept getting handed to the
+  bandit forever, since `candidates_from_keys` only ever filtered on
+  `disabled`, never `valid`. `mark_validated(.., false)` now also
+  disables the key; added `pool_keys::enable` so registering a fresh key
+  value (rotation via `add-free` with an existing `key_id`) can
+  explicitly reverse it.
+- Fixed: a brain role (planner/supervisor/integrator) retrying after
+  unparseable output resampled the *same* agent every time — fully
+  deterministic selection meant a stuck agent burned the whole retry
+  budget on itself. Confirmed live: the supervisor role kept re-selecting
+  `grok` across all 3 attempts, every time it was asked to patch a
+  failure. Added `select_agent_excluding` and threaded it through the
+  retry loop so each attempt tries a genuinely different candidate first.
+- Fixed: `run_command_live`'s spawn error returned the identical "No
+  such file or directory" text whether the program wasn't on `$PATH` or
+  the working directory didn't exist — indistinguishable from the error
+  alone, and a real obstacle while investigating a live `grok`
+  spawn failure. Now checks cwd existence and `$PATH` resolution (only
+  once a spawn has already failed, so the happy path pays nothing) and
+  names which one is actually missing.
+
 ## [0.17.3]
 
 - Audited all ~44 free-pool providers (`single-core::free_pool::FREE_PROVIDERS`)
