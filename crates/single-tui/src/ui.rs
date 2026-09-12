@@ -110,6 +110,7 @@ fn draw_content(frame: &mut Frame, area: Rect, app: &App) {
     }
     match app.tab {
         Tab::Agents => draw_agents(frame, area, app),
+        Tab::Goals => draw_goals(frame, area, app),
         Tab::Tasks => match &app.task_view {
             TaskView::Workspaces => draw_workspaces(frame, area, app),
             TaskView::Tasks { .. } => draw_tasks(frame, area, app),
@@ -196,7 +197,14 @@ fn draw_agents(frame: &mut Frame, area: Rect, app: &App) {
             let (auth_label, auth_color) = match a.authenticated {
                 single_protocol::AuthState::Authenticated => ("auth", OK),
                 single_protocol::AuthState::NotAuthenticated => ("no auth", MUTED),
-                single_protocol::AuthState::Unsupported => ("-", MUTED),
+                // `Unsupported` is genuinely ambiguous in the data model
+                // (see AuthState's doc comment): it covers both "this
+                // agent is keyless/needs no login" and "SingleCLI can't
+                // detect this agent's auth state" -- there is no separate
+                // "no auth required" variant to render differently, so
+                // this label says exactly what's known rather than
+                // guessing which of the two it is.
+                single_protocol::AuthState::Unsupported => ("n/a", MUTED),
             };
             let flag = if a.unverified { "unverified" } else { "" };
             let style = if i == app.selected && app.tab == Tab::Agents { selected_style() } else { Style::default() };
@@ -414,8 +422,15 @@ fn draw_providers(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(rel_i, p)| {
             let i = window.start + rel_i;
             let style = if i == app.selected && app.tab == Tab::Providers { selected_style() } else { Style::default() };
+            // A provider preset carries no "has a key" flag of its own
+            // (key values live in the OS keychain, `refresh()` only
+            // fetches the *names* stored there via SecretList) — cross-
+            // referencing here is the only way to distinguish "known
+            // preset, never keyed" from "actually usable right now".
+            let (key_label, key_color) = if app.secret_names.contains(&p.secret_name) { ("keyed", OK) } else { ("no key", MUTED) };
             Row::new(vec![
                 Cell::from(Span::styled(p.name.clone(), Style::default().add_modifier(Modifier::BOLD))),
+                Cell::from(Span::styled(key_label, Style::default().fg(key_color))),
                 Cell::from(p.env_var_name.clone()),
                 Cell::from(Span::styled(p.base_url.clone().unwrap_or_else(|| "-".into()), Style::default().fg(MUTED))),
             ])
@@ -423,8 +438,8 @@ fn draw_providers(frame: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
     let title = with_scroll_indicator(" Providers (configured) — [a] add ".to_string(), app.providers.len(), &window);
-    let table = Table::new(rows, [Constraint::Length(18), Constraint::Length(24), Constraint::Min(16)])
-        .header(Row::new(vec!["Name", "Env Var", "Base URL"]).style(Style::default().add_modifier(Modifier::BOLD)))
+    let table = Table::new(rows, [Constraint::Length(18), Constraint::Length(9), Constraint::Length(24), Constraint::Min(16)])
+        .header(Row::new(vec!["Name", "Key", "Env Var", "Base URL"]).style(Style::default().add_modifier(Modifier::BOLD)))
         .block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(table, area);
 }
@@ -514,6 +529,72 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
         .header(Row::new(vec!["Agent", "Runs", "Avg Duration", "Last Run"]).style(Style::default().add_modifier(Modifier::BOLD)))
         .block(Block::default().borders(Borders::ALL).title(" Connected agents — local stats only, no billing API "));
     frame.render_widget(table, chunks[1]);
+}
+
+/// The coordinator's goal list — the primary way work runs now that the
+/// Coordinator subsystem (E27.02) exists, so this gets a top-level tab of
+/// its own rather than being buried inside Tasks (which stays for raw
+/// `task run` records, a lower-level primitive goals decompose into).
+/// Sorted so the goals you're most likely to act on right now — anything
+/// still non-terminal, then failures — sort above old finished history,
+/// same ordering `/goals` uses in the Zed ACP bridge.
+fn draw_goals(frame: &mut Frame, area: Rect, app: &App) {
+    let Some(goals) = &app.goals else {
+        let text = if app.goals_loading { "Loading goals…" } else { "No goal data — press 'r' to fetch" };
+        frame.render_widget(Paragraph::new(text).block(Block::default().borders(Borders::ALL).title(" Goals ")), area);
+        return;
+    };
+
+    let rank = |status: &str| -> u8 {
+        match status {
+            "running" => 0,
+            "waiting_on_capacity" => 1,
+            "queued" | "planning" => 2,
+            "blocked" => 3,
+            "failed" => 4,
+            "paused" => 5,
+            _ => 6, // done, cancelled
+        }
+    };
+    let mut sorted: Vec<&single_protocol::GoalSummary> = goals.iter().collect();
+    sorted.sort_by(|a, b| rank(&a.status).cmp(&rank(&b.status)).then_with(|| b.created_at.cmp(&a.created_at)));
+
+    let window = visible_window(sorted.len(), app.selected, area.height.saturating_sub(3) as usize);
+    let rows: Vec<Row> = sorted[window.clone()]
+        .iter()
+        .enumerate()
+        .map(|(rel_i, g)| {
+            let i = window.start + rel_i;
+            let (dot, color) = match g.status.as_str() {
+                "running" => ("●", OK),
+                "queued" | "planning" | "waiting_on_capacity" | "paused" => ("●", WARN),
+                "failed" => ("●", BAD),
+                "blocked" => ("●", BAD),
+                _ => ("○", MUTED), // done, cancelled
+            };
+            let extra = match (&g.capacity_reason, &g.capacity_eta) {
+                (Some(reason), Some(eta)) => format!(" ({reason}, retry {eta})"),
+                _ => String::new(),
+            };
+            let style = if i == app.selected && app.tab == Tab::Goals { selected_style() } else { Style::default() };
+            Row::new(vec![
+                Cell::from(Span::styled(dot, Style::default().fg(color))),
+                Cell::from(g.id.clone()),
+                Cell::from(Span::styled(g.status.clone(), Style::default().fg(color))),
+                Cell::from(format!("{}/{}", g.dispatches, g.max_dispatches)),
+                Cell::from(format!("{}{extra}", g.text)),
+            ])
+            .style(style)
+        })
+        .collect();
+
+    let table = Table::new(
+        rows,
+        [Constraint::Length(2), Constraint::Length(10), Constraint::Length(18), Constraint::Length(9), Constraint::Min(20)],
+    )
+    .header(Row::new(vec!["", "Goal", "Status", "Dispatches", "Text"]).style(Style::default().add_modifier(Modifier::BOLD)))
+    .block(Block::default().borders(Borders::ALL).title(with_scroll_indicator(" Goals — running/queued/failed sort to the top ".to_string(), sorted.len(), &window)));
+    frame.render_widget(table, area);
 }
 
 fn draw_pool(frame: &mut Frame, area: Rect, app: &App) {

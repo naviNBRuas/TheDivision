@@ -1,7 +1,7 @@
 use crate::client::call;
 use single_core::SingleDirs;
 use single_protocol::{
-    AccountProfileInfo, AgentInfo, LspServerSpec, McpServerInfo, PluginSpec, PoolKeyStatusInfo,
+    AccountProfileInfo, AgentInfo, GoalSummary, LspServerSpec, McpServerInfo, PluginSpec, PoolKeyStatusInfo,
     PoolStatusInfo, ProviderPresetInfo, ProviderSpec, Request, Response, ResponseData, RuntimeStatus,
     SetupAction, TaskRecord, TaskStatus, ToolSpec, UsageSummary, WorkspaceInfo,
 };
@@ -19,6 +19,7 @@ pub enum TaskView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Agents,
+    Goals,
     Tasks,
     Mcp,
     Lsp,
@@ -34,14 +35,15 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 13] = [
-        Tab::Agents, Tab::Tasks, Tab::Mcp, Tab::Lsp, Tab::Plugins, Tab::Tools, Tab::Providers, Tab::Accounts,
+    pub const ALL: [Tab; 14] = [
+        Tab::Agents, Tab::Goals, Tab::Tasks, Tab::Mcp, Tab::Lsp, Tab::Plugins, Tab::Tools, Tab::Providers, Tab::Accounts,
         Tab::Usage, Tab::Pool, Tab::Backup, Tab::Memory, Tab::Help,
     ];
 
     pub fn title(&self) -> &'static str {
         match self {
             Tab::Agents => "Agents",
+            Tab::Goals => "Goals",
             Tab::Tasks => "Tasks",
             Tab::Mcp => "MCP",
             Tab::Lsp => "LSP",
@@ -206,6 +208,14 @@ pub struct App {
     pub selected: usize,
     pub status: Option<RuntimeStatus>,
     pub agents: Vec<AgentInfo>,
+    /// The coordinator's goal list — the primary unit of work since the
+    /// Coordinator subsystem (E27.02) superseded raw ad-hoc `task run` as
+    /// how work actually gets done; `None` until the first fetch
+    /// completes, same convention as `pool_status`/`provider_key_statuses`
+    /// below. Tab-gated fetch, same pattern as Usage/Pool.
+    pub goals: Option<Vec<GoalSummary>>,
+    pub goals_loading: bool,
+    goals_rx: Option<mpsc::Receiver<Option<Vec<GoalSummary>>>>,
     pub tasks: Vec<TaskRecord>,
     pub workspaces: Vec<WorkspaceInfo>,
     /// Which level of the Tasks tab is showing — the workspace list, or
@@ -225,6 +235,12 @@ pub struct App {
     pub plugins: Vec<PluginSpec>,
     pub tools: Vec<ToolSpec>,
     pub providers: Vec<ProviderSpec>,
+    /// Every OS-keychain secret name currently stored — cross-referenced
+    /// against each `ProviderSpec::secret_name` to show "has a key" vs.
+    /// "known preset, never keyed" in the Providers tab, since
+    /// `ProviderSpec` itself carries no such flag (see `refresh()`'s doc
+    /// comment on why). Never key *values*, only names.
+    pub secret_names: Vec<String>,
     pub accounts: Vec<AccountProfileInfo>,
     pub usage: Option<UsageSummary>,
     pub usage_loading: bool,
@@ -285,6 +301,7 @@ struct RefreshBundle {
     plugins: Vec<PluginSpec>,
     tools: Vec<ToolSpec>,
     providers: Vec<ProviderSpec>,
+    secret_names: Vec<String>,
     accounts: Vec<AccountProfileInfo>,
     kg_entity_count: Option<usize>,
     /// `None` when the `CacheStatus` request itself errored — kept as
@@ -305,6 +322,9 @@ impl App {
             selected: 0,
             status: None,
             agents: Vec::new(),
+            goals: None,
+            goals_loading: false,
+            goals_rx: None,
             tasks: Vec::new(),
             workspaces: Vec::new(),
             task_view: TaskView::Workspaces,
@@ -314,6 +334,7 @@ impl App {
             plugins: Vec::new(),
             tools: Vec::new(),
             providers: Vec::new(),
+            secret_names: Vec::new(),
             accounts: Vec::new(),
             usage: None,
             usage_loading: false,
@@ -387,6 +408,7 @@ impl App {
                 Request::PluginList,
                 Request::ToolList,
                 Request::ConfiguredProviderList,
+                Request::SecretList,
                 Request::AccountList { agent: None },
                 Request::KgReadGraph,
                 Request::CacheStatus,
@@ -440,6 +462,13 @@ impl App {
             // the [a] add-provider flow shows (ProviderPresetList, a
             // separate fetch, unaffected by this).
             let providers = next(&mut error).and_then(|d| match d { ResponseData::Providers(p) => Some(p), _ => None }).unwrap_or_default();
+            // Cross-referenced against each ProviderSpec's `secret_name`
+            // in `draw_providers` to distinguish "known preset, never
+            // keyed" from "actually has a key stored" — see the doc
+            // comment on `providers` above for why ProviderSpec alone
+            // can't tell those apart. Never carries key *values*, only
+            // the OS-keychain entry names (`SecretList`'s own contract).
+            let secret_names = next(&mut error).and_then(|d| match d { ResponseData::SecretNames(n) => Some(n), _ => None }).unwrap_or_default();
             let accounts = next(&mut error).and_then(|d| match d { ResponseData::AccountProfiles(p) => Some(p), _ => None }).unwrap_or_default();
             let kg_entity_count = next(&mut error).and_then(|d| match d { ResponseData::KgGraph(g) => Some(g), _ => None }).map(|g| g.entities.len());
             let cache = match next(&mut error) {
@@ -462,6 +491,7 @@ impl App {
                 plugins,
                 tools,
                 providers,
+                secret_names,
                 accounts,
                 kg_entity_count,
                 cache,
@@ -491,6 +521,7 @@ impl App {
         self.plugins = bundle.plugins;
         self.tools = bundle.tools;
         self.providers = bundle.providers;
+        self.secret_names = bundle.secret_names;
         self.accounts = bundle.accounts;
         self.kg_entity_count = bundle.kg_entity_count;
         if let Some((configured, reachable)) = bundle.cache {
@@ -522,6 +553,9 @@ impl App {
         if self.tab == Tab::Pool {
             self.begin_pool_fetch();
             self.begin_provider_key_status_fetch();
+        }
+        if self.tab == Tab::Goals {
+            self.begin_goals_fetch();
         }
         self.last_refresh = Instant::now();
         self.loading = false;
@@ -562,6 +596,7 @@ impl App {
     pub fn current_len(&self) -> usize {
         match self.tab {
             Tab::Agents => self.agents.len(),
+            Tab::Goals => self.goals.as_ref().map(Vec::len).unwrap_or(0),
             Tab::Tasks => match &self.task_view {
                 TaskView::Workspaces => self.workspaces.len(),
                 TaskView::Tasks { .. } => self.visible_tasks().len(),
@@ -596,6 +631,9 @@ impl App {
             self.begin_pool_fetch();
             self.begin_provider_key_status_fetch();
         }
+        if self.tab == Tab::Goals {
+            self.begin_goals_fetch();
+        }
     }
 
     pub fn prev_tab(&mut self) {
@@ -608,6 +646,9 @@ impl App {
         if self.tab == Tab::Pool {
             self.begin_pool_fetch();
             self.begin_provider_key_status_fetch();
+        }
+        if self.tab == Tab::Goals {
+            self.begin_goals_fetch();
         }
     }
 
@@ -1263,6 +1304,36 @@ impl App {
         self.usage = result;
         self.usage_loading = false;
         self.usage_rx = None;
+        true
+    }
+
+    /// Fetches the Goals tab's list on a background thread. Same
+    /// tab-gated, one-in-flight, non-blocking pattern as
+    /// `begin_pool_fetch`/`begin_usage_fetch`.
+    fn begin_goals_fetch(&mut self) {
+        if self.goals_loading {
+            return;
+        }
+        self.goals_loading = true;
+        let socket_path = self.socket_path.clone();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = match call(&socket_path, &Request::GoalList { session_id: None }) {
+                Ok(Response::Ok { data: ResponseData::Goals(gs) }) => Some(gs),
+                _ => None,
+            };
+            let _ = tx.send(result);
+        });
+        self.goals_rx = Some(rx);
+    }
+
+    /// Returns true if a new goals list arrived this tick.
+    pub fn poll_goals(&mut self) -> bool {
+        let Some(rx) = &self.goals_rx else { return false };
+        let Ok(result) = rx.try_recv() else { return false };
+        self.goals = result;
+        self.goals_loading = false;
+        self.goals_rx = None;
         true
     }
 
