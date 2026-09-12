@@ -165,6 +165,22 @@ fn task_output(rec: &single_protocol::TaskRecord) -> String {
     rec.summary.clone().unwrap_or_default()
 }
 
+/// Extra attempts after the first when the agent's output doesn't contain
+/// parseable JSON. Live-verification finding (2026-09-07): a brain role
+/// (planner/supervisor/integrator) is a single stochastic LLM completion
+/// with a strict "output ONLY JSON" instruction, and a free-pool model
+/// occasionally ignores it (prose, truncation, a stray code fence it
+/// forgets to close). Before this, that single bad sample permanently
+/// blocked the goal (`run_integrator` maps any `Err` here straight to
+/// `GoalStatus::Blocked`) even when every actual work node had already
+/// succeeded — confirmed live on a goal whose two nodes both finished
+/// fine days earlier but stayed `blocked` on "integrator failed: brain
+/// role produced no parseable JSON" forever, since nothing ever retried
+/// it. A malformed-JSON response is a content-quality problem a fresh
+/// sample usually fixes, not a real infrastructure failure worth
+/// escalating on the first miss.
+const BRAIN_JSON_RETRIES: u32 = 2;
+
 fn run_role(
     conn: &Connection,
     ctx: &Context,
@@ -172,24 +188,29 @@ fn run_role(
     cwd: &std::path::Path,
     prompt: &str,
 ) -> Result<Value> {
-    let rec = crate::task::run(
-        conn,
-        ctx,
-        crate::task::RunTaskOptions {
-            description: prompt,
-            agent,
-            cwd,
-            use_worktree: false,
-            account: None,
-            real_home: false,
-            no_memory_context: true, // brain prompts are self-contained
-            timeout: Duration::from_secs(240),
-            allow_fallback: true,
-            usage_json: false,
-        },
-    )?;
-    let out = task_output(&rec);
-    extract_first_json(&out).context("brain role produced no parseable JSON")
+    for _ in 0..=BRAIN_JSON_RETRIES {
+        let rec = crate::task::run(
+            conn,
+            ctx,
+            crate::task::RunTaskOptions {
+                description: prompt,
+                agent,
+                cwd,
+                use_worktree: false,
+                account: None,
+                real_home: false,
+                no_memory_context: true, // brain prompts are self-contained
+                timeout: Duration::from_secs(240),
+                allow_fallback: true,
+                usage_json: false,
+            },
+        )?;
+        let out = task_output(&rec);
+        if let Some(v) = extract_first_json(&out) {
+            return Ok(v);
+        }
+    }
+    bail!("brain role produced no parseable JSON after {} attempt(s)", BRAIN_JSON_RETRIES + 1)
 }
 
 const PLAN_INSTRUCTION: &str = "\
