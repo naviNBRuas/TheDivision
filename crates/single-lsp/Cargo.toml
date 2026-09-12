@@ -14,3 +14,6 @@ anyhow.workspace = true
 serde_json.workspace = true
 single-core = { path = "../single-core" }
 single-protocol = { path = "../single-protocol" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

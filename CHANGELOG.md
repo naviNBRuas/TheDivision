@@ -9,6 +9,20 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.6]
+
+- Added: `single-lsp` now evicts idle language servers instead of holding
+  every backend it ever spawned resident for the life of the session. Each
+  backend tracks when it last received client traffic; a background reaper
+  kills servers idle past 5 minutes (graceful `shutdown`/`exit`, then the
+  whole process group, so a server's helper processes cannot outlive it and
+  keep the stdout pipe open), and the reader thread retires the backend —
+  clearing routing and failing any outstanding request — so a later document
+  lazily spawns a fresh one. Verified end to end against a real child process
+  that never self-exits: nothing is spawned before first use, and only
+  eviction's group kill ends it. This closes a real gap found during the
+  check: backends previously leaked processes for the entire session.
+
 ## [0.17.5]
 
 - Fixed: `find_overlapping` (goal-submission dedup) divided shared-token

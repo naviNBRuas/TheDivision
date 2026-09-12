@@ -20,6 +20,9 @@ fn main() -> anyhow::Result<()> {
 
     let (client_out_tx, client_out_rx) = channel::<Value>();
     let multiplexer = Multiplexer::new(router, client_out_tx);
+    // Background reaper evicts language servers that have sat idle for a
+    // while, so a long session does not hold every spawned backend resident.
+    multiplexer.start_reaper();
 
     // Writer thread: drains backend responses/notifications and the
     // proxy's own replies onto stdout, serialized through one channel so

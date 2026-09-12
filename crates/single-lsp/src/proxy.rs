@@ -5,7 +5,8 @@
 //! manifest, so a single session mixes documents from many languages. Each
 //! document is routed by file extension to the registry entry that owns it;
 //! the backing language server is spawned on first use and reused for every
-//! later document of the same language.
+//! later document of the same language, then evicted once it has sat idle too
+//! long — see `Multiplexer::evict_idle_backends`.
 //!
 //! # Threading and lock discipline
 //!
@@ -38,7 +39,7 @@ use std::io::BufReader;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Router {
     by_file_name: HashMap<String, LspServerSpec>,
@@ -129,6 +130,11 @@ pub struct Multiplexer {
     /// The client's `initialize` params, replayed to every backend we spawn so
     /// each one learns the workspace root it is supposed to index.
     client_init_params: Mutex<Option<Value>>,
+    /// When each backend last received a request/notification from the client,
+    /// used by the reaper to evict backends that have been idle too long — see
+    /// `evict_idle_backends`. A long-lived session would otherwise hold every
+    /// language server it ever spawned resident until the proxy exits.
+    last_activity: Mutex<HashMap<String, Instant>>,
     /// How many backend reader threads are still running and could still put a
     /// message on `client_out`. Paired with `readers_drained` so shutdown can
     /// wait for them to go quiet — see `close_client_output`.
@@ -142,6 +148,16 @@ pub struct Multiplexer {
 /// before giving up on them and closing client output anyway.
 const READER_DRAIN_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// How long a backend can go without any client traffic before the reaper
+/// evicts it. Kept generous on purpose: eviction means re-spawning (and for a
+/// heavy server, re-indexing) on next use, so the win only pays off when the
+/// server would otherwise sit resident through a long idle stretch of the
+/// session.
+const IDLE_EVICT_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// How often the reaper thread scans for idle backends.
+const IDLE_EVICT_POLL: Duration = Duration::from_secs(30);
+
 impl Multiplexer {
     pub fn new(router: Router, client_out: Sender<Value>) -> Arc<Self> {
         Arc::new(Self {
@@ -152,6 +168,7 @@ impl Multiplexer {
             pending: Mutex::new(HashMap::new()),
             pending_server: Mutex::new(HashMap::new()),
             client_init_params: Mutex::new(None),
+            last_activity: Mutex::new(HashMap::new()),
             live_readers: Mutex::new(0),
             readers_drained: Condvar::new(),
             client_out,
@@ -204,6 +221,69 @@ impl Multiplexer {
         self.send_to_client(Value::Null);
     }
 
+    /// Spawns the background reaper that evicts idle backends. The process
+    /// itself is torn down from `main` on `exit`, which kills this thread too,
+    /// so it needs no shutdown signal of its own.
+    pub fn start_reaper(self: &Arc<Self>) {
+        let this = self.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(IDLE_EVICT_POLL);
+            this.evict_idle_backends();
+        });
+    }
+
+    /// Terminates every backend that has had no client traffic for longer than
+    /// `IDLE_EVICT_TIMEOUT`. Runs on the reaper thread; exposed as a plain
+    /// method so tests can drive it deterministically instead of sleeping.
+    fn evict_idle_backends(&self) {
+        let now = Instant::now();
+        let idle: Vec<String> = {
+            let backends = self.backends.lock().unwrap();
+            let activity = self.last_activity.lock().unwrap();
+            backends
+                .keys()
+                .filter(|name| {
+                    activity
+                        .get(*name)
+                        .map(|last| now.duration_since(*last) > IDLE_EVICT_TIMEOUT)
+                        .unwrap_or(true)
+                })
+                .cloned()
+                .collect()
+        };
+        for name in idle {
+            self.evict_backend(&name);
+        }
+    }
+
+    /// Kills one backend and lets its reader thread retire it. The reader
+    /// observes EOF on the broken stdout pipe and runs `retire_backend`, which
+    /// clears `uri_to_backend`/`pending`/`pending_server` and fails any
+    /// outstanding requests — so a process being evicted cannot strand a
+    /// client waiting on a reply. The `shutdown`/`exit` pair is the graceful
+    /// first step LSP servers expect before their stdin closes and they are
+    /// forced down.
+    fn evict_backend(&self, name: &str) {
+        let mut backends = self.backends.lock().unwrap();
+        let Some(mut backend) = backends.remove(name) else {
+            return;
+        };
+        self.last_activity.lock().unwrap().remove(name);
+        {
+            let mut stdin = &backend.stdin;
+            let _ = write_message(&mut stdin, &json!({ "jsonrpc": "2.0", "method": "shutdown", "params": {} }));
+            let _ = write_message(&mut stdin, &json!({ "jsonrpc": "2.0", "method": "exit", "params": {} }));
+        }
+        // Close the child's stdin, the standard LSP "quit" signal, before the
+        // hard kill below — best-effort grace that costs nothing if the kill
+        // lands first.
+        drop(backend.stdin);
+        let pid = backend._child.id();
+        let _ = backend._child.kill();
+        #[cfg(unix)]
+        kill_process_group(pid);
+    }
+
     fn extract_uri(message: &Value) -> Option<String> {
         message
             .pointer("/params/textDocument/uri")
@@ -231,11 +311,21 @@ impl Multiplexer {
         if backends.contains_key(&spec.name) {
             return Ok(());
         }
-        let mut child = Command::new(&spec.command)
-            .args(&spec.args)
+        let mut cmd = Command::new(&spec.command);
+        cmd.args(&spec.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        // Spawn the server as its own process-group leader so eviction can
+        // `killpg` the whole group — a server's helper processes would
+        // otherwise survive a plain child kill and keep the stdout pipe open,
+        // stranding the reader thread and its pending requests.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+        let mut child = cmd
             .spawn()
             .with_context(|| format!("spawning language server `{}`", spec.command))?;
         let mut stdin = child.stdin.take().expect("piped stdin");
@@ -471,6 +561,10 @@ impl Multiplexer {
             }
         };
 
+        // Any traffic resets the idle clock for this backend — a request or
+        // notification is evidence the language server is still in active use.
+        self.last_activity.lock().unwrap().insert(backend_name.clone(), Instant::now());
+
         if method == "textDocument/didClose" {
             self.uri_to_backend.lock().unwrap().remove(&uri);
         }
@@ -496,6 +590,17 @@ impl Multiplexer {
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const INTERNAL_ERROR: i64 = -32603;
+
+/// SIGKILLs every process in the group led by `pid` — the backend and any
+/// helpers it spawned. `Command::process_group(0)` made the backend a group
+/// leader, so `pgid == pid`; a negative argument to `kill` would mean the same
+/// thing but `killpg` is the dedicated, clearer spelling.
+#[cfg(unix)]
+fn kill_process_group(pid: u32) {
+    unsafe {
+        libc::killpg(pid as i32, libc::SIGKILL);
+    }
+}
 
 fn error_response(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
@@ -902,6 +1007,98 @@ mod tests {
 
         assert_eq!(multiplexer.backends.lock().unwrap().len(), 1);
         assert_eq!(multiplexer.uri_to_backend.lock().unwrap().len(), 2);
+    }
+
+    /// Lazy-spawn and idle-eviction, end to end against a real child process.
+    ///
+    /// The fake is a real `sh` that emits one notification (proving a process
+    /// actually spawned and talked) and then sleeps for an hour — so nothing
+    /// but eviction can end it. Eviction kills that process, and the only way
+    /// the test can see the backend was really gone is via the reader thread's
+    /// EOF-triggered retirement: routing is cleared and the outstanding
+    /// request is failed. If eviction merely forgot a map entry without
+    /// killing the process, the reader would still be blocked on a live pipe
+    /// and none of that would happen.
+    #[cfg(unix)]
+    #[test]
+    fn spawns_backends_lazily_and_evicts_idle_ones() {
+        use std::time::{Duration as StdDuration, Instant};
+
+        let body = serde_json::to_string(
+            &json!({ "jsonrpc": "2.0", "method": "window/logMessage", "params": { "type": 3, "message": "idle-fake" } }),
+        )
+        .unwrap();
+        let payload = format!("Content-Length: {}\r\n\r\n{body}", body.len());
+        let long_lived = LspServerSpec {
+            name: "idle-fake".to_string(),
+            command: "sh".to_string(),
+            args: vec!["-c".to_string(), format!("printf %s '{payload}'; sleep 3600")],
+            extensions: vec![".rs".to_string()],
+            enabled: true,
+        };
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let multiplexer = Multiplexer::new(Router::from_registry(vec![long_lived]), tx);
+
+        // Lazy: nothing is spawned before any document is routed to a backend.
+        assert!(multiplexer.backends.lock().unwrap().is_empty(), "no backend before first use");
+
+        // First use spawns a real process.
+        multiplexer
+            .handle_client_message(json!({
+                "jsonrpc": "2.0", "id": 1, "method": "textDocument/hover",
+                "params": { "textDocument": { "uri": "file:///a.rs" } }
+            }))
+            .unwrap();
+        assert_eq!(multiplexer.backends.lock().unwrap().len(), 1, "first use spawns a backend");
+        let deadline = Instant::now() + StdDuration::from_secs(10);
+        let mut saw_notification = false;
+        while Instant::now() < deadline && !saw_notification {
+            match rx.try_recv() {
+                Ok(reply) if reply.get("method").is_some() => saw_notification = true,
+                Ok(_) => {}
+                Err(_) => std::thread::sleep(StdDuration::from_millis(20)),
+            }
+        }
+        assert!(saw_notification, "the spawned process's notification reaches the client");
+
+        // Give the evicted backend an outstanding request, which must be failed
+        // when it goes away rather than left to hang the client.
+        multiplexer.pending.lock().unwrap().insert(999, (json!(1), "idle-fake".to_string()));
+
+        // Age it past the eviction threshold, then reap.
+        multiplexer
+            .last_activity
+            .lock()
+            .unwrap()
+            .insert("idle-fake".to_string(), Instant::now() - IDLE_EVICT_TIMEOUT - StdDuration::from_secs(1));
+        multiplexer.evict_idle_backends();
+        assert!(multiplexer.backends.lock().unwrap().is_empty(), "idle backend evicted");
+
+        // The process really died: its reader thread hit EOF, retired it,
+        // cleared routing, and failed the outstanding request.
+        let deadline = Instant::now() + StdDuration::from_secs(10);
+        let mut saw_error = false;
+        while Instant::now() < deadline && !saw_error {
+            match rx.try_recv() {
+                Ok(reply) if reply["error"]["code"] == json!(INTERNAL_ERROR) => saw_error = true,
+                Ok(_) => {}
+                Err(_) => std::thread::sleep(StdDuration::from_millis(20)),
+            }
+        }
+        assert!(saw_error, "outstanding request to an evicted backend must be failed");
+        assert!(multiplexer.uri_to_backend.lock().unwrap().is_empty(), "routing cleared on eviction");
+        assert!(multiplexer.last_activity.lock().unwrap().is_empty(), "activity tracking cleared");
+
+        // A later document lazily spawns a fresh backend rather than reusing
+        // the evicted (now-dead) process.
+        multiplexer
+            .handle_client_message(json!({
+                "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                "params": { "textDocument": { "uri": "file:///b.rs" } }
+            }))
+            .unwrap();
+        assert_eq!(multiplexer.backends.lock().unwrap().len(), 1, "a fresh backend is re-spawned");
     }
 
     /// The whole design rests on `Arc<Multiplexer>` being movable into a
