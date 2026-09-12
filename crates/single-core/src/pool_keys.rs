@@ -111,11 +111,23 @@ pub fn list(conn: &Connection, platform: Option<&str>) -> Result<Vec<PoolProvide
     rows.context("collecting pool provider keys")
 }
 
+/// Records real evidence of whether a key works — either a real dispatch's
+/// `AuthFailed`/success, or an explicit `single provider validate` probe.
+/// Live-verification finding (2026-09-12): `valid = false` here used to be
+/// purely informational — `candidates_from_keys` only ever filtered on
+/// `disabled`, never `valid`, so a key already confirmed bad (e.g.
+/// `kilo`/`xkiro`, both failing real `validate` probes) kept getting
+/// handed to the bandit forever, wasting real dispatch attempts on a key
+/// with actual evidence against it. `valid = false` now also disables the
+/// key — `candidates_from_keys` already excludes disabled keys, so this
+/// is the one place that needed to change, not the filter. `valid = true`
+/// never disables (a key can only go from good evidence to bad, not the
+/// reverse, without an explicit `enable`).
 pub fn mark_validated(conn: &Connection, platform: &str, key_id: &str, valid: bool) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
-        "UPDATE pool_provider_keys SET last_validated_at = ?1, valid = ?2 WHERE platform = ?3 AND key_id = ?4",
-        params![now, valid as i64, platform, key_id],
+        "UPDATE pool_provider_keys SET last_validated_at = ?1, valid = ?2, disabled = disabled OR ?4 WHERE platform = ?3 AND key_id = ?5",
+        params![now, valid as i64, platform, !valid as i64, key_id],
     )
     .context("marking pool provider key validated")?;
     Ok(())
@@ -127,6 +139,21 @@ pub fn disable(conn: &Connection, platform: &str, key_id: &str) -> Result<()> {
         params![platform, key_id],
     )
     .context("disabling pool provider key")?;
+    Ok(())
+}
+
+/// Re-enables a key `mark_validated`/`disable` turned off — e.g. after
+/// registering a fresh, working key value under the same `key_id`
+/// (`single provider add-free ... --key-id <existing>` for rotation), or
+/// a human judging an old failure no longer applies. Does not touch
+/// `valid`/`last_validated_at` — the next real dispatch or `validate`
+/// probe updates those on their own.
+pub fn enable(conn: &Connection, platform: &str, key_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE pool_provider_keys SET disabled = 0 WHERE platform = ?1 AND key_id = ?2",
+        params![platform, key_id],
+    )
+    .context("enabling pool provider key")?;
     Ok(())
 }
 
@@ -179,6 +206,41 @@ mod tests {
         let keys = list(&conn, Some("groq")).unwrap();
         assert!(keys[0].valid);
         assert!(keys[0].last_validated_at.is_some());
+    }
+
+    #[test]
+    fn mark_validated_false_also_disables_the_key() {
+        // Regression test: candidates_from_keys only ever filtered on
+        // `disabled`, never `valid` -- a key confirmed bad by real
+        // evidence (an auth failure, or an explicit validate probe) kept
+        // getting handed to the bandit forever.
+        let conn = test_conn();
+        add(&conn, "kilo", "default").unwrap();
+        assert!(!is_disabled(&conn, "kilo", "default").unwrap());
+
+        mark_validated(&conn, "kilo", "default", false).unwrap();
+        let keys = list(&conn, Some("kilo")).unwrap();
+        assert!(!keys[0].valid);
+        assert!(keys[0].disabled, "a key confirmed bad must be disabled, not just marked invalid");
+    }
+
+    #[test]
+    fn mark_validated_true_never_disables() {
+        let conn = test_conn();
+        add(&conn, "groq", "default").unwrap();
+        mark_validated(&conn, "groq", "default", true).unwrap();
+        assert!(!is_disabled(&conn, "groq", "default").unwrap());
+    }
+
+    #[test]
+    fn enable_reverses_a_disable_from_bad_evidence() {
+        let conn = test_conn();
+        add(&conn, "kilo", "default").unwrap();
+        mark_validated(&conn, "kilo", "default", false).unwrap();
+        assert!(is_disabled(&conn, "kilo", "default").unwrap());
+
+        enable(&conn, "kilo", "default").unwrap();
+        assert!(!is_disabled(&conn, "kilo", "default").unwrap());
     }
 
     #[test]

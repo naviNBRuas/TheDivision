@@ -1302,6 +1302,12 @@ fn dispatch(
             let secret_name = single_core::pool_keys::secret_name(&id, &key_id);
             single_core::secrets::SecretStore::set(&store, &secret_name, &key)?;
             single_core::pool_keys::add(&conn, &id, &key_id)?;
+            // Registering a fresh key value is an explicit "try this
+            // again" signal, whether this is the first time or a
+            // rotation over a key `mark_validated` previously disabled
+            // (e.g. after a confirmed-bad kilo/xkiro key) -- the probe
+            // right below re-evaluates it on real evidence regardless.
+            single_core::pool_keys::enable(&conn, &id, &key_id)?;
 
             // Best-effort key validation — a failed/absent probe just
             // leaves the key unvalidated, it never fails the command
