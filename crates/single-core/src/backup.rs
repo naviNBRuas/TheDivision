@@ -383,7 +383,7 @@ mod tests {
         header[155] = b' ';
         out.extend_from_slice(&header);
         out.extend_from_slice(contents);
-        out.extend(std::iter::repeat(0u8).take((512 - contents.len() % 512) % 512));
+        out.extend(std::iter::repeat_n(0u8, (512 - contents.len() % 512) % 512));
     }
 
     /// Builds an age-encrypted tar by hand — bypassing `export`, which can

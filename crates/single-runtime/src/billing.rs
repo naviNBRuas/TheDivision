@@ -58,7 +58,7 @@ fn fetch_anthropic(admin_key: &str, since: DateTime<Utc>) -> Result<Vec<UsageRec
         .get("https://api.anthropic.com/v1/organizations/cost_report")
         .header("anthropic-version", "2023-06-01")
         .header("x-api-key", admin_key)
-        .query(&[("starting_at", since.to_rfc3339()), ("group_by[]".into(), "description".into())])
+        .query(&[("starting_at", since.to_rfc3339()), ("group_by[]", "description".into())])
         .send()
         .context("calling Anthropic's cost_report API")?;
     if !resp.status().is_success() {
