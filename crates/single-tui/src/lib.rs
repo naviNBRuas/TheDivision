@@ -32,7 +32,18 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<
     loop {
         terminal.draw(|frame| ui::draw(frame, app))?;
 
-        if app.poll_refresh() || app.poll_install() || app.poll_provider_add() || app.poll_task_add() || app.poll_quick_add() || app.poll_task_detail() || app.poll_backup() || app.poll_usage() {
+        if app.poll_refresh()
+            || app.poll_install()
+            || app.poll_provider_add()
+            || app.poll_task_add()
+            || app.poll_quick_add()
+            || app.poll_task_detail()
+            || app.poll_backup()
+            || app.poll_usage()
+            || app.poll_pool()
+            || app.poll_provider_key_status()
+            || app.poll_goals()
+        {
             continue; // redraw immediately on state change
         }
 
