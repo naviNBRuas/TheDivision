@@ -181,20 +181,36 @@ fn task_output(rec: &single_protocol::TaskRecord) -> String {
 /// escalating on the first miss.
 const BRAIN_JSON_RETRIES: u32 = 2;
 
+/// `agent` is the routing table's first pick; each retry re-selects via
+/// `select_agent_excluding` (kind/effort/table/health), excluding every
+/// agent already tried, so a stuck agent doesn't burn the whole retry
+/// budget on itself — see `select_agent_excluding`'s doc comment for the
+/// live incident this fixes. Falls back to resampling `agent` itself only
+/// once every other candidate has already been excluded (still better
+/// than erroring immediately: a transient blip on the same agent can
+/// still clear on a second try).
+#[allow(clippy::too_many_arguments)]
 fn run_role(
     conn: &Connection,
     ctx: &Context,
     agent: &str,
+    kind: NodeKind,
+    effort: Effort,
+    table: &RoutingTable,
+    health: &PoolHealth,
     cwd: &std::path::Path,
     prompt: &str,
 ) -> Result<Value> {
+    let mut tried: Vec<String> = Vec::new();
+    let mut current = agent.to_string();
     for _ in 0..=BRAIN_JSON_RETRIES {
+        tried.push(current.clone());
         let rec = crate::task::run(
             conn,
             ctx,
             crate::task::RunTaskOptions {
                 description: prompt,
-                agent,
+                agent: &current,
                 cwd,
                 use_worktree: false,
                 account: None,
@@ -214,8 +230,9 @@ fn run_role(
         if let Some(v) = extract_first_json(&out) {
             return Ok(v);
         }
+        current = routing::select_agent_excluding(table, kind, effort, health, &tried).unwrap_or(current);
     }
-    bail!("brain role produced no parseable JSON after {} attempt(s)", BRAIN_JSON_RETRIES + 1)
+    bail!("brain role produced no parseable JSON after {} attempt(s) across {} agent(s): {}", BRAIN_JSON_RETRIES + 1, tried.len(), tried.join(", "))
 }
 
 const PLAN_INSTRUCTION: &str = "\
@@ -249,7 +266,7 @@ pub fn plan(
         pc.project_docs.join(", "),
     );
     let prompt = format!("{PLAN_INSTRUCTION}{ctx_blurb}\n\nGOAL:\n{goal_text}\n");
-    let v = run_role(conn, ctx, &agent, cwd, &prompt)?;
+    let v = run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Standard, table, health, cwd, &prompt)?;
     let specs = parse_plan(&v)?;
     Ok(specs_to_graph(&specs, table, health, prefer_pool))
 }
@@ -283,7 +300,7 @@ pub fn supervise(
         GRAPH:\n{graph_json}\n\nFAILING NODE: {failing_node_id}\nFAILURE OUTPUT:\n{}\n",
         crate::orchestrate::truncate(failing_output, 4000)
     );
-    let v = run_role(conn, ctx, &agent, cwd, &prompt)?;
+    let v = run_role(conn, ctx, &agent, NodeKind::Supervise, Effort::Standard, table, health, cwd, &prompt)?;
     parse_patch_ops(&v)
 }
 
@@ -310,7 +327,7 @@ pub fn integrate(
         Fix only trivial glue (imports, a rename mismatch).\n\n\
         GOAL:\n{goal_text}\n\nSUBTASK RESULTS:{body}\n"
     );
-    let v = run_role(conn, ctx, &agent, cwd, &prompt)?;
+    let v = run_role(conn, ctx, &agent, NodeKind::Integrate, Effort::Standard, table, health, cwd, &prompt)?;
     parse_integration(&v)
 }
 

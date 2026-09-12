@@ -282,12 +282,27 @@ pub fn select_agent(
     effort: Effort,
     health: &PoolHealth,
 ) -> Option<String> {
+    select_agent_excluding(table, kind, effort, health, &[])
+}
+
+/// Same selection as `select_agent`, but skips any agent already in
+/// `exclude` — for retrying a brain role (planner/supervisor/integrator)
+/// against a *different* agent instead of resampling the one that just
+/// produced unparseable output. `select_agent` is fully deterministic (no
+/// randomness, first-usable-candidate wins), so simply calling it again
+/// after a bad response returns the exact same agent every time; a stuck
+/// agent stayed stuck for all of `BRAIN_JSON_RETRIES`' attempts before
+/// this existed (live-verified 2026-09-12: a goal's supervisor role kept
+/// re-selecting `grok` — the same agent with an open, undiagnosed
+/// worktree-spawn bug — across all 3 attempts, every single time it was
+/// asked to patch a failure).
+pub fn select_agent_excluding(table: &RoutingTable, kind: NodeKind, effort: Effort, health: &PoolHealth, exclude: &[String]) -> Option<String> {
     let candidates = table.candidates(kind, effort);
-    if let Some(a) = candidates.iter().find(|a| health.usable(a)) {
+    if let Some(a) = candidates.iter().find(|a| !exclude.iter().any(|e| e == *a) && health.usable(a)) {
         return Some(a.clone());
     }
     if health.detected_authed.is_empty() {
-        return candidates.into_iter().next();
+        return candidates.into_iter().find(|a| !exclude.iter().any(|e| e == a));
     }
     None
 }
@@ -327,6 +342,35 @@ mod tests {
         t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["single-pool".to_string(), "opencode".to_string()]);
         let h = health(&[], &[]); // single-pool needs no detected_authed entry
         assert_eq!(select_agent(&t, NodeKind::Code, Effort::Standard, &h), Some("single-pool".to_string()));
+    }
+
+    #[test]
+    fn select_agent_excluding_skips_previously_tried_agents() {
+        let mut t = RoutingTable::default();
+        t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["grok".to_string(), "claude".to_string(), "codex".to_string()]);
+        let h = health(&["grok", "claude", "codex"], &[]);
+
+        assert_eq!(select_agent_excluding(&t, NodeKind::Code, Effort::Standard, &h, &[]), Some("grok".to_string()));
+        assert_eq!(select_agent_excluding(&t, NodeKind::Code, Effort::Standard, &h, &["grok".to_string()]), Some("claude".to_string()));
+        assert_eq!(
+            select_agent_excluding(&t, NodeKind::Code, Effort::Standard, &h, &["grok".to_string(), "claude".to_string()]),
+            Some("codex".to_string())
+        );
+    }
+
+    #[test]
+    fn select_agent_excluding_returns_none_once_every_candidate_is_excluded() {
+        let mut t = RoutingTable::default();
+        t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["grok".to_string()]);
+        let h = health(&["grok"], &[]);
+        assert_eq!(select_agent_excluding(&t, NodeKind::Code, Effort::Standard, &h, &["grok".to_string()]), None);
+    }
+
+    #[test]
+    fn select_agent_is_select_agent_excluding_with_nothing_excluded() {
+        let t = RoutingTable::default();
+        let h = health(&["opencode"], &[]);
+        assert_eq!(select_agent(&t, NodeKind::Code, Effort::Standard, &h), select_agent_excluding(&t, NodeKind::Code, Effort::Standard, &h, &[]));
     }
 
     #[test]
