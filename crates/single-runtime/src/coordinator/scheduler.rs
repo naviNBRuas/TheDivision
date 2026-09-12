@@ -583,7 +583,24 @@ fn handle_capacity_exhaustion(conn: &Connection, goal: &Goal, node_id: &str, art
     let elapsed_minutes = (chrono::Utc::now() - goal.created_at.parse().unwrap_or_else(|_| Utc::now())).num_minutes();
 
     if goal.capacity_waits >= max_waits || elapsed_minutes >= max_wait_minutes as i64 {
-        let reason = format!("waited {:.1}h for capacity, still exhausted", elapsed_minutes as f64 / 60.0);
+        // Live-verification finding (2026-09-11/12): `elapsed_minutes` is
+        // measured from `goal.created_at`, not from the goal's last
+        // resume — so `single goal resume` on a goal that has simply been
+        // sitting blocked for days re-trips this exact same wall-clock
+        // check on the very next tick, before the pool ever gets a
+        // chance to actually retry dispatch. The fix for a stuck-for-days
+        // goal is `single goal amend <id> capacity-minutes=<N>` (a
+        // *separate* field from `amend ... minutes=<N>`, which raises the
+        // goal's overall time budget, not this capacity-wait one) — spent
+        // real time confused between the two before finding
+        // `capacity_wait_minutes_override` here, so the blocked reason
+        // now says exactly which knob to turn instead of leaving that to
+        // be rediscovered by reading this function's source.
+        let reason = format!(
+            "waited {:.1}h for capacity, still exhausted (raise via `single goal amend {} capacity-minutes=<N>`, not `minutes=`)",
+            elapsed_minutes as f64 / 60.0,
+            goal.id
+        );
         goal::set_blocked(conn, &goal.id, &reason)?;
         events::append(conn, &goal.session_id, Some(&goal.id), EventKind::Blocked, &reason)?;
         return Ok(());

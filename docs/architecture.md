@@ -867,27 +867,33 @@ retries the next one before the caller ever sees a failure.
   which `(platform, model, key_id)` actually served it on the task record
   itself (only in the `pool_outcomes` ledger, queryable but not surfaced
   by `single task inspect`).
-- **Known real bug, not yet fixed (found live 2026-09-11)**:
-  `scheduler::handle_capacity_exhaustion` blocks a goal with "waited
-  N.Xh for capacity, still exhausted" once `capacity_waits`/wall-clock
-  caps are hit, but a live goal (`goal_dlcnfgbq7kzd_0004`) stayed
-  reporting this for 61.8h while `single pool status` showed the pool
-  merely `degraded` (healthy_ratio 0.46, not fully down) and most agents
-  idle at 0 concurrent — the capacity check appears to require
-  near-total exhaustion rather than tolerating a degraded-but-workable
-  pool, or is reading a stale/wrong health signal. Ruled out one
-  hypothesis while investigating (2026-09-11): `pool::degrade`'s
-  `healthy_ratio` (what `single pool status`'s "degraded" line reports)
-  is purely a `usable_keys / enabled_providers` snapshot for CLI/TUI
-  display — it's never read by `handle_capacity_exhaustion` or anything
-  else in the dispatch path, so a low ratio from simply not having keyed
-  all ~44 free-pool providers cannot be the cause. The real trigger is
-  still in `scheduler.rs`'s `capacity_waits`/wall-clock counters
-  themselves or in whatever marks a node `rate_limited` in the first
-  place. A dispatched fix attempt (3 opencode iterations via `single
-  goal submit --mode careful`) failed on every node — this needs a
-  focused human/agent session tracing an actual stuck goal's node
-  dispatch history end to end, not another blind retry.
+- **"Stuck for 61.8h waiting for capacity" — investigated 2026-09-11/12,
+  turned out to be working as designed, not a scheduler bug.**
+  `scheduler::handle_capacity_exhaustion` blocks a goal once
+  `capacity_waits`/wall-clock caps are hit; `self_heal::coordinator::
+  reeval_blocked_goals` auto-re-ticks a capacity-blocked goal a bounded
+  number of times (`max_auto_reevals_per_goal`) and then deliberately
+  stops, leaving it `Blocked` for a human to judge — the same "fail
+  closed to a human decision, never guess forever" pattern this codebase
+  uses everywhere else (approvals, db corruption restore, etc.). Several
+  goals sat blocked for 51-61+ hours simply because nothing resumed them
+  — not because the pool was actually unhealthy (`single pool status`
+  showed only `degraded`, healthy_ratio being a `usable_keys /
+  enabled_providers` display snapshot never consulted by the dispatch
+  path, ruled out as a cause) or because of a broken threshold. The
+  actual gap: `elapsed_minutes` in `handle_capacity_exhaustion` is
+  measured from `goal.created_at`, not from the goal's last resume, so
+  `single goal resume` on a days-old blocked goal re-trips the exact same
+  wall-clock check on the very next tick unless `single goal amend <id>
+  capacity-minutes=<N>` (a separate field from `amend ... minutes=<N>`,
+  which raises the goal's overall budget, not this one) is used first —
+  confirmed live: `goal_dlb44zyx7u7x_0005` re-blocked instantly on resume
+  and stayed running once `capacity-minutes` was raised. Fixed
+  2026-09-12: the blocked-reason message now names the exact command
+  (`capacity-minutes=<N>`, not `minutes=`) instead of leaving that
+  distinction to be rediscovered from source. A dispatched fix attempt
+  (3 opencode iterations) chasing this as a scheduler defect failed on
+  every node before this was understood — there was no defect to find.
 
   Also found live tonight while testing the brain-role retry fix above:
   a coordinator-dispatched integrator task to `grok` failed 3/3 attempts
