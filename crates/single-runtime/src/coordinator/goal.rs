@@ -234,8 +234,25 @@ pub fn find_overlapping(conn: &Connection, text: &str) -> Result<Option<Goal>> {
     for g in active(conn)? {
         let have = tokens(&g.text);
         let shared = want.intersection(&have).count();
-        let smaller = want.len().min(have.len());
-        if smaller > 0 && (shared as f64 / smaller as f64) >= 0.6 {
+        // Live-verification finding (2026-09-12): dividing by
+        // `min(want.len(), have.len())` meant a short new goal could
+        // spuriously "overlap" a much longer, unrelated one purely by
+        // reusing common boilerplate phrasing ("exhaust free-pool agents
+        // before paid ones", "commit locally as you go...") -- being
+        // short made the threshold easy to clear regardless of topic.
+        // Confirmed live: three genuinely distinct epic-audit goals
+        // (E08/E09/E25 quality/docs/vault-cleanup work) each got silently
+        // folded into an unrelated, already-active goal instead of being
+        // created, purely because they shared the same instructional
+        // boilerplate. Jaccard similarity (shared / union) fixes this: a
+        // short text can no longer inflate its match rate against a long
+        // one just by being short, since the long text's unique tokens
+        // now count against the ratio too. Still catches genuine
+        // near-duplicates (two differently-worded phrasings of the same
+        // short ask) since those share most of both sides' tokens either
+        // way.
+        let union = want.len() + have.len() - shared;
+        if union > 0 && (shared as f64 / union as f64) >= 0.5 {
             return Ok(Some(g));
         }
     }
@@ -616,6 +633,44 @@ mod tests {
         create(&conn, &s.id, "fix the login bug in auth.rs", GoalMode::Auto, 25, 60).unwrap();
         let found = find_overlapping(&conn, "add dark mode to the settings page").unwrap();
         assert!(found.is_none());
+    }
+
+    #[test]
+    fn find_overlapping_does_not_match_a_short_text_sharing_only_boilerplate_with_a_long_one() {
+        // Regression test: min-based overlap let a short, distinct ask
+        // spuriously match a long, unrelated goal purely by sharing
+        // common instructional phrasing -- three real epic goals with
+        // different topics (quality audit, docs, vault cleanup) each got
+        // silently folded into an unrelated already-active goal because
+        // every submission this session reused the same boilerplate
+        // ("exhaust free-pool agents before paid ones", "commit locally
+        // as you go", "do not push to any remote").
+        let conn = mem();
+        let s = super::super::session::new_session(&conn, std::path::Path::new("/tmp/p")).unwrap();
+        // Realistic lengths matter here: the shared boilerplate sentence
+        // is a small fraction of each goal's real word count, same as
+        // production submissions, not a toy-sized text where boilerplate
+        // dominates the token set.
+        let shared_boilerplate = "Exhaust free-pool agents before paid ones like claude or codex. Commit locally as you go with no AI or Co-Authored-By attribution, checking git log for this repo's own house commit style first. Do not push to any remote — a human reviews and pushes separately. If you hit a real decision only a human can make, write it down clearly in a HANDOFF-style note and move on to other work rather than blocking on it.";
+        create(
+            &conn,
+            &s.id,
+            &format!(
+                "Make SingleCLI self-healing as an ongoing standing concern, not a one-off audit: itself, single-pool (the free-provider dispatch engine), single-mcp, and single-lsp. Read the architecture doc's diagnostic sections first for already-diagnosed issues. Actually find the grok worktree-cwd spawn-failure root cause with real tracing, not guessing. Run the full test suite and clippy, fix real warnings you find. Verify single-mcp/single-lsp's lazy-spawn and idle-eviction work end to end against a real process. Audit the free-pool's ~44 providers for any more with the aihorde-class chat-prose problem. {shared_boilerplate}"
+            ),
+            GoalMode::Auto,
+            25,
+            60,
+        )
+        .unwrap();
+        let found = find_overlapping(
+            &conn,
+            &format!(
+                "Cross-cutting quality audit: pick one repo referenced from the quality/testing epic that has the weakest test or CI coverage, and actually improve it — add missing tests for real untested code paths, fix a flaky or broken CI gate, or wire up a missing check. Ship one concrete improvement with evidence it worked, not a survey. Write findings to that epic's own tracking doc. {shared_boilerplate}"
+            ),
+        )
+        .unwrap();
+        assert!(found.is_none(), "a distinct topic must not match just because it shares a boilerplate closing paragraph: {found:?}");
     }
 
     #[test]
