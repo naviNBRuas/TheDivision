@@ -875,12 +875,37 @@ retries the next one before the caller ever sees a failure.
   merely `degraded` (healthy_ratio 0.46, not fully down) and most agents
   idle at 0 concurrent — the capacity check appears to require
   near-total exhaustion rather than tolerating a degraded-but-workable
-  pool, or is reading a stale/wrong health signal. A dispatched fix
-  attempt (3 opencode iterations via `single goal submit --mode
-  careful`) failed on every node — this needs a focused human/agent
-  session reading `scheduler.rs`'s capacity-wait path alongside
-  `pool::bandit`'s `healthy_ratio` computation directly, not another
-  blind retry. Relatedly, `single acp`'s doc comment says every prompt
+  pool, or is reading a stale/wrong health signal. Ruled out one
+  hypothesis while investigating (2026-09-11): `pool::degrade`'s
+  `healthy_ratio` (what `single pool status`'s "degraded" line reports)
+  is purely a `usable_keys / enabled_providers` snapshot for CLI/TUI
+  display — it's never read by `handle_capacity_exhaustion` or anything
+  else in the dispatch path, so a low ratio from simply not having keyed
+  all ~44 free-pool providers cannot be the cause. The real trigger is
+  still in `scheduler.rs`'s `capacity_waits`/wall-clock counters
+  themselves or in whatever marks a node `rate_limited` in the first
+  place. A dispatched fix attempt (3 opencode iterations via `single
+  goal submit --mode careful`) failed on every node — this needs a
+  focused human/agent session tracing an actual stuck goal's node
+  dispatch history end to end, not another blind retry.
+
+  Also found live tonight while testing the brain-role retry fix above:
+  a coordinator-dispatched integrator task to `grok` failed 3/3 attempts
+  with `spawning grok: No such file or directory (os error 2)` (task
+  #1661), even though `single doctor` shows `grok` detected and
+  authenticated on this same machine. `single-runtimed`'s `main()`
+  augments `$PATH` once at daemon startup
+  (`single_agent_sdk::augmented_path`, appending `.local/bin`/`.bun/bin`/
+  `.opencode/bin` if present under the *real* `$HOME`) — worth checking
+  whether the coordinator's per-agent isolated-home task execution spawns
+  through a different mechanism that doesn't inherit that augmented
+  `$PATH`, or whether the daemon process predates `grok`'s install and
+  just needs a restart. Either way, routing picked `grok` as if it were
+  usable and burned a full retry budget on a command that doesn't resolve
+  at all — a case the retry-on-bad-JSON fix above doesn't help with,
+  since the task never produces output to retry-parse.
+
+  Relatedly, `single acp`'s doc comment says every prompt
   becomes a coordinator goal with no fast path for read-only status
   questions, so a quick "how's it going?" through Zed queues behind this
   same gate — a fast path that answers status questions from existing
