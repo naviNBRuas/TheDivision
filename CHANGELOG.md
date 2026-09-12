@@ -9,6 +9,20 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.2]
+
+- Fixed: a capacity-wait blocked goal's reason didn't say which `amend`
+  flag actually fixes it. `handle_capacity_exhaustion`'s wall-clock check
+  measures elapsed time from `goal.created_at`, so `single goal resume`
+  on a days-old blocked goal re-trips the same check on the next tick
+  unless `single goal amend <id> capacity-minutes=<N>` is used first —
+  distinct from `amend ... minutes=<N>`, which raises the goal's overall
+  budget, not this one. Confirmed live: several goals sat blocked 51-61+
+  hours simply unattended (the bounded auto-reeval in `self_heal::
+  coordinator` already retries a few times, then correctly waits for a
+  human — working as designed, not a scheduler defect). The blocked
+  reason now names the exact command.
+
 ## [0.17.1]
 
 - Fixed: a brain role (planner/supervisor/integrator) that produced
