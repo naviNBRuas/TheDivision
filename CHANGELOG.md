@@ -9,6 +9,17 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.1]
+
+- Fixed: a brain role (planner/supervisor/integrator) that produced
+  unparseable output permanently blocked its goal on the first miss —
+  confirmed live on a goal whose two work nodes both finished
+  successfully days earlier but stayed `blocked` forever on "integrator
+  failed: brain role produced no parseable JSON". `run_role` now retries
+  up to 2 more times before giving up, since a malformed-JSON response
+  from a stochastic LLM call is a content-quality problem a fresh sample
+  usually fixes.
+
 ## [0.17.0]
 
 - Added: a **Goals** tab in the TUI, listing the coordinator's goal list
