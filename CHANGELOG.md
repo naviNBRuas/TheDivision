@@ -9,6 +9,17 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.5]
+
+- Fixed: `find_overlapping` (goal-submission dedup) divided shared-token
+  count by `min(want.len(), have.len())`, so a short new goal could
+  spuriously match a much longer, unrelated one purely by sharing common
+  instructional boilerplate — confirmed live: three genuinely distinct
+  epic-audit goal submissions each silently folded into an unrelated
+  already-active goal instead of being created. Switched to Jaccard
+  similarity (shared / union), which a short text can no longer game
+  against a long one just by being short.
+
 ## [0.17.4]
 
 - Fixed: a free-pool key confirmed bad by real evidence (an auth failure
