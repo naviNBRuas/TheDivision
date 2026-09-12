@@ -9,6 +9,15 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.16.0]
+
+- Added: `single provider validate [--platform <id>]` re-probes every
+  already-keyed free-pool key against its provider's `validate_url`, the
+  same best-effort check `add-free` does at registration time — the only
+  other way a key's status ever updated. Skips providers with no
+  `validate_url` quirk rather than guessing an endpoint, and reports the
+  same table `key-status` does.
+
 ## [0.15.6]
 
 - Fixed: `single provider key-status` reported a free-pool key as "keyed,
