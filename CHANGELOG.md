@@ -9,6 +9,29 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.0]
+
+- Added: a **Goals** tab in the TUI, listing the coordinator's goal list
+  (`GoalList`) sorted running/waiting/queued/blocked/failed above
+  done/cancelled history — the Coordinator subsystem (E27.02) made goals
+  the primary unit of work, but the TUI had no view onto them at all
+  before this.
+- Added: the Providers tab now shows a **Key** column (keyed/no key),
+  cross-referencing `SecretList`'s stored key names against each
+  provider's `secret_name` — previously there was no way to tell "known
+  preset, never keyed" from "actually has a key stored" without leaving
+  the TUI.
+- Changed: Zed's `/goals` (via `single acp`) now shows active goals plus
+  the 10 most recent failures by default instead of dumping every goal
+  ever submitted unsorted — `/goals all` still gives the full history.
+- Fixed: the TUI's Pool tab spun on "Loading…" forever — its fetch
+  functions ran correctly but the main event loop never polled their
+  results.
+- Changed: the Agents tab's auth label for an agent with no auth-state
+  detection reads "n/a" instead of a bare "-", since that state
+  genuinely covers both "keyless agent" and "can't detect" — no
+  behavior change, just an honest label.
+
 ## [0.16.0]
 
 - Added: `single provider validate [--platform <id>]` re-probes every
