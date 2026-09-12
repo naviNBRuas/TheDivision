@@ -520,6 +520,13 @@ pub struct RunTaskOptions<'a> {
     /// `claude --output-format json`); otherwise a no-op hint and the
     /// run's usage is parse-or-estimated. See `AgentAdapter::run_prompt_json`.
     pub usage_json: bool,
+    /// Opt-in (default off): for the `single-pool` agent only, drops any
+    /// free-pool provider flagged `chat_prose_only` (aihorde-class —
+    /// see `single_core::free_pool::structured_output_ok`) from
+    /// candidacy. Set by `code`/`plan`/`integrate` role dispatch, which
+    /// needs either real tool-calling or strict single-shot JSON
+    /// compliance those providers' wire contracts don't guarantee.
+    pub require_structured_output: bool,
 }
 
 /// Cap on the injected memory/notes/knowledge preamble so it can't dwarf
@@ -708,6 +715,7 @@ pub struct OwnedRunTaskOptions {
     pub timeout: Duration,
     pub allow_fallback: bool,
     pub usage_json: bool,
+    pub require_structured_output: bool,
 }
 
 impl OwnedRunTaskOptions {
@@ -723,6 +731,7 @@ impl OwnedRunTaskOptions {
             timeout: self.timeout,
             allow_fallback: self.allow_fallback,
             usage_json: self.usage_json,
+            require_structured_output: self.require_structured_output,
         }
     }
 }
@@ -1085,7 +1094,7 @@ fn execute(
 
     std::fs::create_dir_all(ctx.dirs.artifacts_dir())?;
     let live_output_path = ctx.dirs.task_live_output_path(id);
-    let max_concurrency = ctx.find_agent(&opts.agent).and_then(|a| a.max_concurrency);
+    let max_concurrency = ctx.find_agent(opts.agent).and_then(|a| a.max_concurrency);
     // Scoped tightly around the subprocess run only: `maybe_fail_over`
     // below can recursively call `execute()` again on this same thread
     // for the *same* agent (e.g. an opencode/acct-a -> opencode/acct-b
@@ -1104,7 +1113,14 @@ fn execute(
         // `remember_failure`, etc.) treats it correctly with no new
         // plumbing; goal-level `waiting_on_capacity` semantics land in a
         // later phase.
-        crate::pool_agent::run_as_task(conn, &prompt, opts.timeout, opts.account, crate::pool_agent::global_handoff_store())
+        crate::pool_agent::run_as_task(
+            conn,
+            &prompt,
+            opts.timeout,
+            opts.account,
+            crate::pool_agent::global_handoff_store(),
+            opts.require_structured_output,
+        )
     } else {
         let _slot_guard = acquire_agent_slot(opts.agent, max_concurrency);
         let lop = Some(live_output_path.as_path());
@@ -1294,6 +1310,7 @@ fn maybe_fail_over(conn: &Connection, ctx: &Context, id: i64, opts: &RunTaskOpti
         timeout: opts.timeout,
         allow_fallback: true,
         usage_json: false,
+        require_structured_output: false,
     };
     match create_for_cwd(conn, next_opts.description, next_opts.agent, next_opts.cwd) {
         Ok(next_id) => {
@@ -1355,8 +1372,7 @@ fn summarize(stdout: &str, stderr: &str, timed_out: bool, exit_code: Option<i32>
     let last_error_line = |s: &str| {
         s.lines()
             .map(str::trim)
-            .filter(|l| !l.is_empty() && (l.contains("Error") || l.contains("ERROR")))
-            .next_back()
+            .rfind(|l| !l.is_empty() && (l.contains("Error") || l.contains("ERROR")))
             .map(str::to_string)
     };
     // Skip lines that are pure decoration (box-drawing borders, "---",
@@ -1641,6 +1657,7 @@ value = "-c"
             timeout: Duration::from_secs(5),
             allow_fallback: false,
             usage_json: false,
+            require_structured_output: false,
         };
         let task = run(&conn, &ctx, opts).unwrap();
         assert_eq!(task.status, TaskStatus::Completed, "expected the sh command to succeed");
@@ -1702,6 +1719,7 @@ value = "-c"
             timeout: Duration::from_secs(1),
             allow_fallback: false,
             usage_json: false,
+            require_structured_output: false,
         };
         let task = run(&conn, &ctx, opts).unwrap();
         assert_eq!(task.status, TaskStatus::Failed);
@@ -1735,6 +1753,7 @@ value = "-c"
                 timeout: Duration::from_secs(1),
                 allow_fallback: false,
                 usage_json: false,
+                require_structured_output: false,
             },
         )
     }
@@ -1775,6 +1794,7 @@ value = "-c"
             timeout: Duration::from_secs(1),
             allow_fallback: false,
             usage_json: false,
+            require_structured_output: false,
         };
         let task = run(&conn, &ctx, opts).unwrap();
         assert_eq!(task.status, TaskStatus::Failed);
@@ -1830,6 +1850,7 @@ value = "-c"
             timeout: Duration::from_secs(1),
             allow_fallback: true,
             usage_json: false,
+            require_structured_output: false,
         };
         maybe_fail_over(&conn, &ctx, id, &opts, "Error: rate limit exceeded, try again later", true, None);
 
@@ -1880,6 +1901,7 @@ value = "-c"
             timeout: Duration::from_secs(1),
             allow_fallback: true,
             usage_json: false,
+            require_structured_output: false,
         };
         maybe_fail_over(&conn, &ctx, id, &opts, "error: file not found", false, None);
 
@@ -2036,6 +2058,7 @@ value = "-c"
             timeout: Duration::from_secs(5),
             allow_fallback: false,
             usage_json: false,
+            require_structured_output: false,
         };
 
         let task = run(&conn, &ctx, opts).unwrap();

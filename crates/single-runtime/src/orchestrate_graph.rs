@@ -159,6 +159,7 @@ pub fn run(ctx: &Context, opts: GraphOrchestrateOptions<'_>) -> Result<Vec<TaskR
                             timeout,
                             allow_fallback: false,
                             usage_json: false,
+                            require_structured_output: false,
                         },
                     )?;
                     Ok((node.id, record))
@@ -270,6 +271,7 @@ pub fn plan_and_run(
             timeout,
             allow_fallback: false,
             usage_json: false,
+            require_structured_output: false,
         },
     )?;
     if planned.status != TaskStatus::Completed {
@@ -401,9 +403,9 @@ mod tests {
     #[test]
     fn on_failure_only_runs_after_a_failed_dependency() {
         let statuses = [TaskStatus::Failed];
-        assert!(statuses.iter().any(|s| *s == TaskStatus::Failed));
+        assert!(statuses.contains(&TaskStatus::Failed));
         let statuses = [TaskStatus::Completed];
-        assert!(!statuses.iter().any(|s| *s == TaskStatus::Failed));
+        assert!(!statuses.contains(&TaskStatus::Failed));
     }
 
     #[test]

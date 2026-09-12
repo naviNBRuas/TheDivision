@@ -427,6 +427,11 @@ pub fn tick(
                         timeout: timeout_for(effort),
                         allow_fallback: true,
                         usage_json: cfg.usage_json_agents.iter().any(|a| a == &agent),
+                        // `code` work nodes are the one graph-dispatched
+                        // kind that needs real tool-calling — exclude
+                        // aihorde-class free-pool providers (`no_tools`)
+                        // the same way brain roles exclude them for JSON.
+                        require_structured_output: node.kind == NodeKind::Code,
                     };
                     match dispatcher.dispatch(opts) {
                         Ok(task_id) => {

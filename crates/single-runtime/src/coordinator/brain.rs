@@ -203,6 +203,11 @@ fn run_role(
                 timeout: Duration::from_secs(240),
                 allow_fallback: true,
                 usage_json: false,
+                // Every brain role (plan/supervise/integrate) demands
+                // strict single-shot JSON — exclude aihorde-class
+                // free-pool providers whose wire contract doesn't
+                // guarantee that (see `require_structured_output`'s doc).
+                require_structured_output: true,
             },
         )?;
         let out = task_output(&rec);

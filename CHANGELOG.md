@@ -9,6 +9,32 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.17.3]
+
+- Audited all ~44 free-pool providers (`single-core::free_pool::FREE_PROVIDERS`)
+  for the "aihorde-class" problem: a provider whose wire-level contract —
+  not just flakiness — makes it a bad fit for `code`/`plan`/`integrate`
+  role work, which needs either real tool-calling or strict single-shot
+  JSON compliance. Two providers earned a new `Quirks::chat_prose_only`
+  flag: `aihorde` itself (`no_tools` + forced non-streaming + a 16-token
+  floor over a kudos-based crowdsourced queue of volunteer, historically
+  roleplay-tuned models) and `radeon` (`no_tools` over a "rotating public
+  roster" of unvetted models the operator swaps without notice). Every
+  other entry's quirks turned out to be capacity/availability/privacy
+  concerns (rate limits, promo-only rosters, prompt-logging, region/
+  real-name gates already caught by `default_disabled_reason`) rather
+  than an output-shape one, and stays fully routable — see the audit
+  note above `FREE_PROVIDERS` in `free_pool.rs` for the per-provider
+  breakdown.
+- Added: `free_pool::structured_output_ok` plus a `require_structured_output`
+  flag threaded through `RunTaskOptions`/`OwnedRunTaskOptions` down to
+  `pool_agent::candidates_from_keys`, so a flagged provider is dropped
+  from candidacy before the bandit ever sees it. Wired to `true` for the
+  coordinator's brain roles (`plan`/`supervise`/`integrate`, all of which
+  demand parseable JSON) and for graph-dispatched `code` work nodes
+  (which need real tool-calling); every other caller keeps the previous,
+  unfiltered behavior.
+
 ## [0.17.2]
 
 - Fixed: a capacity-wait blocked goal's reason didn't say which `amend`

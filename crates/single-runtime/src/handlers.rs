@@ -559,6 +559,7 @@ fn dispatch(
                         timeout: std::time::Duration::from_secs(timeout_secs),
                         allow_fallback,
                         usage_json,
+                        require_structured_output: false,
                     },
                     registry.clone(),
                 )?;
@@ -579,6 +580,7 @@ fn dispatch(
                     timeout: std::time::Duration::from_secs(timeout_secs),
                     allow_fallback,
                     usage_json,
+                    require_structured_output: false,
                 },
             )?;
             Ok(ResponseData::Task(record))

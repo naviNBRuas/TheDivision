@@ -86,6 +86,7 @@ pub fn run(conn: &Connection, ctx: &Context, opts: OrchestrateOptions) -> Result
             // itself elsewhere, a different concern.
             allow_fallback: false,
             usage_json: false,
+            require_structured_output: false,
         })?;
 
         let failed = record.status == TaskStatus::Failed;
@@ -172,6 +173,7 @@ pub fn run_parallel(ctx: &Context, opts: ParallelOrchestrateOptions) -> Result<V
                     timeout,
                     allow_fallback: false,
                     usage_json: false,
+                    require_structured_output: false,
                 })?;
 
                 // Broadcast what this agent did to the rest of the batch's

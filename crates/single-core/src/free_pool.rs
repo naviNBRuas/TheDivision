@@ -126,6 +126,17 @@ pub struct Quirks {
     pub region_wall: bool,
     /// Registered but needs real-name/identity verification to sign up.
     pub real_name_auth: bool,
+    /// The "aihorde-class" problem (2026-09 routing audit, E28 follow-up):
+    /// the provider's backing models are crowdsourced/rotating and skew
+    /// toward conversational or roleplay completion rather than
+    /// instruction-following structured output — confirmed here by a
+    /// concrete wire-level tell (`no_tools`, forced non-streaming, or a
+    /// "rotating public roster" of unvetted models), not vibes. A `true`
+    /// provider is excluded from the `code`/`plan`/`integrate` role
+    /// routing (`pool::pools::structured_output_candidate`), which need
+    /// either real tool-calling or strict single-shot JSON compliance;
+    /// it stays fully usable for `research`/`docs`/generic prompts.
+    pub chat_prose_only: bool,
 }
 
 /// Looks up a catalog entry by id. `O(n)` over ~40 entries — not worth a
@@ -190,7 +201,17 @@ const NO_QUIRKS: Quirks = Quirks {
     validate_cache: None,
     region_wall: false,
     real_name_auth: false,
+    chat_prose_only: false,
 };
+
+/// `true` iff `id` is safe to route for `code`/`plan`/`integrate` role work
+/// — an unknown id (not in the catalog, e.g. a shelled CLI agent name like
+/// `claude`/`grok`) is not this table's concern and passes through as
+/// suitable. See `FreeProvider::chat_prose_only` for what disqualifies a
+/// free-pool provider specifically.
+pub fn structured_output_ok(id: &str) -> bool {
+    by_id(id).map(|p| !p.quirks.chat_prose_only).unwrap_or(true)
+}
 
 /// The vendored table, transcribed row-for-row from E28 spec §5.2 (which
 /// is itself a snapshot from freellmapi's `providers/index.ts`, 2026-09).
@@ -199,6 +220,46 @@ const NO_QUIRKS: Quirks = Quirks {
 /// region-walled ones (`modelscope`/`qianfan`/`volcengine`/`xfyun`) that
 /// are counted in the same set as the 5 default-disabled ids (`sail` is
 /// the 5th, not region-walled but payment-gated).
+/// 2026-09 routing-suitability audit (all ~44 entries, one pass): looked
+/// for the "aihorde-class" problem — a provider whose *wire-level*
+/// contract (not just flakiness) makes it a bad fit for `code`/`plan`/
+/// `integrate` role work, which needs either real tool-calling or
+/// strict single-shot JSON compliance. Two entries earned
+/// `chat_prose_only = true`:
+/// - `aihorde`: `no_tools` + forced non-streaming + a 16-token floor on a
+///   kudos-based crowdsourced queue whose backing models are volunteer
+///   community LLMs (historically story/roleplay-tuned, not
+///   instruction-following) — the clearest case.
+/// - `radeon`: `no_tools` over a "rotating public roster" of unvetted
+///   models the operator swaps without notice — no tool-calling and no
+///   stable model identity to reason about compliance for.
+///
+/// Everything else keeps `chat_prose_only = false` — each remaining
+/// quirk is a capacity/availability/privacy concern, not an output-shape
+/// one, and doesn't block structured roles:
+/// - already excluded from routing by other means: `siliconflow` (media
+///   models only, registered but unroutable this iteration),
+///   `sail`/`modelscope`/`qianfan`/`volcengine`/`xfyun` (default-disabled
+///   per `default_disabled_reason` — payment/region/real-name gated
+///   before a request ever goes out).
+/// - tight or promo-only quotas (`ovh` 2 rpm, `agnes` ~30 concurrent,
+///   `opencode-zen`/`bai` trial rosters): admission just fails fast and
+///   the bandit/cooldown machinery routes around it like any other
+///   rate-limited candidate — doesn't corrupt output.
+/// - `kilo` logs prompts for training: a data-handling concern for the
+///   user to weigh via `default_disabled_reason`-style opt-out, not a
+///   correctness-of-output one, so it's left routable.
+/// - `pollinations`: `validate_url` quirk exists because its public
+///   `/v1/models` lies, but the chat wire itself speaks normal
+///   OpenAI-compat completions against named models — no `no_tools`/
+///   `no_stream` tell, so left routable.
+/// - the remaining ~30 plain `OpenAiCompat`/native-wire entries (groq,
+///   cerebras, nvidia, mistral, openrouter, github-models, cohere,
+///   cloudflare, zhipu, ollama-cloud, llm7, huggingface, reka, routeway,
+///   bazaarlink, ainative, aion, requesty, navyai, nara, sea-lion,
+///   orcarouter, unorouter, xkiro, anyapi, electronhub, experiential,
+///   longcat, custom) have no structural tell at all — full tool-calling
+///   and streaming support, named (not rotating-anonymous) models.
 pub static FREE_PROVIDERS: &[FreeProvider] = &[
     FreeProvider {
         id: "google",
@@ -644,7 +705,7 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
         limits: NO_LIMITS,
         pool: None,
         timeout: S30,
-        quirks: Quirks { no_tools: true, ..NO_QUIRKS },
+        quirks: Quirks { no_tools: true, chat_prose_only: true, ..NO_QUIRKS },
         free_note: "rotating public roster, header-reported limits; no parallel tools, 10-min gen window",
         intelligence_rank: 5,
     },
@@ -802,6 +863,7 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
             min_max_tokens: Some(16),
             no_tools: true,
             no_stream: true,
+            chat_prose_only: true,
             ..NO_QUIRKS
         },
         free_note: "kudos-based queue proxy",

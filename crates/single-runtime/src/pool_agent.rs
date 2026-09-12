@@ -186,11 +186,19 @@ fn estimate_tokens(text: &str) -> u64 {
 /// still gets caught for real, just one dispatch attempt later: a 401
 /// benches it via `AuthBenched` in `execute`'s error-mapping match, same
 /// as any other real dispatch failure.
-pub fn candidates_from_keys(conn: &Connection) -> Result<Vec<(String, String, String)>> {
+/// `require_structured_output`: when true, drops any provider flagged
+/// `chat_prose_only` in the free-pool catalog (aihorde, radeon as of the
+/// 2026-09 audit — see `single_core::free_pool::structured_output_ok`)
+/// before it can become a candidate. Set by callers dispatching a
+/// `code`/`plan`/`integrate` role node, which need either real
+/// tool-calling or strict single-shot JSON compliance that those
+/// providers' wire contracts don't guarantee.
+pub fn candidates_from_keys(conn: &Connection, require_structured_output: bool) -> Result<Vec<(String, String, String)>> {
     let keys = single_core::pool_keys::list(conn, None)?;
     Ok(keys
         .into_iter()
         .filter(|k| !k.disabled)
+        .filter(|k| !require_structured_output || single_core::free_pool::structured_output_ok(&k.platform))
         .filter_map(|k| single_core::free_pool::by_id(&k.platform).map(|p| (k.platform.clone(), p.id.to_string(), k.key_id.clone())))
         .collect())
 }
@@ -212,8 +220,15 @@ pub fn global_handoff_store() -> &'static HandoffStore {
 /// `single_core::ratelimit::looks_like_rate_limit` (spec: "maps to the
 /// task's existing rate-limited terminal shape" until Phase 6's
 /// goal-level `waiting_on_capacity` lands).
-pub fn run_as_task(conn: &Connection, prompt: &str, timeout: Duration, session_key: Option<&str>, handoff_store: &HandoffStore) -> Result<RunOutcome> {
-    let candidates = candidates_from_keys(conn)?;
+pub fn run_as_task(
+    conn: &Connection,
+    prompt: &str,
+    timeout: Duration,
+    session_key: Option<&str>,
+    handoff_store: &HandoffStore,
+    require_structured_output: bool,
+) -> Result<RunOutcome> {
+    let candidates = candidates_from_keys(conn, require_structured_output)?;
     let strategy = bandit::Strategy::Balanced;
     let started = Instant::now();
 
@@ -293,7 +308,7 @@ mod tests {
         let conn = test_conn();
         single_core::pool_keys::add(&conn, "groq", "default").unwrap();
         // deliberately NOT calling mark_validated -- valid stays false.
-        let candidates = candidates_from_keys(&conn).unwrap();
+        let candidates = candidates_from_keys(&conn, false).unwrap();
         assert!(candidates.iter().any(|(p, _, k)| p == "groq" && k == "default"), "{candidates:?}");
     }
 
@@ -302,8 +317,22 @@ mod tests {
         let conn = test_conn();
         single_core::pool_keys::add(&conn, "groq", "default").unwrap();
         single_core::pool_keys::disable(&conn, "groq", "default").unwrap();
-        let candidates = candidates_from_keys(&conn).unwrap();
+        let candidates = candidates_from_keys(&conn, false).unwrap();
         assert!(candidates.is_empty(), "{candidates:?}");
+    }
+
+    #[test]
+    fn candidates_from_keys_excludes_chat_prose_only_providers_when_structured_output_required() {
+        let conn = test_conn();
+        single_core::pool_keys::add(&conn, "groq", "default").unwrap();
+        single_core::pool_keys::add(&conn, "aihorde", "default").unwrap();
+
+        let unfiltered = candidates_from_keys(&conn, false).unwrap();
+        assert_eq!(unfiltered.len(), 2, "{unfiltered:?}");
+
+        let filtered = candidates_from_keys(&conn, true).unwrap();
+        assert_eq!(filtered.len(), 1, "{filtered:?}");
+        assert_eq!(filtered[0].0, "groq");
     }
 
     fn always_resolve(_p: &str, _k: &str) -> Option<String> {
