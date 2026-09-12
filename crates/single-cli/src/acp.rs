@@ -582,8 +582,26 @@ impl Acp {
                 Ok(ResponseData::Goals(gs)) => {
                     if gs.is_empty() {
                         "(no goals)".into()
-                    } else {
+                    } else if arg.trim() == "all" {
+                        // Full unfiltered dump, oldest-run history included
+                        // -- the pre-2026-09-12 behavior, kept as an
+                        // explicit opt-in for when you actually want to
+                        // see everything ever run, not just what needs
+                        // attention right now.
                         gs.iter().map(|g| format!("{}  [{}]  {}", g.id, g.status, g.text)).collect::<Vec<_>>().join("\n")
+                    } else {
+                        // Live-verification finding: the unfiltered dump
+                        // makes `/goals` useless once a session has run
+                        // more than a handful of goals -- everything ever
+                        // submitted, done/cancelled/failed/active, all
+                        // mixed together with no way to tell what still
+                        // needs a decision. Default view now separates
+                        // what's actually actionable (still running or
+                        // recoverable) from what failed recently (so you
+                        // can restart/fix it) from the rest (collapsed to
+                        // a count) -- `/goals all` still gives the full
+                        // list when you actually want it.
+                        format_goals_summary(&gs)
                     }
                 }
                 Ok(other) => format!("unexpected: {other:?}"),
@@ -803,7 +821,7 @@ fn modes_block(current: &str) -> Value {
 fn commands() -> Value {
     json!([
         { "name": "status", "description": "coordinator: running/queued/blocked goals + pool + provider auth/exhaustion" },
-        { "name": "goals", "description": "list all goals" },
+        { "name": "goals", "description": "active goals + recent failures (add 'all' for the full unfiltered history)" },
         { "name": "agents", "description": "detected agents / auth (single doctor)" },
         { "name": "usage", "description": "per-agent run counts / latency" },
         { "name": "mcp", "description": "MCP servers in single-mcp" },
@@ -852,6 +870,57 @@ fn format_snapshot(s: &single_protocol::CoordinatorSnapshot) -> String {
             let rl = if p.rate_limited { " (rate-limited)" } else { "" };
             out.push_str(&format!("  {} {}{}\n", p.agent, p.running, rl));
         }
+    }
+    out
+}
+
+/// `/goals`'s default (non-`all`) view: everything still actionable
+/// (non-terminal statuses) up top, then the most recent failures (so you
+/// can restart/fix them), then a one-line count of the rest so the list
+/// doesn't quietly imply "there's nothing else" while still not drowning
+/// the actionable items in old history. "Recent" is the last
+/// `RECENT_FAILURES_SHOWN` failures by creation order rather than a
+/// wall-clock window -- `created_at` is RFC3339 UTC, which sorts
+/// correctly as a plain string, so this needs no date-math/chrono
+/// dependency in this crate (deliberately kept out, see `chrono_now`'s
+/// doc comment above).
+const RECENT_FAILURES_SHOWN: usize = 10;
+
+fn format_goals_summary(goals: &[single_protocol::GoalSummary]) -> String {
+    let is_active = |status: &str| matches!(status, "planning" | "running" | "queued" | "waiting_on_capacity" | "paused");
+
+    let mut active: Vec<_> = goals.iter().filter(|g| is_active(&g.status)).collect();
+    let mut failed: Vec<_> = goals.iter().filter(|g| g.status == "failed").collect();
+    // Most recently created first within each section -- the ones you're
+    // most likely to want to act on right now.
+    active.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    failed.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    let recent_failures = &failed[..failed.len().min(RECENT_FAILURES_SHOWN)];
+
+    let mut out = String::new();
+    let section = |out: &mut String, label: &str, list: &[&single_protocol::GoalSummary]| {
+        if list.is_empty() {
+            return;
+        }
+        out.push_str(&format!("{label}:\n"));
+        for g in list {
+            let extra = match (&g.capacity_reason, &g.capacity_eta) {
+                (Some(reason), Some(eta)) => format!("  ({reason}, retry {eta})"),
+                _ => String::new(),
+            };
+            out.push_str(&format!("  {}  [{}]  {}{}\n", g.id, g.status, g.text, extra));
+        }
+    };
+    section(&mut out, "active", &active);
+    section(&mut out, "recently failed", recent_failures);
+
+    let shown: std::collections::HashSet<&str> = active.iter().chain(recent_failures.iter()).map(|g| g.id.as_str()).collect();
+    let rest = goals.len() - shown.len();
+    if rest > 0 {
+        out.push_str(&format!("...and {rest} older/terminal goal(s) — `/goals all` to see everything.\n"));
+    }
+    if out.is_empty() {
+        out.push_str("(no active goals, no failures)\n");
     }
     out
 }
@@ -905,6 +974,60 @@ fn chrono_now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn goal(id: &str, status: &str, created_at: &str) -> single_protocol::GoalSummary {
+        single_protocol::GoalSummary {
+            id: id.to_string(),
+            session_id: "s1".to_string(),
+            text: format!("goal {id}"),
+            mode: "auto".to_string(),
+            status: status.to_string(),
+            dispatches: 0,
+            max_dispatches: 10,
+            created_at: created_at.to_string(),
+            capacity_reason: None,
+            capacity_eta: None,
+        }
+    }
+
+    #[test]
+    fn goals_summary_separates_active_and_failed_from_terminal_history() {
+        let goals = vec![
+            goal("g1", "running", "2026-01-01T00:00:00Z"),
+            goal("g2", "done", "2026-01-02T00:00:00Z"),
+            goal("g3", "failed", "2026-01-03T00:00:00Z"),
+            goal("g4", "cancelled", "2026-01-04T00:00:00Z"),
+        ];
+        let out = format_goals_summary(&goals);
+        assert!(out.contains("active:"));
+        assert!(out.contains("g1"));
+        assert!(out.contains("recently failed:"));
+        assert!(out.contains("g3"));
+        assert!(!out.contains("g2"), "a done goal must not appear in the default view: {out}");
+        assert!(!out.contains("g4"), "a cancelled goal must not appear in the default view: {out}");
+        assert!(out.contains("2 older/terminal goal"), "expected the done+cancelled pair collapsed to a count: {out}");
+    }
+
+    #[test]
+    fn goals_summary_caps_recent_failures_and_orders_newest_first() {
+        let mut goals = Vec::new();
+        for i in 0..15 {
+            goals.push(goal(&format!("f{i}"), "failed", &format!("2026-01-{:02}T00:00:00Z", i + 1)));
+        }
+        let out = format_goals_summary(&goals);
+        assert!(out.contains("f14"), "the newest failure must be shown: {out}");
+        assert!(!out.contains("f0\n") && !out.contains("f4\n"), "the oldest failures must be capped out of the default view: {out}");
+        assert!(out.contains("5 older/terminal goal"));
+    }
+
+    #[test]
+    fn goals_summary_reports_nothing_pending_when_all_terminal_and_old() {
+        let goals = vec![goal("g1", "done", "2026-01-01T00:00:00Z")];
+        let out = format_goals_summary(&goals);
+        assert!(out.contains("older/terminal goal"));
+        assert!(!out.contains("active:"));
+        assert!(!out.contains("recently failed:"));
+    }
 
     #[test]
     fn goal_submit_defaults_to_single_pool_when_no_override_set() {
