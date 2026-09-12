@@ -893,17 +893,28 @@ retries the next one before the caller ever sees a failure.
   a coordinator-dispatched integrator task to `grok` failed 3/3 attempts
   with `spawning grok: No such file or directory (os error 2)` (task
   #1661), even though `single doctor` shows `grok` detected and
-  authenticated on this same machine. `single-runtimed`'s `main()`
-  augments `$PATH` once at daemon startup
-  (`single_agent_sdk::augmented_path`, appending `.local/bin`/`.bun/bin`/
-  `.opencode/bin` if present under the *real* `$HOME`) — worth checking
-  whether the coordinator's per-agent isolated-home task execution spawns
-  through a different mechanism that doesn't inherit that augmented
-  `$PATH`, or whether the daemon process predates `grok`'s install and
-  just needs a restart. Either way, routing picked `grok` as if it were
-  usable and burned a full retry budget on a command that doesn't resolve
-  at all — a case the retry-on-bad-JSON fix above doesn't help with,
-  since the task never produces output to retry-parse.
+  authenticated on this same machine. Ruled out after a live restart to
+  v0.17.1 (to pick up the brain-retry fix) did not fix it: the daemon's
+  own `$PATH` (checked via `/proc/<pid>/environ`) does include
+  `.local/bin`, and `grok`'s symlink chain (`.local/bin/grok` →
+  `.grok/bin/grok` → `.grok/downloads/grok-linux-x86_64`) resolves to a
+  real, executable file — so this probably isn't a stale-PATH problem
+  after all. `run_command_live`'s `.with_context(|| format!("spawning
+  {command}"))` wraps the exact same OS error whether `execve` failed on
+  the program or `Command::current_dir(cwd)` failed because the cwd
+  doesn't exist, and the failing node was a `code`-kind node (which
+  defaults to its own git worktree) reassigned by the supervisor twice in
+  ~25s on the same live goal — a stale/already-cleaned-up worktree path
+  from an earlier supervisor patch is the more likely culprit now. Either
+  way, routing picked `grok` as if it were usable and burned a full retry
+  budget on a command that doesn't resolve at all — a case the
+  retry-on-bad-JSON fix above doesn't help with, since the task never
+  produces output to retry-parse. Needs someone to actually add a
+  trace at the `Command::new` call site (or reproduce with `RUST_LOG`
+  verbosity) rather than more guessing from the outside — a second
+  automated fix attempt already failed on this exact goal
+  (`goal_dlaftumiqf9l_0002`, "tried 5 supervisor fixes on this goal; need
+  a decision").
 
   Relatedly, `single acp`'s doc comment says every prompt
   becomes a coordinator goal with no fast path for read-only status
