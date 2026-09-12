@@ -1,16 +1,31 @@
 # SingleCLI
 
-A unified control plane for heterogeneous AI coding-agent CLIs — Claude
-Code, Codex, OpenCode, Antigravity (`agy`), Cursor CLI, Aider, Goose,
-GitHub Copilot CLI, Kiro CLI, Sourcegraph Cody, Perplexity's `pplx`, and
-any new agent CLI you describe in a TOML file. Configure MCP servers,
-provider keys, and accounts once in SingleCLI; every supported agent gets
-the same configuration synced into its own native format.
+A unified control plane and coordinator for heterogeneous AI coding-agent
+CLIs — 24 built-in agents (Claude Code, Codex, OpenCode, Antigravity,
+Cursor CLI, GitHub Copilot CLI, Aider, Goose, Kiro, Cody, Grok, Crush,
+Kilo Code, and more), plus any new agent CLI you describe in a TOML file
+with no recompilation. Configure MCP servers, provider keys, and accounts
+once; every supported agent gets the same configuration synced into its
+own native format.
 
-> **Status: Phases 1-4 done, Phases 5-6 partial, plus four rounds of
-> growth work (plugins, multi-account concurrency, LSP/skills sync,
-> preset catalogs, a fuller TUI, six more built-in agents).** See
-> "What's implemented" below and `docs/architecture.md` for the full picture, including what's
+Beyond syncing config, SingleCLI's **Coordinator** turns a single goal
+("add tests for the parser and fix whatever they find") into a real
+dependency graph of tasks, dispatches each node to whichever real agent
+or model fits, retries and reroutes around rate limits and cooldowns
+automatically, and reports back — through the CLI, the TUI's own **Goals**
+tab, or Zed's agent panel via a native ACP bridge (`single acp`). When
+none of your logged-in agent CLIs have capacity, the **free-provider
+pool** (44 vendored providers, Thompson-sampling bandit routing, real
+per-key cooldown/headroom tracking) dispatches straight over HTTP instead
+of shelling a CLI at all — no agent login required to keep working.
+
+> **Status: actively developed, well past early scaffolding.** Agent
+> registry, MCP/LSP/tool/provider registries, multi-account concurrency,
+> the Coordinator + goal graph, the free-provider pool, a native Zed ACP
+> bridge, and a full TUI (Agents/Goals/Tasks/MCP/LSP/Plugins/Tools/
+> Providers/Accounts/Usage/Pool/Backup/Memory) are all real and covered
+> by the workspace's own test suite. See "What's implemented" below and
+> `docs/architecture.md` for the full picture, including what's
 > deliberately *not* here yet.
 
 ## Why
@@ -98,11 +113,24 @@ single skill sync-claude my-skill       # copies it into ~/.claude/skills/my-ski
 single memory graph create-entity SingleCLI project
 single memory graph show                # dump the shared knowledge graph
 
-single                  # launch the TUI: Agents/Tasks/MCP/LSP/Plugins/Tools/Providers/Accounts/Memory tabs,
-                        # [i] installs an agent interactively, [n] creates a task, [enter] on a task
-                        # shows its live output (auto-refreshing while running); orchestrate runs
-                        # create one row per agent per step, so each agent's own output is one [enter] away.
-                        # [a] quick-adds into MCP/LSP/Plugins/Tools, [d]/[e]/[s] remove/toggle/sync the selection
+single                  # launch the TUI: Agents/Goals/Tasks/MCP/LSP/Plugins/Tools/Providers/Accounts/
+                        # Usage/Pool/Backup/Memory tabs. [i] installs an agent interactively, [n]
+                        # creates a task, [enter] on a task shows its live output (auto-refreshing
+                        # while running); orchestrate runs create one row per agent per step, so each
+                        # agent's own output is one [enter] away. [a] quick-adds into MCP/LSP/Plugins/
+                        # Tools, [d]/[e]/[s] remove/toggle/sync the selection
+
+single goal submit "add tests for the parser and fix whatever they find" --mode auto
+single coordinator status                    # running/queued/blocked/waiting-on-capacity goals + pool
+single goal status <goal-id>                 # that goal's task graph, node-by-node status
+single acp                                   # stdio ACP server — point Zed's agent panel at this
+
+single task run --agent single-pool "explain this diff"   # dispatch straight to the free-provider
+                                                            # pool over HTTP, no agent CLI, no login
+single provider list-free                    # the vendored ~44-provider free-LLM catalog
+single provider add-free groq                # register + best-effort validate a key
+single provider validate                     # re-probe every already-keyed free-pool key on demand
+single provider key-status                   # keyed?/valid?/cooldown/headroom, per provider
 
 single update --check                       # is a newer stable build available?
 single update --yes                         # replace the running binaries in place
@@ -218,7 +246,7 @@ Every list/inspect command supports `--json` for scripting.
   runs and its `configure` wizard wired as login; Aider gets
   non-interactive runs only — it has no MCP support and authenticates via
   API-key flags/env vars, not an interactive login.
-- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 built-in agents total.
+- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 of the current 24 built-in agents; the registry has since grown to also include qwen-code, amp, openhands, droid, codebuff, plandex, continue-cli, grok, mistral-vibe, crush, kilocode, and `single-pool`/`single-agent` (SingleCLI's own native, MCP-only agents — see "Coordinator, goals, and the free-provider pool" below).
   Copilot gets full parity too (MCP sync into `~/.copilot/mcp-config.json`,
   non-interactive runs, login, plugin install). Kiro gets non-interactive
   runs and login (both confirmed by running it directly), but MCP stays
@@ -230,16 +258,55 @@ Every list/inspect command supports `--json` for scripting.
   standalone Windsurf agent CLI anymore (it was folded into Devin
   Desktop) — see `docs/install-methods.md` for the full reasoning.
 
+## Coordinator, goals, and the free-provider pool
+
+Everything above is the config/registry layer. On top of it, the
+**Coordinator** (`single goal`/`single coordinator`) is a second, higher
+level of the tool: submit one goal in plain text, and it plans a real
+dependency graph (`code`/`test`/`research`/`review`/`docs`/`infra`
+nodes), dispatches each ready node to whichever agent fits, runs
+independent nodes in parallel (each in its own git worktree when the node
+kind calls for isolation), retries around failures and rate limits, and
+supervises the result — auto-continuing on success, queuing a
+human-confirmed merge when it isn't sure, per `--mode auto/plan/careful/
+dry`. `single goal status <id>` shows the graph node-by-node; the TUI's
+**Goals** tab and `single coordinator status` show everything running/
+queued/blocked at once.
+
+Two more pieces plug into this:
+
+- **The free-provider pool (E28)** — `single-pool` is a built-in agent
+  that never shells a CLI at all: it picks a `(provider, model, key)` via
+  a Thompson-sampling bandit over a vendored ~44-provider free-LLM
+  catalog (`single provider list-free`) and dispatches straight to that
+  provider's HTTP API, benching whatever's rate-limited/failing and
+  retrying the next candidate before you ever see a failure. `single
+  provider add-free <id>` keys a provider; `single provider validate`
+  re-probes existing keys on demand; `single provider key-status` shows
+  keyed/valid/cooldown/headroom per provider — real, live state, not a
+  placeholder.
+- **A native Zed ACP bridge (`single acp`)** — a stdio [Agent Client
+  Protocol](https://agentclientprotocol.com) server: every prompt from
+  Zed's agent panel becomes a coordinator goal, with progress streamed
+  back as it runs. `/goals` in the panel shows active goals plus recent
+  failures by default (`/goals all` for the full history); `/status`
+  folds in provider auth/exhaustion state since Zed has no native
+  status-bar API for that.
+
 ## What's not (yet)
 
-A parallel/live multi-agent task-graph (as opposed to the sequential
-relay that exists), permission *enforcement* (the model exists, nothing
-calls it), a real text-to-vector embeddings pipeline (Qdrant integration
+A real text-to-vector embeddings pipeline (Qdrant integration
 stores/searches vectors you already have), LSP syncing into agents other
 than OpenCode, a plugin marketplace/discovery layer (installing a named
-plugin is real; browsing what's available is not), workflows, and full
-model/provider abstraction (discovery, streaming, usage accounting) are
-later work. See `docs/architecture.md`'s "Not in Phase 1-6" section for
+plugin is real; browsing what's available is not), and full generic
+model/provider abstraction beyond the free-pool's own dispatch (live
+model-catalog discovery per provider — each free-pool provider is
+currently treated as offering one nominal model) are later work. The
+Coordinator's parallel task graph and `singlecli-mcp`'s permission
+enforcement, both listed as future work in earlier revisions of this
+README, are real and shipped — see "Coordinator, goals, and the
+free-provider pool" above and `single-core::preferences`/`permissions`.
+See `docs/architecture.md`'s "Not in Phase 1-6" section for
 the full, honest list.
 
 ## Development
