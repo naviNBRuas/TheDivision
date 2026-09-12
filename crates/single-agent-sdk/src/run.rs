@@ -125,7 +125,7 @@ pub fn run_command_live(
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    let mut child = cmd.spawn().with_context(|| format!("spawning {command}"))?;
+    let mut child = cmd.spawn().with_context(|| spawn_failure_context(command, cwd, backend))?;
 
     let tee_file: Option<Arc<Mutex<std::fs::File>>> = live_output_path
         .and_then(|p| std::fs::File::create(p).ok())
@@ -224,6 +224,37 @@ fn kill_child(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
+/// Disambiguates a spawn failure's error text. `Command::spawn()` returns
+/// the identical "No such file or directory (os error 2)" whether
+/// `execve` couldn't find `command` on `$PATH` or `Command::current_dir`
+/// couldn't `chdir` into `cwd` — indistinguishable from the error alone.
+/// Live-verification finding (2026-09-12): a coordinator-dispatched `grok`
+/// task failed with exactly this ambiguous message, and diagnosing which
+/// of the two it actually was took real time (checking the daemon's live
+/// `$PATH` via `/proc/<pid>/environ`, resolving `grok`'s symlink chain by
+/// hand, reproducing the exact isolated-`$HOME` + worktree combination
+/// directly) — none of which found a fault, because the ambiguity itself
+/// was the obstacle, not a hidden bug in either path. Checked lazily,
+/// only once a spawn has already failed, so the happy path pays nothing
+/// for it.
+fn spawn_failure_context(command: &str, cwd: &Path, backend: &ExecBackend) -> String {
+    if matches!(backend, ExecBackend::Docker { .. }) {
+        // cwd here is a path *inside* the container, not a host path --
+        // checking it against the host filesystem would be meaningless.
+        return format!("spawning {command} via docker exec");
+    }
+    if !cwd.exists() {
+        return format!("spawning {command}: cwd {} does not exist (a stale/cleaned-up worktree is the likely cause, not a missing {command} binary)", cwd.display());
+    }
+    let on_path = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(command).is_file()))
+        .unwrap_or(false);
+    if !on_path && !Path::new(command).is_absolute() {
+        return format!("spawning {command}: not found on $PATH (cwd {} exists and is fine)", cwd.display());
+    }
+    format!("spawning {command} (cwd {} exists, {command} resolves on $PATH -- likely a transient OS-level failure)", cwd.display())
+}
+
 fn pin_real_config_dir(cmd: &mut Command) {
     if let Ok(dirs) = single_core::paths::SingleDirs::discover() {
         cmd.env("SINGLE_CONFIG_DIR", dirs.root());
@@ -253,6 +284,36 @@ fn drain_into(pipe: impl Read, buf: Arc<Mutex<String>>, tee: Option<Arc<Mutex<st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spawn_failure_context_names_a_missing_cwd_over_a_missing_binary() {
+        let missing_cwd = std::env::temp_dir().join("single-test-definitely-does-not-exist-xyz");
+        let msg = spawn_failure_context("grok", &missing_cwd, &ExecBackend::host(None));
+        assert!(msg.contains("does not exist"), "{msg}");
+        assert!(msg.contains("stale/cleaned-up worktree"), "{msg}");
+    }
+
+    #[test]
+    fn spawn_failure_context_names_a_missing_binary_when_cwd_is_fine() {
+        let dir = tempfile::tempdir().unwrap();
+        let msg = spawn_failure_context("single-cli-definitely-does-not-exist-xyz", dir.path(), &ExecBackend::host(None));
+        assert!(msg.contains("not found on $PATH"), "{msg}");
+    }
+
+    #[test]
+    fn spawn_failure_context_defers_to_a_generic_message_when_both_check_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let msg = spawn_failure_context("sh", dir.path(), &ExecBackend::host(None));
+        assert!(msg.contains("transient"), "{msg}");
+    }
+
+    #[test]
+    fn spawn_failure_context_skips_host_checks_for_docker() {
+        let missing_cwd = std::env::temp_dir().join("single-test-definitely-does-not-exist-xyz");
+        let msg = spawn_failure_context("grok", &missing_cwd, &ExecBackend::Docker { container: "c1", workdir: Path::new("/work"), extra_env: None });
+        assert!(!msg.contains("does not exist"), "{msg}");
+        assert!(msg.contains("docker exec"), "{msg}");
+    }
 
     #[test]
     fn captures_stdout_and_exit_code_of_a_real_process() {
