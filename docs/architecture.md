@@ -915,12 +915,32 @@ retries the next one before the caller ever sees a failure.
   way, routing picked `grok` as if it were usable and burned a full retry
   budget on a command that doesn't resolve at all — a case the
   retry-on-bad-JSON fix above doesn't help with, since the task never
-  produces output to retry-parse. Needs someone to actually add a
-  trace at the `Command::new` call site (or reproduce with `RUST_LOG`
-  verbosity) rather than more guessing from the outside — a second
-  automated fix attempt already failed on this exact goal
-  (`goal_dlaftumiqf9l_0002`, "tried 5 supervisor fixes on this goal; need
-  a decision").
+  produces output to retry-parse.
+
+  **Update (2026-09-12), two real fixes shipped, root cause still open.**
+  Directly reproduced grok spawning under the exact conditions the
+  production failure used — isolated `$HOME` override, running from
+  inside a fresh git worktree, a 3-process concurrent burst matching the
+  timing in the failing goal's event log — and it worked every time
+  (the burst even correctly surfaced grok's own real rate-limit error,
+  not an ENOENT). Docker execution was also ruled out: `docker.toml`
+  doesn't exist on this machine, so `docker::is_enabled` returns `false`
+  for every agent, meaning the Docker backend was never in play. The
+  root cause is still genuinely unknown — but two real improvements
+  shipped from the investigation: (1) `run_role` now re-selects a
+  *different* agent via `select_agent_excluding` on each JSON-parse
+  retry instead of resampling the exact agent that just failed (the
+  actual reroute-on-retry fix — before this, a stuck agent burned the
+  whole retry budget on itself, confirmed live: the supervisor role kept
+  re-selecting `grok` across all 3 attempts every time), and (2)
+  `run_command_live`'s spawn error now disambiguates "cwd doesn't exist"
+  from "binary not found" from "neither, likely transient" instead of
+  returning the identical ambiguous OS error text for all three — the
+  ambiguity itself was most of what made this investigation slow. The
+  next real occurrence will be far faster to diagnose. A second automated
+  fix attempt (before these two fixes existed) already failed on this
+  exact goal (`goal_dlaftumiqf9l_0002`, "tried 5 supervisor fixes on this
+  goal; need a decision").
 
   Relatedly, `single acp`'s doc comment says every prompt
   becomes a coordinator goal with no fast path for read-only status
