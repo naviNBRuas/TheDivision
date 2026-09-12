@@ -867,6 +867,25 @@ retries the next one before the caller ever sees a failure.
   which `(platform, model, key_id)` actually served it on the task record
   itself (only in the `pool_outcomes` ledger, queryable but not surfaced
   by `single task inspect`).
+- **Known real bug, not yet fixed (found live 2026-09-11)**:
+  `scheduler::handle_capacity_exhaustion` blocks a goal with "waited
+  N.Xh for capacity, still exhausted" once `capacity_waits`/wall-clock
+  caps are hit, but a live goal (`goal_dlcnfgbq7kzd_0004`) stayed
+  reporting this for 61.8h while `single pool status` showed the pool
+  merely `degraded` (healthy_ratio 0.46, not fully down) and most agents
+  idle at 0 concurrent — the capacity check appears to require
+  near-total exhaustion rather than tolerating a degraded-but-workable
+  pool, or is reading a stale/wrong health signal. A dispatched fix
+  attempt (3 opencode iterations via `single goal submit --mode
+  careful`) failed on every node — this needs a focused human/agent
+  session reading `scheduler.rs`'s capacity-wait path alongside
+  `pool::bandit`'s `healthy_ratio` computation directly, not another
+  blind retry. Relatedly, `single acp`'s doc comment says every prompt
+  becomes a coordinator goal with no fast path for read-only status
+  questions, so a quick "how's it going?" through Zed queues behind this
+  same gate — a fast path that answers status questions from existing
+  goal/coordinator/pool state without submitting a new goal is worth
+  building alongside the capacity-wait fix, not separately.
 
 ## ACP bridge (`single acp`)
 
