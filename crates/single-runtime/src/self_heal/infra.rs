@@ -153,10 +153,55 @@ fn db_integrity(ctx: &Context, conn: &Connection, allow_db_restore: bool) -> Res
     Ok(format!("integrity_check failed ({result}); no backup available — schema will re-seed additively on next ensure_schema call (history for this db may be lost)"))
 }
 
+/// Live-verification finding (2026-09-14): the newest-backup interval
+/// gate below (`db_backup_interval_secs`, default 3600s) turned out not
+/// to reliably prevent frequent writes — this daemon restarts and
+/// receives self-heal triggers (`handlers.rs`'s per-request pass, on top
+/// of the `self_heal_interval_secs` ticker) often enough that in
+/// practice backups landed roughly every 5 minutes for days, silently
+/// accumulating 1203 files / 14GB and eventually filling the disk to the
+/// point SQLite couldn't even open the live db in WAL mode anymore
+/// ("disk I/O error: Error code 522: Unable to obtain number of
+/// requested bytes (file truncated?)"). Rather than fully chase the
+/// interval gate's race (a plausible contributor: `elapsed()` on a
+/// backup's mtime returns `Err` on any clock non-monotonicity, which the
+/// gate below silently treats as "not recent enough" and writes anyway),
+/// this count-based retention is a hard backstop: no matter how often
+/// the gate above fires, disk usage from this backup family stays
+/// bounded.
+const DB_BACKUP_RETENTION_COUNT: usize = 20;
+
+/// Deletes every `<db_name>.bak-<timestamp>` under `db_dir` beyond the
+/// newest [`DB_BACKUP_RETENTION_COUNT`]. Best-effort: a failed delete is
+/// skipped rather than aborting the rest (a stray extra backup is far
+/// cheaper than a self-heal pass erroring out over housekeeping).
+fn prune_old_backups(db_dir: &std::path::Path, db_name: &str) -> Result<usize> {
+    let prefix = format!("{db_name}.bak-");
+    let mut candidates: Vec<std::path::PathBuf> = std::fs::read_dir(db_dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix)))
+        .collect();
+    // Same newest-last lexicographic sort as `newest_backup` — the
+    // `%Y%m%dT%H%M%SZ` timestamp format sorts correctly as plain strings.
+    candidates.sort();
+    let excess = candidates.len().saturating_sub(DB_BACKUP_RETENTION_COUNT);
+    let mut removed = 0;
+    for old in &candidates[..excess] {
+        if std::fs::remove_file(old).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
 /// Periodic `single.db.bak-<timestamp>` writer, gated by
 /// `db_backup_interval_secs` — writes a fresh copy only when the newest
 /// existing backup is older than the interval (or there isn't one yet),
-/// so this doesn't churn a full-db copy on every single pass.
+/// so this doesn't churn a full-db copy on every single pass. Also prunes
+/// down to [`DB_BACKUP_RETENTION_COUNT`] on every pass regardless of
+/// whether this call wrote a new one, so retention self-heals even if the
+/// interval gate above has already let extras accumulate.
 fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<String> {
     let db_path = ctx.dirs.db_path();
     if !db_path.exists() {
@@ -164,12 +209,23 @@ fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<S
     }
     let db_dir = db_path.parent().unwrap_or(&db_path);
     let db_name = db_path.file_name().and_then(|n| n.to_str()).unwrap_or("single.db");
+    let pruned = prune_old_backups(db_dir, db_name).unwrap_or(0);
 
     if let Some(existing) = newest_backup(db_dir, db_name)? {
-        if let Ok(Ok(age)) = std::fs::metadata(&existing).map(|meta| meta.modified().and_then(|m| m.elapsed().map_err(std::io::Error::other))) {
-            if age.as_secs() < cfg.db_backup_interval_secs {
-                return Ok(format!("last backup {}s old, interval is {}s -- skipped", age.as_secs(), cfg.db_backup_interval_secs));
+        match std::fs::metadata(&existing).and_then(|meta| meta.modified()).and_then(|m| m.elapsed().map_err(std::io::Error::other)) {
+            Ok(age) if age.as_secs() < cfg.db_backup_interval_secs => {
+                return Ok(format!(
+                    "last backup {}s old, interval is {}s -- skipped ({pruned} pruned)",
+                    age.as_secs(),
+                    cfg.db_backup_interval_secs
+                ));
             }
+            // A backup exists but its age can't be determined (clock
+            // non-monotonicity, filesystem quirk) -- treat as "recent
+            // enough" rather than writing unconditionally, closing the
+            // likely source of the every-~5-minutes cadence above.
+            Err(_) => return Ok(format!("could not determine last backup's age -- assuming recent, skipped ({pruned} pruned)")),
+            Ok(_) => {}
         }
     }
 
@@ -194,7 +250,8 @@ fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<S
     let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     let backup_path = db_dir.join(format!("{db_name}.bak-{timestamp}"));
     std::fs::copy(&db_path, &backup_path).context("writing db backup")?;
-    Ok(format!("wrote {}", backup_path.display()))
+    let pruned = pruned + prune_old_backups(db_dir, db_name).unwrap_or(0);
+    Ok(format!("wrote {} ({pruned} pruned)", backup_path.display()))
 }
 
 pub fn db_backup_dir(ctx: &Context) -> std::path::PathBuf {
@@ -431,5 +488,38 @@ mod tests {
 
         let events = crate::self_heal::recent_events(&conn, 20).unwrap();
         assert_eq!(events.len(), 6);
+    }
+
+    #[test]
+    fn db_backup_prunes_down_to_retention_count_regardless_of_interval_gate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(tmp.path());
+        let conn = Connection::open(ctx.dirs.db_path()).unwrap();
+        conn.execute("CREATE TABLE t (x INTEGER)", ()).unwrap();
+        drop(conn);
+        let conn = Connection::open(ctx.dirs.db_path()).unwrap();
+
+        let db_path = ctx.dirs.db_path();
+        let db_dir = db_path.parent().unwrap();
+        let db_name = db_path.file_name().unwrap().to_str().unwrap();
+
+        // Seed far more backups than the retention limit, all old enough
+        // that the interval gate would (correctly) want to write a fresh
+        // one too -- regression coverage for the live incident: 1203
+        // backups accumulated with no pruning at all.
+        for i in 0..(DB_BACKUP_RETENTION_COUNT + 15) {
+            std::fs::copy(&db_path, db_dir.join(format!("{db_name}.bak-202601{i:02}T000000Z"))).unwrap();
+        }
+
+        let cfg = crate::self_heal::SelfHealConfig { db_backup_interval_secs: 0, ..crate::self_heal::SelfHealConfig::load(&ctx.dirs) };
+        let detail = db_backup(&ctx, &conn, &cfg).unwrap();
+        assert!(detail.contains("wrote"), "{detail}");
+
+        let remaining: Vec<_> = std::fs::read_dir(db_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(&format!("{db_name}.bak-")))
+            .collect();
+        assert_eq!(remaining.len(), DB_BACKUP_RETENTION_COUNT, "backups beyond the retention limit must be pruned: {remaining:?}");
     }
 }
