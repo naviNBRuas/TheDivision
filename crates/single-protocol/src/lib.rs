@@ -883,6 +883,13 @@ pub struct GoalSummary {
     /// candidate's cooldown lifts, set alongside `capacity_reason`.
     #[serde(default)]
     pub capacity_eta: Option<String>,
+    /// Set when `status == "blocked"` (a hold distinct from
+    /// `waiting_on_capacity`, e.g. a dispatch/time cap or a node that
+    /// can't proceed) -- was previously only surfaced on the single-goal
+    /// `GoalView`, so `goal list` had no way to say why a blocked goal
+    /// was stuck without a separate `goal status` call per id.
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

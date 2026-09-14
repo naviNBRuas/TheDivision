@@ -987,6 +987,7 @@ mod tests {
             created_at: created_at.to_string(),
             capacity_reason: None,
             capacity_eta: None,
+            blocked_reason: None,
         }
     }
 

@@ -2130,6 +2130,7 @@ fn goal_summary(g: &crate::coordinator::goal::Goal) -> single_protocol::GoalSumm
         created_at: g.created_at.clone(),
         capacity_reason: g.capacity_reason.clone(),
         capacity_eta: g.earliest_retry_at_ms.and_then(chrono::DateTime::from_timestamp_millis).map(|d| d.to_rfc3339()),
+        blocked_reason: g.blocked_reason.clone(),
     }
 }
 

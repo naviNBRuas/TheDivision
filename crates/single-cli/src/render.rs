@@ -807,6 +807,10 @@ fn print_data(data: ResponseData) {
                     "{:<24} {:<10} {:>2}/{:<2}  {}",
                     g.id, g.status, g.dispatches, g.max_dispatches, g.text
                 );
+                if g.status == "blocked" {
+                    let reason = g.blocked_reason.as_deref().unwrap_or("no reason recorded");
+                    println!("{:<24}   -- {reason}", "");
+                }
             }
         }
         ResponseData::GoalView(v) => {
@@ -868,7 +872,13 @@ fn print_data(data: ResponseData) {
             };
             show("running", &s.running_goals);
             show("queued", &s.queued_goals);
-            show("blocked", &s.blocked_goals);
+            if !s.blocked_goals.is_empty() {
+                println!("  blocked:");
+                for g in &s.blocked_goals {
+                    let reason = g.blocked_reason.as_deref().unwrap_or("no reason recorded");
+                    println!("    {:<24} {} — {reason}", g.id, g.text);
+                }
+            }
             // E28 spec §8: "waiting: goal_x — nvidia+groq pools spent, resumes ~14:03Z"
             // `capacity_reason` already includes the "resumes ~<eta>" tail
             // (goal::set_waiting_on_capacity's caller composes it once).
