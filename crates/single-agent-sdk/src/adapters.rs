@@ -669,8 +669,13 @@ impl AgentAdapter for KiroAdapter {
         Ok(unsupported_write("kiro-cli", home, "kiro-cli's MCP config file format is not confirmed (writing it requires being logged in)"))
     }
 
-    /// `kiro-cli chat --no-interactive "<prompt>" --trust-all-tools` —
+    /// `kiro-cli chat --no-interactive --trust-all-tools -- "<prompt>"` —
     /// confirmed real via `kiro-cli chat --help` on the reference machine.
+    /// The `--` separator is required: `INPUT` is a positional clap arg,
+    /// and prompts carrying prepended memory/shared-knowledge context
+    /// commonly start with a line like `--- Relevant memory ...` — without
+    /// `--`, clap reads that leading `-` as an unrecognized flag rather
+    /// than as the start of the positional value.
     #[allow(clippy::too_many_arguments)]
     fn run_prompt(
         &self,
@@ -683,7 +688,13 @@ impl AgentAdapter for KiroAdapter {
     ) -> Result<RunOutcome> {
         run_command_live(
             "kiro-cli",
-            &["chat".to_string(), "--no-interactive".to_string(), prompt.to_string(), "--trust-all-tools".to_string()],
+            &[
+                "chat".to_string(),
+                "--no-interactive".to_string(),
+                "--trust-all-tools".to_string(),
+                "--".to_string(),
+                prompt.to_string(),
+            ],
             cwd,
             backend,
             live_output_path,
