@@ -204,13 +204,28 @@ impl RoutingTable {
     }
 }
 
+/// how many back-to-back failures (with zero completions in between) inside
+/// the health-probe window earn an agent a spot in `PoolHealth::rate_limited`
+/// even when none of those failures matched a known rate-limit/auth-failure
+/// phrasing. Some real exhaustion never says so in words the agent's CLI
+/// bothers to phrase consistently (`single-nvidia`'s flaky
+/// "HTTP request to provider failed", `cursor`'s silent "exit code 1, no
+/// output"), and a message-text allowlist can never cover every CLI's
+/// wording — a streak of pure failures is itself strong enough evidence
+/// that the agent is currently unusable, worth the same temporary skip.
+const CONSECUTIVE_FAILURE_BREAKER_THRESHOLD: i64 = 3;
+
 /// live pool state used to filter the routing candidates (spec §5.4).
 #[derive(Debug, Clone, Default)]
 pub struct PoolHealth {
     /// agents that are installed AND authenticated right now.
     pub detected_authed: BTreeSet<String>,
-    /// agents observed rate-limited recently (a `tasks.rate_limited=1` row
-    /// in the last N minutes, or an explicit account status marker).
+    /// agents currently excluded from routing: either a `tasks.
+    /// rate_limited=1` row in the last N minutes (an explicit rate-limit/
+    /// auth-failure signal), or `CONSECUTIVE_FAILURE_BREAKER_THRESHOLD`+
+    /// back-to-back failures with no completion in between — same
+    /// exclusion regardless of which tripped it, since the downstream
+    /// remedy (skip this agent, try the next candidate) is identical.
     pub rate_limited: BTreeSet<String>,
 }
 
@@ -235,23 +250,68 @@ impl PoolHealth {
         registry: &[single_core::registry::AgentDefinition],
         conn: &rusqlite::Connection,
     ) -> Self {
+        // `capabilities.non_interactive_run == false` (e.g. codebuff) means
+        // the coordinator's headless dispatch can never succeed against
+        // this agent no matter how healthy it otherwise looks — exclude it
+        // from routing entirely rather than let it get selected and burn a
+        // guaranteed-failed dispatch (see `task::run`'s matching check,
+        // which is the last-resort guard if routing is bypassed).
         let detected_authed = registry
             .iter()
-            .filter(|a| command_on_path(&a.command))
+            .filter(|a| command_on_path(&a.command) && a.capabilities.non_interactive_run)
             .map(|a| a.name.clone())
             .collect();
 
         let cutoff = (chrono::Utc::now() - chrono::Duration::minutes(15)).to_rfc3339();
-        let rate_limited = conn
+        let mut rate_limited = conn
             .prepare("SELECT DISTINCT agent FROM tasks WHERE rate_limited = 1 AND updated_at >= ?1")
             .and_then(|mut stmt| {
-                stmt.query_map([cutoff], |r| r.get::<_, String>(0))?
+                stmt.query_map([cutoff.clone()], |r| r.get::<_, String>(0))?
                     .collect::<rusqlite::Result<BTreeSet<_>>>()
             })
             .unwrap_or_default();
 
+        rate_limited.extend(agents_on_a_pure_failure_streak(conn, &cutoff));
+
         Self { detected_authed, rate_limited }
     }
+}
+
+/// See `CONSECUTIVE_FAILURE_BREAKER_THRESHOLD`'s doc comment: agents whose
+/// most recent `updated_at` falls inside `cutoff` AND whose last
+/// `CONSECUTIVE_FAILURE_BREAKER_THRESHOLD` tasks are all `failed`/
+/// `cancelled` with no `completed` among them. Requiring the streak's most
+/// recent entry to be within `cutoff` keeps this self-clearing exactly like
+/// the rate-limit signal: an agent that failed a streak days ago but hasn't
+/// been tried since isn't kept excluded forever, and one success anywhere
+/// in the streak breaks it immediately.
+fn agents_on_a_pure_failure_streak(conn: &rusqlite::Connection, cutoff: &str) -> BTreeSet<String> {
+    let recent_agents: Vec<String> = conn
+        .prepare("SELECT DISTINCT agent FROM tasks WHERE updated_at >= ?1")
+        .and_then(|mut stmt| {
+            stmt.query_map([cutoff], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .unwrap_or_default();
+
+    let mut breaker = BTreeSet::new();
+    for agent in recent_agents {
+        let statuses: Vec<String> = match conn
+            .prepare("SELECT status FROM tasks WHERE agent = ?1 ORDER BY id DESC LIMIT ?2")
+            .and_then(|mut stmt| {
+                stmt.query_map(rusqlite::params![agent, CONSECUTIVE_FAILURE_BREAKER_THRESHOLD], |r| r.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            }) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let enough = statuses.len() as i64 >= CONSECUTIVE_FAILURE_BREAKER_THRESHOLD;
+        let all_failures = statuses.iter().all(|s| s == "failed" || s == "cancelled");
+        if enough && all_failures {
+            breaker.insert(agent);
+        }
+    }
+    breaker
 }
 
 /// true if `cmd` (a bare binary name, or an absolute path) resolves on the

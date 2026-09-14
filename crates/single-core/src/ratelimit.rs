@@ -22,6 +22,12 @@ const SIGNALS: &[&str] = &[
     "quota_exceeded",
     "too many requests",
     "usage limit",
+    // Claude Code's own phrasing for hitting a subscription cap
+    // ("You've hit your session limit · resets 2am") — live-verified
+    // 2026-09-12, previously unmatched by every signal above, so an
+    // exhausted claude session kept getting re-selected instead of
+    // falling over.
+    "session limit",
     // Anthropic returns HTTP 529 `overloaded_error` when its own capacity
     // is saturated — not a per-user quota, but still "this agent can't
     // answer right now", so fallback should treat it the same.
