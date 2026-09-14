@@ -416,10 +416,29 @@ pub fn tick(
                         )?;
                     }
                     let prompt = build_node_prompt(&graph, node);
+                    let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
+                    if !session_cwd.exists() {
+                        // A session's cwd is resolved once at creation and
+                        // reused verbatim on every tick; unlike a per-relay
+                        // worktree (`prepare_shared_cwd`, recreated fresh
+                        // each call) there's nothing here to regenerate --
+                        // if it's gone (tmp cleanup, a manually deleted
+                        // scratch dir, ...) every dispatch attempt would
+                        // otherwise fail identically forever. Fail this
+                        // node now with a clear reason instead of feeding
+                        // the coordinator an infinite retry loop.
+                        let reason = format!(
+                            "{node_id}: session cwd {} no longer exists (stale/cleaned-up path)",
+                            session_cwd.display()
+                        );
+                        goal::update_node(conn, &goal.id, &node_id, NodeStatus::Failed, None, None, None)?;
+                        events::append(conn, &goal.session_id, Some(&goal.id), EventKind::NodeFailed, &reason)?;
+                        continue;
+                    }
                     let opts = crate::task::OwnedRunTaskOptions {
                         description: prompt,
                         agent: agent.clone(),
-                        cwd: std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?),
+                        cwd: session_cwd,
                         use_worktree: worktree,
                         account: None,
                         real_home: false,
