@@ -689,6 +689,19 @@ pub fn run(conn: &Connection, ctx: &Context, opts: RunTaskOptions) -> Result<Tas
             opts.agent
         );
     }
+    // Fail fast, before shelling out at all, for an agent the registry
+    // already knows can't run headless (e.g. codebuff: no verified
+    // non-interactive mode — see registry.rs). Previously this reached
+    // `execute` anyway and burned a real subprocess spawn every time,
+    // producing an opaque failure instead of the actual reason.
+    if let Some(def) = ctx.registry.iter().find(|a| a.name == opts.agent) {
+        if !def.capabilities.non_interactive_run {
+            anyhow::bail!(
+                "agent '{}' has no non-interactive run mode; it cannot be dispatched headlessly",
+                opts.agent
+            );
+        }
+    }
 
     let id = create_for_cwd(conn, opts.description, opts.agent, opts.cwd)?;
     crate::state::record_event(
@@ -764,6 +777,15 @@ pub fn run_background(
             "agent '{}' is not installed; run `single setup --yes` first",
             opts.agent
         );
+    }
+    // See the identical check in `run` above.
+    if let Some(def) = ctx.registry.iter().find(|a| a.name == opts.agent) {
+        if !def.capabilities.non_interactive_run {
+            anyhow::bail!(
+                "agent '{}' has no non-interactive run mode; it cannot be dispatched headlessly",
+                opts.agent
+            );
+        }
     }
 
     let id = create_for_cwd(&conn, &opts.description, &opts.agent, &opts.cwd)?;
@@ -844,69 +866,55 @@ fn execute(
 
     let run_cwd: std::path::PathBuf = if opts.use_worktree {
         let repo_ctx = single_core::project_context::resolve(opts.cwd);
-        let Some(repo_root) = repo_ctx.repo_root else {
-            finish(
-                conn,
-                id,
-                TaskStatus::Failed,
-                None,
-                None,
-                None,
-                false,
-                Some("not a git repository; --worktree requires one"),
-                false,
-            )?;
+        if let Some(repo_root) = repo_ctx.repo_root {
+            let worktree_path = ctx
+                .dirs
+                .state_dir()
+                .join("worktrees")
+                .join(format!("task-{id}"));
+            let branch = format!("single/task-{id}");
+            if let Err(e) = single_core::worktree::add(Path::new(&repo_root), &worktree_path, &branch) {
+                finish(
+                    conn,
+                    id,
+                    TaskStatus::Failed,
+                    None,
+                    None,
+                    None,
+                    false,
+                    Some(&format!("worktree setup failed: {e:#}")),
+                    false,
+                )?;
+                crate::state::record_event(
+                    conn,
+                    "task.failed",
+                    &format!("#{id} worktree setup failed: {e:#}"),
+                )?;
+                remember_failure(
+                    conn,
+                    id,
+                    opts.agent,
+                    Some(repo_root.clone()),
+                    opts.description,
+                    &format!("worktree setup failed: {e:#}"),
+                );
+                notify_task_hooks(conn, ctx, id);
+                return get(conn, id)?.context("task disappeared after being created");
+            }
+            worktree_path
+        } else {
+            // `cwd` isn't inside a git repo, so worktree isolation is
+            // impossible there — that's not a reason to fail the task
+            // outright (it was structurally doomed to fail every retry
+            // too, since the cwd never becomes a repo on its own). Fall
+            // back to running directly in `cwd` instead.
             crate::state::record_event(
                 conn,
-                "task.failed",
-                &format!("#{id} not a git repository"),
+                "task.worktree_fallback",
+                &format!("#{id} cwd is not a git repository; running without worktree isolation"),
             )?;
-            remember_failure(
-                conn,
-                id,
-                opts.agent,
-                None,
-                opts.description,
-                "not a git repository; --worktree requires one",
-            );
-            notify_task_hooks(conn, ctx, id);
-            return get(conn, id)?.context("task disappeared after being created");
-        };
-        let worktree_path = ctx
-            .dirs
-            .state_dir()
-            .join("worktrees")
-            .join(format!("task-{id}"));
-        let branch = format!("single/task-{id}");
-        if let Err(e) = single_core::worktree::add(Path::new(&repo_root), &worktree_path, &branch) {
-            finish(
-                conn,
-                id,
-                TaskStatus::Failed,
-                None,
-                None,
-                None,
-                false,
-                Some(&format!("worktree setup failed: {e:#}")),
-                false,
-            )?;
-            crate::state::record_event(
-                conn,
-                "task.failed",
-                &format!("#{id} worktree setup failed: {e:#}"),
-            )?;
-            remember_failure(
-                conn,
-                id,
-                opts.agent,
-                Some(repo_root.clone()),
-                opts.description,
-                &format!("worktree setup failed: {e:#}"),
-            );
-            notify_task_hooks(conn, ctx, id);
-            return get(conn, id)?.context("task disappeared after being created");
+            opts.cwd.to_path_buf()
         }
-        worktree_path
     } else {
         opts.cwd.to_path_buf()
     };
@@ -1686,7 +1694,7 @@ value = "-c"
     }
 
     #[test]
-    fn run_fails_cleanly_when_worktree_requested_outside_a_git_repo() {
+    fn run_falls_back_to_no_worktree_outside_a_git_repo() {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
         let conn = test_conn();
@@ -1721,16 +1729,28 @@ value = "-c"
             usage_json: false,
             require_structured_output: false,
         };
+        // A non-git cwd with --worktree requested should no longer be a
+        // guaranteed, un-retriable failure: it should fall back to running
+        // directly in `cwd`. The 1s timeout means this specific run will
+        // likely still fail (real agent invocation can't finish that
+        // fast), but it must NOT fail with the old "not a git repository"
+        // reason, and the fallback event must be recorded.
         let task = run(&conn, &ctx, opts).unwrap();
-        assert_eq!(task.status, TaskStatus::Failed);
-        assert!(task.summary.unwrap().contains("not a git repository"));
+        assert!(
+            task.summary
+                .as_deref()
+                .map(|s| !s.contains("not a git repository"))
+                .unwrap_or(true)
+        );
 
-        // "Learn from errors": the failure should also have been written
-        // to the memory store, not just the task record.
-        let memories = memory::search(&conn, "not a git repository", None, None).unwrap();
-        assert_eq!(memories.len(), 1);
-        assert_eq!(memories[0].source, MemorySource::ToolOutput);
-        assert_eq!(memories[0].agent.as_deref(), Some("claude"));
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE kind = 'task.worktree_fallback'",
+                (),
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     fn task_run_result(
