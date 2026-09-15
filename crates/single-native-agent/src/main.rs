@@ -59,12 +59,21 @@ enum Command {
 
 // -- OpenAI-compatible API types --
 
+/// Sent on every request. Reasoning models (e.g. NVIDIA's
+/// deepseek-v4-flash-0731) emit an internal `reasoning_content` chain before
+/// the final answer; left uncapped, that chain can run long enough to blow
+/// through the 120s request timeout below, which reqwest reports as a bare
+/// connection failure with no indication the real cause was an unbounded
+/// generation, not a dead provider.
+const DEFAULT_MAX_TOKENS: u32 = 4096;
+
 #[derive(Serialize)]
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<ToolDef>>,
+    max_tokens: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -75,6 +84,13 @@ struct Message {
     tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_call_id: Option<String>,
+    /// Reasoning models' internal chain-of-thought, returned alongside (or
+    /// instead of, if `max_tokens` cuts generation off mid-thought) the
+    /// final `content`. Read-only here — never constructed on our outgoing
+    /// messages, so no `skip_serializing_if` is needed to keep it out of
+    /// requests.
+    #[serde(default, skip_serializing)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -432,12 +448,14 @@ fn run_agent_loop(
             content: Some(system_msg),
             tool_calls: None,
             tool_call_id: None,
+            reasoning_content: None,
         },
         Message {
             role: "user".into(),
             content: Some(prompt.to_string()),
             tool_calls: None,
             tool_call_id: None,
+            reasoning_content: None,
         },
     ];
 
@@ -446,6 +464,7 @@ fn run_agent_loop(
             model: model.to_string(),
             messages: messages.clone(),
             tools: Some(tool_definitions()),
+            max_tokens: DEFAULT_MAX_TOKENS,
         };
 
         let response = client
@@ -486,8 +505,18 @@ fn run_agent_loop(
 
         let tool_calls = assistant_msg.tool_calls.unwrap_or_default();
         if tool_calls.is_empty() {
-            if let Some(content) = assistant_msg.content {
-                println!("{content}");
+            match assistant_msg.content {
+                Some(content) => println!("{content}"),
+                None => match assistant_msg.reasoning_content {
+                    // A reasoning model cut off mid-thought (hit
+                    // max_tokens before emitting a final answer) — surface
+                    // what it had reasoned so far rather than nothing.
+                    Some(reasoning) => println!("{reasoning}"),
+                    None => eprintln!(
+                        "provider returned no content and no reasoning_content \
+                         (finished with neither an answer nor a tool call)"
+                    ),
+                },
             }
             return Ok(());
         }
@@ -505,6 +534,7 @@ fn run_agent_loop(
             content: Some(assistant_msg.content.unwrap_or_default()),
             tool_calls: Some(tool_calls.clone()),
             tool_call_id: None,
+            reasoning_content: None,
         });
 
         // Execute each tool call and append results
@@ -521,6 +551,7 @@ fn run_agent_loop(
                 content: Some(result),
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
+                reasoning_content: None,
             });
         }
     }
