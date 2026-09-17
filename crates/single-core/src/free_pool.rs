@@ -254,7 +254,7 @@ pub fn structured_output_ok(id: &str) -> bool {
 ///   OpenAI-compat completions against named models — no `no_tools`/
 ///   `no_stream` tell, so left routable.
 /// - the remaining ~30 plain `OpenAiCompat`/native-wire entries (groq,
-///   cerebras, nvidia, mistral, openrouter, github-models, cohere,
+///   cerebras, nvidia, mistral, openrouter, cohere,
 ///   cloudflare, zhipu, ollama-cloud, llm7, huggingface, reka, routeway,
 ///   bazaarlink, ainative, aion, requesty, navyai, nara, sea-lion,
 ///   orcarouter, unorouter, xkiro, anyapi, electronhub, experiential,
@@ -343,20 +343,6 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
         timeout: S30,
         quirks: NO_QUIRKS,
         free_note: "`:free` pool 1000/day (50/day if <10 credits)",
-        intelligence_rank: 5,
-    },
-    FreeProvider {
-        id: "github-models",
-        display: "GitHub Models",
-        base_url: "https://models.github.ai/inference",
-        wire: Wire::OpenAiCompat,
-        auth: Auth::Bearer,
-        signup_url: "https://github.com/marketplace/models",
-        limits: NO_LIMITS,
-        pool: None,
-        timeout: S30,
-        quirks: NO_QUIRKS,
-        free_note: "`<publisher>/<model>` ids",
         intelligence_rank: 5,
     },
     FreeProvider {
