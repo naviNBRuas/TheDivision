@@ -1610,4 +1610,70 @@ mod tests {
         assert!(single_core::pending_merge::list_pending(&conn).unwrap().is_empty());
         assert!(!repo.path().join("new-file.txt").is_file());
     }
+
+    #[test]
+    fn auto_merge_skips_deps_that_are_not_worktree_backed_or_not_done() {
+        // only a `Done`, worktree-backed dependency has a real branch to
+        // confirm -- anything else must be silently skipped, not queued.
+        let repo = init_repo();
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+
+        use crate::coordinator::{graph::GoalMode, session};
+        let s = session::new_session(&conn, repo.path()).unwrap();
+        let g = goal::create(&conn, &s.id, "ship it", GoalMode::Auto, 25, 60).unwrap();
+        goal::set_auto_merge(&conn, &g.id, true).unwrap();
+
+        let mut not_worktree = node("plain", &[], Effort::Standard, "grok");
+        not_worktree.kind = NodeKind::Code;
+        not_worktree.worktree = false;
+        not_worktree.status = NodeStatus::Done;
+        not_worktree.task_id = Some(1);
+
+        let mut still_running = node("running", &[], Effort::Standard, "grok");
+        still_running.kind = NodeKind::Code;
+        still_running.worktree = true;
+        still_running.status = NodeStatus::Running;
+        still_running.task_id = Some(2);
+
+        let mut review = node("review", &["plain", "running"], Effort::Standard, "grok");
+        review.kind = NodeKind::Review;
+        review.status = NodeStatus::Done;
+        goal::save_graph(&mut conn, &g.id, &TaskGraph { nodes: vec![not_worktree, still_running, review] }).unwrap();
+        let g = goal::get(&conn, &g.id).unwrap().unwrap();
+
+        maybe_auto_merge(&conn, &g, "review").unwrap();
+
+        assert!(single_core::pending_merge::list_pending(&conn).unwrap().is_empty());
+        assert!(events::for_goal(&conn, &g.id, 10).unwrap().iter().all(|e| e.kind != "merge_awaiting_confirmation"));
+    }
+
+    #[test]
+    fn auto_merge_is_a_noop_outside_a_git_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+
+        use crate::coordinator::{graph::GoalMode, session};
+        let s = session::new_session(&conn, tmp.path()).unwrap();
+        let g = goal::create(&conn, &s.id, "ship it", GoalMode::Auto, 25, 60).unwrap();
+        goal::set_auto_merge(&conn, &g.id, true).unwrap();
+
+        let mut code = node("code", &[], Effort::Standard, "grok");
+        code.kind = NodeKind::Code;
+        code.worktree = true;
+        code.status = NodeStatus::Done;
+        code.task_id = Some(1);
+        let mut review = node("review", &["code"], Effort::Standard, "grok");
+        review.kind = NodeKind::Review;
+        review.status = NodeStatus::Done;
+        goal::save_graph(&mut conn, &g.id, &TaskGraph { nodes: vec![code, review] }).unwrap();
+        let g = goal::get(&conn, &g.id).unwrap().unwrap();
+
+        maybe_auto_merge(&conn, &g, "review").unwrap();
+
+        assert!(single_core::pending_merge::list_pending(&conn).unwrap().is_empty());
+    }
 }

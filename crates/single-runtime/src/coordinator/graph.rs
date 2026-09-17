@@ -311,6 +311,12 @@ mod tests {
     }
 
     #[test]
+    fn sibling_status_is_empty_for_a_lone_node() {
+        let g = TaskGraph { nodes: vec![node("s1", &[])] };
+        assert!(g.sibling_status("s1").is_empty());
+    }
+
+    #[test]
     fn apply_patch_split_rewires_dependents() {
         let mut g = TaskGraph { nodes: vec![node("s1", &[]), node("s2", &["s1"])] };
         g.apply_patch(&[PatchOp::Split {
