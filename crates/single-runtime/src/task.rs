@@ -873,6 +873,11 @@ fn execute(
                 .join("worktrees")
                 .join(format!("task-{id}"));
             let branch = format!("single/task-{id}");
+            // retry-safety: a prior failed attempt at this same task id may
+            // have left a partial worktree dir / branch behind (`add`
+            // derives both purely from `id`) -- clear it before trying
+            // again, or the retry collides with itself.
+            single_core::worktree::reset_stale(Path::new(&repo_root), &worktree_path, &branch);
             if let Err(e) = single_core::worktree::add(Path::new(&repo_root), &worktree_path, &branch) {
                 finish(
                     conn,

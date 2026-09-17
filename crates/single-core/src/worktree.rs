@@ -108,6 +108,25 @@ pub fn remove(repo_root: &Path, worktree_path: &Path, force: bool) -> Result<()>
     Ok(())
 }
 
+/// Best-effort cleanup of a worktree path + branch left over from a prior
+/// failed attempt at the same task id. `add`'s branch name and path are
+/// both derived from the task id, so a leftover from attempt 1 (e.g. a
+/// partially-created directory `git worktree add` leaves behind on
+/// failure, plus the branch it registers before erroring) collides with
+/// attempt 2's `git worktree add -b` on retry -- live-verification
+/// finding 2026-09-17 (E30 dispatch, node retried, second attempt failed
+/// with "branch already exists" / directory already exists). Safe to
+/// call even when nothing is stale; every step here is best-effort and
+/// errors are swallowed, since this only ever runs right before a fresh
+/// `add` that will surface its own error if cleanup didn't fully work.
+pub fn reset_stale(repo_root: &Path, worktree_path: &Path, branch_name: &str) {
+    if worktree_path.exists() {
+        let _ = remove(repo_root, worktree_path, true);
+        let _ = std::fs::remove_dir_all(worktree_path);
+    }
+    let _ = Command::new("git").current_dir(repo_root).args(["branch", "-D", branch_name]).output();
+}
+
 pub fn list(repo_root: &Path) -> Result<Vec<PathBuf>> {
     let output = Command::new("git")
         .current_dir(repo_root)
@@ -224,6 +243,41 @@ mod tests {
 
         let worktrees = list(repo.path()).unwrap();
         assert!(worktrees.iter().any(|p| p == &worktree_path.canonicalize().unwrap() || p == &worktree_path));
+    }
+
+    /// Live-verification regression (E30 dispatch, 2026-09-17): a retried
+    /// task reuses the same id, so `add`'s branch name and path collide
+    /// with whatever the first failed attempt left behind. `reset_stale`
+    /// must clear both so the retry's `add` succeeds cleanly.
+    #[test]
+    fn reset_stale_clears_a_leftover_worktree_and_branch_so_retry_add_succeeds() {
+        let repo = tempfile::tempdir().unwrap();
+        init_repo(repo.path());
+        let worktree_parent = tempfile::tempdir().unwrap();
+        let worktree_path = worktree_parent.path().join("task-1");
+
+        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        assert!(worktree_path.is_dir(), "first attempt's worktree should exist");
+
+        // a second `add` on the same id, without cleanup, must fail --
+        // this reproduces the live bug before asserting the fix.
+        assert!(add(repo.path(), &worktree_path, "single/task-1").is_err());
+
+        reset_stale(repo.path(), &worktree_path, "single/task-1");
+        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        assert!(worktree_path.join("README.md").is_file(), "retry's worktree should be usable");
+    }
+
+    #[test]
+    fn reset_stale_is_a_noop_when_nothing_is_stale() {
+        let repo = tempfile::tempdir().unwrap();
+        init_repo(repo.path());
+        let worktree_parent = tempfile::tempdir().unwrap();
+        let worktree_path = worktree_parent.path().join("task-1");
+
+        // nothing exists yet -- must not error or panic.
+        reset_stale(repo.path(), &worktree_path, "single/task-1");
+        add(repo.path(), &worktree_path, "single/task-1").unwrap();
     }
 
     /// Live-verification finding: a directory `git add`-ed while it
