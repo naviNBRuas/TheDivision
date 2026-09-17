@@ -353,7 +353,7 @@ pub fn electronhub_wire() -> OpenAiCompatSubclassWire {
     OpenAiCompatSubclassWire { base_url: "https://api.electronhub.top/v1" }
 }
 pub fn experiential_wire() -> OpenAiCompatSubclassWire {
-    OpenAiCompatSubclassWire { base_url: "https://api.experiential.ai/v1" }
+    OpenAiCompatSubclassWire { base_url: "https://api.experientiallabs.ai/v1" }
 }
 
 /// Dispatches to the right wire for `provider.wire`. The single point

@@ -743,7 +743,7 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
         base_url: "",
         wire: Wire::Experiential,
         auth: Auth::Bearer,
-        signup_url: "https://experiential.ai",
+        signup_url: "https://experientiallabs.ai",
         limits: NO_LIMITS,
         pool: Some(PoolShape::CreditPool { rpm: 0 }),
         timeout: S30,
