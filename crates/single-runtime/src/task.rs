@@ -1163,21 +1163,41 @@ fn execute(
                 format!("{}\n--- stderr ---\n{}", outcome.stdout, outcome.stderr),
             )?;
 
+            // Live-verification finding (E30 dispatch, 2026-09-17): `kiro`
+            // exits 0 with an empty stdout and a "Monthly request limit
+            // reached" stderr banner when it's out of quota -- a real
+            // failure the exit code alone can't reveal. Narrow: only
+            // overrides a reported success when stdout is empty AND
+            // stderr matches a known unavailability signal, so it can
+            // never catch a genuinely productive run that happens to
+            // mention "429" in real stdout output (see
+            // `rate_limited_stays_false_for_a_successful_task_whose_
+            // output_merely_contains_429`, which puts its "429" in
+            // stdout, not stderr, and is unaffected by this).
+            let hollow_success = outcome.success
+                && !outcome.cancelled
+                && outcome.stdout.trim().is_empty()
+                && single_core::ratelimit::looks_like_unavailable(&outcome.stderr);
+            let treat_as_failed = (!outcome.success && !outcome.cancelled) || hollow_success;
+
             let status = if outcome.cancelled {
                 TaskStatus::Cancelled
-            } else if outcome.success {
-                TaskStatus::Completed
-            } else {
+            } else if treat_as_failed {
                 TaskStatus::Failed
+            } else {
+                TaskStatus::Completed
             };
-            let summary = summarize(&outcome.stdout, &outcome.stderr, outcome.timed_out, outcome.exit_code);
-            // Only a real failure is checked for rate-limit signals — a
+            let summary = if hollow_success {
+                format!("agent exited 0 but produced no output and its stderr looks like a quota/rate limit: {}", outcome.stderr.trim())
+            } else {
+                summarize(&outcome.stdout, &outcome.stderr, outcome.timed_out, outcome.exit_code)
+            };
+            // A real failure (including a hollow success reclassified
+            // above) is checked for rate-limit signals — an *actually*
             // successful task's stdout can innocently contain a
             // rate-limit-shaped substring (a line number, a diff hunk
-            // header, a byte count) and must not be flagged. Mirrors the
-            // `!outcome.success && !outcome.cancelled` gate used below for
-            // `remember_failure`.
-            let rate_limited = if !outcome.success && !outcome.cancelled {
+            // header, a byte count) and must not be flagged.
+            let rate_limited = if treat_as_failed {
                 let combined_output = format!("{}\n{}", outcome.stdout, outcome.stderr);
                 single_core::ratelimit::looks_like_unavailable(&combined_output)
             } else {
@@ -1197,10 +1217,10 @@ fn execute(
             )?;
             let event = if outcome.cancelled {
                 "task.cancelled"
-            } else if outcome.success {
-                "task.completed"
-            } else {
+            } else if treat_as_failed {
                 "task.failed"
+            } else {
+                "task.completed"
             };
             crate::state::record_event(conn, event, &format!("#{id} {summary}"))?;
             // Per-turn token accounting (E27.03): real counts if the agent
@@ -1214,7 +1234,7 @@ fn execute(
             let _ = record_token_usage(conn, id, pt, ct, estimated);
             // A cancellation was requested, not a real failure — no
             // lesson to learn from it, so it skips `remember_failure`.
-            if !outcome.success && !outcome.cancelled {
+            if treat_as_failed {
                 remember_failure(
                     conn,
                     id,
@@ -1678,6 +1698,60 @@ value = "-c"
             !task.rate_limited,
             "a successful task must never be flagged rate_limited, even if its output contains '429'"
         );
+    }
+
+    /// Live-verification regression (E30 dispatch, 2026-09-17): `kiro`
+    /// exits 0 with empty stdout and a "Monthly request limit reached"
+    /// stderr banner when out of quota -- the Coordinator marked all 3
+    /// dispatched nodes `done` and produced zero real work. An exit-0,
+    /// empty-stdout task whose stderr matches a known unavailability
+    /// signal must be reclassified as a real, rate-limited failure.
+    #[test]
+    fn a_zero_exit_with_empty_stdout_and_rate_limit_shaped_stderr_is_reclassified_as_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        let conn = test_conn();
+        let dirs = single_core::SingleDirs::from_root(dir.path().to_path_buf());
+        dirs.ensure_created().unwrap();
+
+        std::fs::write(
+            dirs.agents_dir().join("fake-hollow-agent.toml"),
+            r#"
+name = "fake-hollow-agent"
+command = "sh"
+
+[run]
+mode = "flag"
+value = "-c"
+"#,
+        )
+        .unwrap();
+
+        let ctx = Context {
+            dirs,
+            resolved: single_core::ResolvedConfig::default(),
+            registry: single_core::builtin_registry(),
+        };
+
+        let this_repo = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let opts = RunTaskOptions {
+            // Empty stdout, kiro's real quota banner on stderr, exit 0 --
+            // exactly kiro's live-observed behavior.
+            description: "echo 'Monthly request limit reached' 1>&2; exit 0",
+            agent: "fake-hollow-agent",
+            cwd: &this_repo,
+            use_worktree: false,
+            account: None,
+            real_home: true,
+            no_memory_context: true,
+            timeout: Duration::from_secs(5),
+            allow_fallback: false,
+            usage_json: false,
+            require_structured_output: false,
+        };
+        let task = run(&conn, &ctx, opts).unwrap();
+        assert_eq!(task.status, TaskStatus::Failed, "a hollow exit-0 with no real output must not read as success");
+        assert!(task.rate_limited, "the quota-shaped stderr must be recognized as a rate-limit signal");
     }
 
     #[test]

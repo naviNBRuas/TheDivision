@@ -22,6 +22,13 @@ const SIGNALS: &[&str] = &[
     "quota_exceeded",
     "too many requests",
     "usage limit",
+    // Kiro CLI's phrasing for hitting its monthly cap ("Monthly request
+    // limit reached · Upgrade your plan ... limits reset on 10/01") —
+    // live-verified 2026-09-17, previously unmatched (note: this CLI also
+    // exits 0 on this message, a separate bug fixed in task.rs's success
+    // path, not just a missing signal here).
+    "request limit",
+    "limit reached",
     // Claude Code's own phrasing for hitting a subscription cap
     // ("You've hit your session limit · resets 2am") — live-verified
     // 2026-09-12, previously unmatched by every signal above, so an
