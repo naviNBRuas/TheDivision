@@ -208,6 +208,26 @@ impl SingleDirs {
         self.state_dir().join("documents")
     }
 
+    /// Poll-interval settings for the notch UI's background poller — see
+    /// `single_core::notch`.
+    pub fn notch_file(&self) -> PathBuf {
+        self.root.join("notch.toml")
+    }
+
+    /// Where the notch UI's background process records its PID, so a
+    /// second launch can detect one is already running instead of
+    /// spawning a duplicate poller.
+    pub fn notch_pid_file(&self) -> PathBuf {
+        self.state_dir().join("notch.pid")
+    }
+
+    /// The notch UI's own IPC socket — distinct from `socket_path()`
+    /// (the daemon's runtime socket), since the notch is a separate
+    /// process the daemon doesn't own.
+    pub fn notch_socket_path(&self) -> PathBuf {
+        self.state_dir().join("notch.sock")
+    }
+
     /// Creates the subset of the directory tree Phase 1 needs. Never touches
     /// anything outside `self.root`.
     pub fn ensure_created(&self) -> Result<()> {
@@ -238,4 +258,17 @@ pub fn real_home_dir() -> Result<PathBuf> {
     directories::BaseDirs::new()
         .map(|b| b.home_dir().to_path_buf())
         .context("could not determine home directory")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notch_paths_are_scoped_under_root() {
+        let dirs = SingleDirs::from_root(PathBuf::from("/tmp/single-test-root"));
+        assert_eq!(dirs.notch_file(), PathBuf::from("/tmp/single-test-root/notch.toml"));
+        assert_eq!(dirs.notch_pid_file(), PathBuf::from("/tmp/single-test-root/state/notch.pid"));
+        assert_eq!(dirs.notch_socket_path(), PathBuf::from("/tmp/single-test-root/state/notch.sock"));
+    }
 }

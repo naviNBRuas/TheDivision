@@ -10,6 +10,7 @@ pub mod free_pool;
 pub mod hooks;
 pub mod lsp;
 pub mod mcp;
+pub mod notch;
 pub mod notes;
 pub mod paths;
 pub mod pending_merge;
