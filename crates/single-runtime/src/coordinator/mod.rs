@@ -238,6 +238,56 @@ pub fn resume_goal(ctx: &Context, conn: &mut Connection, goal_id: &str) -> Resul
     Ok(())
 }
 
+/// Live-verification finding 2026-09-17 (E30 dispatch): a node the
+/// supervisor sets `blocked` (as opposed to the whole goal) sits outside
+/// the ready-set forever -- neither `resume_goal`'s retry-stamp clearing
+/// nor a plain `GoalAmend` re-tick touches it, since both only ever
+/// affect goal-level status or capacity-wait stamps, not a node's own
+/// `status` field. `single goal retry-node` is the human's explicit
+/// "I judge this one fixable now" action: reset exactly the named node
+/// back to `pending` (status, task_id, attempts, retry stamp all
+/// cleared) and re-tick. Errors if the node doesn't exist or the goal
+/// doesn't exist; deliberately does *not* require the node to currently
+/// be `blocked` -- a human retrying a `failed` node they've judged
+/// recoverable is the same action, not a different one.
+pub fn retry_node(ctx: &Context, conn: &mut Connection, registry: &crate::registry::TaskRegistry, goal_id: &str, node_id: &str) -> Result<()> {
+    reset_node_for_retry(conn, goal_id, node_id)?;
+    // give the reset node an immediate chance at admission rather than
+    // waiting for the next periodic timer tick.
+    drive(ctx, conn, registry)
+}
+
+/// The pure DB-mutation half of `retry_node`, split out so it's testable
+/// without also exercising a real scheduler tick (which, given any
+/// usable agent at all, will synchronously admit and dispatch the
+/// freshly-`pending` node -- exactly the intended behavior, but not
+/// what a "did the reset itself work" test wants to be coupled to).
+fn reset_node_for_retry(conn: &mut Connection, goal_id: &str, node_id: &str) -> Result<()> {
+    let g = goal::get(conn, goal_id)?.context("no such goal")?;
+    let mut graph = goal::load_graph(conn, goal_id)?;
+    let node = graph.nodes.iter_mut().find(|n| n.id == node_id).with_context(|| format!("no such node {node_id:?} in goal {goal_id}"))?;
+    let prior_status = node.status;
+    // `update_node`'s task_id param is a COALESCE-if-Some -- it can only
+    // ever set a task_id, never clear one. Going through `save_graph`
+    // (a full graph rewrite, same as every other graph mutation) instead
+    // means `task_id: None` really lands as NULL, and `graph_nodes` +
+    // `goals.plan_json` stay in sync the same way they always do.
+    node.status = graph::NodeStatus::Pending;
+    node.task_id = None;
+    node.attempts = 0;
+    node.earliest_retry_at_ms = None;
+    goal::save_graph(conn, goal_id, &graph)?;
+
+    events::append(
+        conn,
+        &g.session_id,
+        Some(goal_id),
+        events::EventKind::SessionResumed,
+        &format!("{node_id}: reset from {prior_status:?} to pending via `single goal retry-node`"),
+    )?;
+    Ok(())
+}
+
 /// maps a finished task back to its coordinator node (no-op if it isn't
 /// one) and advances the goal.
 pub fn notify_task_finished(
@@ -459,6 +509,64 @@ mod tests {
         assert_eq!(touched, 1);
         assert_eq!(goal::get(&conn, &running.id).unwrap().unwrap().status, graph::GoalStatus::Paused);
         assert_eq!(goal::get(&conn, &done.id).unwrap().unwrap().status, graph::GoalStatus::Done, "a terminal goal must never be paused");
+    }
+
+    /// Live-verification regression (E30 dispatch, 2026-09-17): before
+    /// this fix, a node the supervisor set `blocked` had no self-service
+    /// recovery path -- `resume_goal` only clears goal-level status and
+    /// capacity-wait stamps, never a node's own `status`. Reproduces the
+    /// real stuck state (a node manually forced to `blocked` with a
+    /// task_id and nonzero attempts left over from failed tries) and
+    /// asserts the reset half of `retry_node` produces a clean `pending`
+    /// node. Exercises `reset_node_for_retry` directly rather than the
+    /// full `retry_node` (which also chains a real scheduler `drive()`
+    /// re-tick that, given any usable agent, immediately re-admits and
+    /// dispatches the node for real -- correct production behavior, but
+    /// not what this test is isolating).
+    #[test]
+    fn retry_node_resets_a_blocked_node_back_to_pending() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut conn = test_conn();
+        let s = session::new_session(&conn, tmp.path()).unwrap();
+        let g = goal::create(&conn, &s.id, "g", graph::GoalMode::Auto, 25, 60).unwrap();
+        let node = graph::Node {
+            id: "s2".into(),
+            desc: "do it".into(),
+            kind: graph::NodeKind::Code,
+            effort: graph::Effort::Standard,
+            agent: "claude".into(),
+            depends_on: vec![],
+            status: graph::NodeStatus::Blocked,
+            task_id: Some(1785),
+            attempts: 2,
+            worktree: true,
+            output_ref: None,
+            earliest_retry_at_ms: Some(9_999_999_999),
+        };
+        goal::save_graph(&mut conn, &g.id, &graph::TaskGraph { nodes: vec![node] }).unwrap();
+
+        reset_node_for_retry(&mut conn, &g.id, "s2").unwrap();
+
+        let reloaded = goal::load_graph(&conn, &g.id).unwrap();
+        let n = reloaded.find("s2").unwrap();
+        assert_eq!(n.status, graph::NodeStatus::Pending, "node must be reset to pending");
+        assert_eq!(n.task_id, None, "stale task_id must be cleared, not left behind");
+        assert_eq!(n.attempts, 0, "attempts must be reset so it gets a fresh retry budget");
+        assert_eq!(n.earliest_retry_at_ms, None, "any leftover capacity-wait stamp must be cleared too");
+    }
+
+    /// A node id that doesn't exist in the goal's graph must error clearly
+    /// rather than silently no-op.
+    #[test]
+    fn retry_node_errors_for_an_unknown_node_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut conn = test_conn();
+        let s = session::new_session(&conn, tmp.path()).unwrap();
+        let g = goal::create(&conn, &s.id, "g", graph::GoalMode::Auto, 25, 60).unwrap();
+        goal::save_graph(&mut conn, &g.id, &graph::TaskGraph { nodes: vec![] }).unwrap();
+
+        let err = reset_node_for_retry(&mut conn, &g.id, "does-not-exist").unwrap_err();
+        assert!(format!("{err:#}").contains("no such node"));
     }
 
     #[test]

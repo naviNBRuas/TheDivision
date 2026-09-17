@@ -1875,6 +1875,11 @@ fn dispatch(
             let _ = crate::coordinator::drive(ctx, &mut conn, registry);
             Ok(ResponseData::Empty)
         }
+        Request::GoalRetryNode { goal_id, node_id } => {
+            let mut conn = coordinator_db(ctx)?;
+            crate::coordinator::retry_node(ctx, &mut conn, registry, &goal_id, &node_id)?;
+            Ok(ResponseData::Empty)
+        }
         Request::GoalMergeList => {
             let conn = coordinator_db(ctx)?;
             let out = single_core::pending_merge::list_pending(&conn)?

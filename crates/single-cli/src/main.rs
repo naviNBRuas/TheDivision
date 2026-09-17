@@ -435,6 +435,17 @@ enum GoalCommand {
     Resume {
         goal_id: String,
     },
+    /// Live-verification finding 2026-09-17 (E30 dispatch): a node the
+    /// supervisor set `blocked` sits outside the ready-set forever —
+    /// neither `amend` nor `resume` touches a node's own status, only
+    /// goal-level status and capacity-wait stamps. Resets exactly this
+    /// node back to `pending` (status, task_id, attempts, retry stamp)
+    /// and re-ticks. Works on any node, not just a `blocked` one — retrying
+    /// a `failed` node you judge recoverable is the same action.
+    RetryNode {
+        goal_id: String,
+        node_id: String,
+    },
     /// Merges awaiting human confirmation from the coordinator's opt-in
     /// auto-merge (`goal.auto_merge`) — a passing review queues one of
     /// these, it never merges by itself. "Branches are never auto-merged;
@@ -2860,6 +2871,10 @@ fn main() -> anyhow::Result<()> {
             }
             GoalCommand::Resume { goal_id } => {
                 let response = client::send(&socket_path, Request::GoalResume { goal_id })?;
+                render::print(response, false);
+            }
+            GoalCommand::RetryNode { goal_id, node_id } => {
+                let response = client::send(&socket_path, Request::GoalRetryNode { goal_id, node_id })?;
                 render::print(response, false);
             }
             GoalCommand::Merge(merge_cmd) => match merge_cmd {

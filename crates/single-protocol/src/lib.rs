@@ -711,6 +711,18 @@ pub enum Request {
     GoalResume {
         goal_id: String,
     },
+    /// Live-verification finding 2026-09-17 (E30 dispatch): neither
+    /// `GoalAmend` nor `GoalResume` clears a supervisor-set `blocked`
+    /// *node* (as opposed to a `blocked` *goal*) — a blocked node sits
+    /// outside the ready-set forever with no self-service unblock path.
+    /// Resets one named node back to `pending` (status, task_id,
+    /// attempts, retry stamp) and re-ticks, the same recovery a human
+    /// judging it fixable/retriable would want. Does not touch sibling
+    /// nodes or the goal's own status.
+    GoalRetryNode {
+        goal_id: String,
+        node_id: String,
+    },
     /// Poll (the messenger long-polls) for a session's events after an id.
     SessionEvents {
         session_id: String,
@@ -2065,6 +2077,7 @@ mod tests {
             Request::GoalAmend { goal_id: "goal_1".into(), text: "budget=30".into() },
             Request::GoalCancel { goal_id: "goal_1".into() },
             Request::GoalResume { goal_id: "goal_1".into() },
+            Request::GoalRetryNode { goal_id: "goal_1".into(), node_id: "s2".into() },
             Request::SessionEvents { session_id: "sess_1".into(), since_event_id: 4 },
             Request::CoordinatorStatus,
             Request::GoalMergeList,
