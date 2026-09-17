@@ -992,7 +992,10 @@ mod tests {
 
     #[test]
     fn provider_count_matches_spec_table() {
-        assert_eq!(FREE_PROVIDERS.len(), 44, "spec §5.2 table has 44 rows — a change here should be deliberate");
+        // Was 44; `1f312b1` ("chore: drop discontinued GitHub Models
+        // free-pool provider") intentionally removed one row and didn't
+        // update this assertion — a real drift, not a regression.
+        assert_eq!(FREE_PROVIDERS.len(), 43, "spec §5.2 table has 43 rows (GitHub Models dropped, 1f312b1) — a change here should be deliberate");
     }
 
     #[test]
