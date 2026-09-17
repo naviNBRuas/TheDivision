@@ -21,6 +21,7 @@ rusqlite.workspace = true
 tempfile = "3"
 rpassword = "7"
 age.workspace = true
+libc.workspace = true
 single-agent-sdk = { path = "../single-agent-sdk" }
 single-core = { path = "../single-core" }
 single-web = { path = "../single-web" }

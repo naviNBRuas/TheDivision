@@ -2,6 +2,7 @@ mod acp;
 mod client;
 mod daemon;
 mod internal_lsp_manifest;
+mod notch_proc;
 mod render;
 mod serve_openai;
 mod update;
@@ -72,6 +73,11 @@ enum Command {
     Daemon {
         #[command(subcommand)]
         action: DaemonCommand,
+    },
+    /// Manage the opt-in top-center notch HUD companion process (E30).
+    Notch {
+        #[command(subcommand)]
+        action: NotchCommand,
     },
     /// Manage secrets (OS keychain-backed; Linux via secret-tool in Phase 2).
     Secret {
@@ -1534,6 +1540,20 @@ enum DaemonCommand {
     Restart,
 }
 
+#[derive(Subcommand)]
+enum NotchCommand {
+    /// Start the notch HUD companion process (spawns it if not already alive).
+    Enable,
+    /// Stop the notch HUD companion process, if running.
+    Disable,
+    /// Report whether the notch HUD is running.
+    Status,
+    /// Force the HUD to show its expanded card (not yet wired — Phase 5).
+    Show,
+    /// Force the HUD to collapse (not yet wired — Phase 5).
+    Hide,
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let dirs = SingleDirs::discover()?;
@@ -1632,6 +1652,34 @@ fn main() -> anyhow::Result<()> {
                 daemon::stop_running(&dirs)?;
                 daemon::ensure_running(&dirs)?;
                 println!("single-runtimed restarted");
+            }
+        },
+        Command::Notch { action } => match action {
+            NotchCommand::Enable => {
+                daemon::ensure_running(&dirs)?;
+                notch_proc::spawn(&dirs)?;
+                match notch_proc::read_pid(&dirs) {
+                    Some(pid) => println!("single-notch enabled (pid {pid})"),
+                    None => println!("single-notch enabled"),
+                }
+            }
+            NotchCommand::Disable => {
+                if notch_proc::stop(&dirs)? {
+                    println!("single-notch disabled");
+                } else {
+                    println!("single-notch was not running");
+                }
+            }
+            NotchCommand::Status => {
+                if notch_proc::is_alive(&dirs) {
+                    let pid = notch_proc::read_pid(&dirs).expect("is_alive implies a pidfile");
+                    println!("hud_alive=true pid={pid}");
+                } else {
+                    println!("hud_alive=false");
+                }
+            }
+            NotchCommand::Show | NotchCommand::Hide => {
+                println!("single notch show/hide is not yet available (needs the control socket, Phase 5)");
             }
         },
         Command::Doctor { fix } => {
@@ -3663,5 +3711,23 @@ mod graph_task_parsing_tests {
             }
             _ => panic!("expected Command::Provider(Validate)"),
         }
+    }
+
+    #[test]
+    fn notch_enable_disable_status_parse() {
+        let e = Cli::try_parse_from(["single", "notch", "enable"]).unwrap();
+        assert!(matches!(e.command, Some(Command::Notch { action: NotchCommand::Enable })));
+        let d = Cli::try_parse_from(["single", "notch", "disable"]).unwrap();
+        assert!(matches!(d.command, Some(Command::Notch { action: NotchCommand::Disable })));
+        let s = Cli::try_parse_from(["single", "notch", "status"]).unwrap();
+        assert!(matches!(s.command, Some(Command::Notch { action: NotchCommand::Status })));
+    }
+
+    #[test]
+    fn notch_show_hide_parse() {
+        let show = Cli::try_parse_from(["single", "notch", "show"]).unwrap();
+        assert!(matches!(show.command, Some(Command::Notch { action: NotchCommand::Show })));
+        let hide = Cli::try_parse_from(["single", "notch", "hide"]).unwrap();
+        assert!(matches!(hide.command, Some(Command::Notch { action: NotchCommand::Hide })));
     }
 }

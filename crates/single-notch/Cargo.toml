@@ -4,11 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Iced-based GUI for SingleCLI"
+description = "Opt-in top-center notch HUD for SingleCLI pool health (E30)"
+
+[[bin]]
+name = "single-notch"
+path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
+libc.workspace = true
 iced.workspace = true
 single-core = { path = "../single-core" }
-single-protocol = { path = "../single-protocol" }
-single-runtime = { path = "../single-runtime" }
-single-tui = { path = "../single-tui" }
