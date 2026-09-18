@@ -98,19 +98,7 @@ fn dispatch(
             }
             Ok(ResponseData::Empty)
         }
-        Request::AgentList => {
-            // Parallelized across agents for the same reason `status()` is
-            // — see `cached_discover`'s doc comment.
-            let agents = std::thread::scope(|scope| {
-                let handles: Vec<_> = ctx
-                    .registry
-                    .iter()
-                    .map(|def| scope.spawn(|| to_agent_info(def, ctx)))
-                    .collect();
-                handles.into_iter().map(|h| h.join().unwrap()).collect()
-            });
-            Ok(ResponseData::Agents(agents))
-        }
+        Request::AgentList => Ok(ResponseData::Agents(agent_list_info(ctx))),
         Request::AgentInspect { name } => {
             let def = ctx
                 .find_agent(&name)
@@ -1350,11 +1338,7 @@ fn dispatch(
             }
             Ok(ResponseData::PoolSyncResult { synced })
         }
-        Request::ProviderKeyStatus { platform } => {
-            let conn = crate::state::open(&ctx.dirs.db_path())?;
-            crate::pool::ensure_pool_schema(&conn)?;
-            Ok(ResponseData::PoolKeyStatuses(pool_key_statuses(&conn, &ctx.dirs, platform.as_deref())?))
-        }
+        Request::ProviderKeyStatus { platform } => Ok(ResponseData::PoolKeyStatuses(provider_key_status_info(ctx, platform.as_deref())?)),
         Request::ProviderValidateKeys { platform } => {
             let conn = crate::state::open(&ctx.dirs.db_path())?;
             crate::pool::ensure_pool_schema(&conn)?;
@@ -1378,41 +1362,7 @@ fn dispatch(
             }
             Ok(ResponseData::PoolKeyStatuses(pool_key_statuses(&conn, &ctx.dirs, platform.as_deref())?))
         }
-        Request::PoolStatus => {
-            let conn = crate::state::open(&ctx.dirs.db_path())?;
-            crate::pool::ensure_pool_schema(&conn)?;
-            let now = crate::pool::ledger::now_ms();
-
-            let mut benched = Vec::new();
-            {
-                let mut stmt = conn.prepare("SELECT platform, model, key_id, until_ms, provenance FROM pool_cooldowns WHERE until_ms > ?1")?;
-                let rows = stmt.query_map(rusqlite::params![now], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?, r.get::<_, String>(4)?))
-                })?;
-                for row in rows {
-                    let (platform, model, key_id, until_ms, provenance) = row?;
-                    benched.push(single_protocol::PoolBenchedKey { platform, model, key_id, remaining_secs: ((until_ms - now).max(0) / 1000) as u64, provenance });
-                }
-            }
-
-            // Stateless healthy-ratio snapshot -- entry/exit grace hysteresis
-            // (spec §6.5) needs a persisted DegradeState this iteration
-            // doesn't wire into the daemon yet (documented follow-up); this
-            // reports the instantaneous ratio, not a debounced mode with a
-            // "degraded since <ts>" timestamp.
-            let enabled_providers: Vec<_> = single_core::free_pool::FREE_PROVIDERS
-                .iter()
-                .filter(|p| single_core::free_pool::default_disabled_reason(p.id).is_none())
-                .collect();
-            let usable = enabled_providers
-                .iter()
-                .filter(|p| single_core::pool_keys::list(&conn, Some(p.id)).map(|ks| ks.iter().any(|k| !k.disabled)).unwrap_or(false))
-                .count();
-            let ratio = crate::pool::degrade::healthy_ratio(usable, enabled_providers.len());
-            let degraded = ratio < 0.5 && enabled_providers.len() >= 3;
-
-            Ok(ResponseData::PoolStatus(single_protocol::PoolStatusInfo { degraded, healthy_ratio: ratio, benched }))
-        }
+        Request::PoolStatus => Ok(ResponseData::PoolStatus(pool_status_info(ctx)?)),
         Request::UsageShow { provider } => usage_summary(ctx, provider),
         Request::UsageRefresh => usage_summary(ctx, None),
         Request::AccountingQuery { query } => accounting_query(ctx, &query),
@@ -1957,45 +1907,103 @@ fn dispatch(
                 .collect();
             Ok(ResponseData::CoordinatorEvents(out))
         }
-        Request::CoordinatorStatus => {
-            let conn = coordinator_db(ctx)?;
-            let all = crate::coordinator::goal::list(&conn, None)?;
-            let pick = |want: crate::coordinator::graph::GoalStatus| {
-                all.iter().filter(|g| g.status == want).map(goal_summary).collect::<Vec<_>>()
-            };
-            let cfg = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs);
-            let health = crate::coordinator::routing::PoolHealth::probe(&ctx.registry, &conn);
-            let mut running_per_agent: std::collections::BTreeMap<String, usize> = Default::default();
-            {
-                let mut stmt = conn.prepare(
-                    "SELECT agent, COUNT(*) FROM graph_nodes WHERE status = 'running' GROUP BY agent",
-                )?;
-                let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))?;
-                for row in rows {
-                    let (a, c) = row?;
-                    running_per_agent.insert(a, c);
-                }
-            }
-            let pool = ctx
-                .registry
-                .iter()
-                .map(|a| single_protocol::PoolAgentStatus {
-                    agent: a.name.clone(),
-                    running: running_per_agent.get(&a.name).copied().unwrap_or(0),
-                    cap: a.max_concurrency.map(|c| c as usize),
-                    rate_limited: health.rate_limited.contains(&a.name),
-                })
-                .collect();
-            Ok(ResponseData::CoordinatorSnapshot(single_protocol::CoordinatorSnapshot {
-                running_goals: pick(crate::coordinator::graph::GoalStatus::Running),
-                queued_goals: pick(crate::coordinator::graph::GoalStatus::Queued),
-                blocked_goals: pick(crate::coordinator::graph::GoalStatus::Blocked),
-                waiting_goals: pick(crate::coordinator::graph::GoalStatus::WaitingOnCapacity),
-                pool,
-                max_parallel: cfg.max_parallel,
-            }))
+        Request::CoordinatorStatus => Ok(ResponseData::CoordinatorSnapshot(coordinator_status_info(ctx)?)),
+        Request::NotchSnapshot => Ok(ResponseData::NotchSnapshot(single_protocol::NotchSnapshotInfo {
+            pool: pool_status_info(ctx)?,
+            keys: provider_key_status_info(ctx, None)?,
+            coordinator: coordinator_status_info(ctx)?,
+            agents: agent_list_info(ctx),
+        })),
+    }
+}
+
+/// Shared with `Request::AgentList` and the `NotchSnapshot` composite
+/// (E30 Phase 7) -- same logic either way, never forked.
+fn agent_list_info(ctx: &Context) -> Vec<single_protocol::AgentInfo> {
+    // Parallelized across agents for the same reason `status()` is — see
+    // `cached_discover`'s doc comment.
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = ctx.registry.iter().map(|def| scope.spawn(|| to_agent_info(def, ctx))).collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    })
+}
+
+/// Shared with `Request::ProviderKeyStatus` and `NotchSnapshot`.
+fn provider_key_status_info(ctx: &Context, platform: Option<&str>) -> anyhow::Result<Vec<single_protocol::PoolKeyStatusInfo>> {
+    let conn = crate::state::open(&ctx.dirs.db_path())?;
+    crate::pool::ensure_pool_schema(&conn)?;
+    pool_key_statuses(&conn, &ctx.dirs, platform)
+}
+
+/// Shared with `Request::PoolStatus` and `NotchSnapshot`.
+fn pool_status_info(ctx: &Context) -> anyhow::Result<single_protocol::PoolStatusInfo> {
+    let conn = crate::state::open(&ctx.dirs.db_path())?;
+    crate::pool::ensure_pool_schema(&conn)?;
+    let now = crate::pool::ledger::now_ms();
+
+    let mut benched = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT platform, model, key_id, until_ms, provenance FROM pool_cooldowns WHERE until_ms > ?1")?;
+        let rows = stmt.query_map(rusqlite::params![now], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?, r.get::<_, String>(4)?))
+        })?;
+        for row in rows {
+            let (platform, model, key_id, until_ms, provenance) = row?;
+            benched.push(single_protocol::PoolBenchedKey { platform, model, key_id, remaining_secs: ((until_ms - now).max(0) / 1000) as u64, provenance });
         }
     }
+
+    // Stateless healthy-ratio snapshot -- entry/exit grace hysteresis
+    // (spec §6.5) needs a persisted DegradeState this iteration doesn't
+    // wire into the daemon yet (documented follow-up); this reports the
+    // instantaneous ratio, not a debounced mode with a "degraded since
+    // <ts>" timestamp.
+    let enabled_providers: Vec<_> =
+        single_core::free_pool::FREE_PROVIDERS.iter().filter(|p| single_core::free_pool::default_disabled_reason(p.id).is_none()).collect();
+    let usable = enabled_providers
+        .iter()
+        .filter(|p| single_core::pool_keys::list(&conn, Some(p.id)).map(|ks| ks.iter().any(|k| !k.disabled)).unwrap_or(false))
+        .count();
+    let ratio = crate::pool::degrade::healthy_ratio(usable, enabled_providers.len());
+    let degraded = ratio < 0.5 && enabled_providers.len() >= 3;
+
+    Ok(single_protocol::PoolStatusInfo { degraded, healthy_ratio: ratio, benched })
+}
+
+/// Shared with `Request::CoordinatorStatus` and `NotchSnapshot`.
+fn coordinator_status_info(ctx: &Context) -> anyhow::Result<single_protocol::CoordinatorSnapshot> {
+    let conn = coordinator_db(ctx)?;
+    let all = crate::coordinator::goal::list(&conn, None)?;
+    let pick = |want: crate::coordinator::graph::GoalStatus| all.iter().filter(|g| g.status == want).map(goal_summary).collect::<Vec<_>>();
+    let cfg = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs);
+    let health = crate::coordinator::routing::PoolHealth::probe(&ctx.registry, &conn);
+    let mut running_per_agent: std::collections::BTreeMap<String, usize> = Default::default();
+    {
+        let mut stmt = conn.prepare("SELECT agent, COUNT(*) FROM graph_nodes WHERE status = 'running' GROUP BY agent")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))?;
+        for row in rows {
+            let (a, c) = row?;
+            running_per_agent.insert(a, c);
+        }
+    }
+    let pool = ctx
+        .registry
+        .iter()
+        .map(|a| single_protocol::PoolAgentStatus {
+            agent: a.name.clone(),
+            running: running_per_agent.get(&a.name).copied().unwrap_or(0),
+            cap: a.max_concurrency.map(|c| c as usize),
+            rate_limited: health.rate_limited.contains(&a.name),
+        })
+        .collect();
+    Ok(single_protocol::CoordinatorSnapshot {
+        running_goals: pick(crate::coordinator::graph::GoalStatus::Running),
+        queued_goals: pick(crate::coordinator::graph::GoalStatus::Queued),
+        blocked_goals: pick(crate::coordinator::graph::GoalStatus::Blocked),
+        waiting_goals: pick(crate::coordinator::graph::GoalStatus::WaitingOnCapacity),
+        pool,
+        max_parallel: cfg.max_parallel,
+    })
 }
 
 fn memory_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
@@ -2544,6 +2552,34 @@ mod tests {
         let response = handle(&ctx, Request::PoolStatus);
         let Response::Ok { data: ResponseData::PoolStatus(status) } = response else { panic!("unexpected response") };
         assert!(status.benched.iter().any(|b| b.platform == "groq" && b.key_id == "default"), "{:?}", status.benched);
+    }
+
+    /// E30 Phase 7: the composite `NotchSnapshot` op must bundle exactly
+    /// what the four separate ops would return -- verified here by
+    /// seeding the same real bench `pool_status_reports_a_real_bench_
+    /// after_cooldown_bench` uses and asserting the bundled `pool` field
+    /// shows it, not just that the handler returns *something*.
+    #[test]
+    fn notch_snapshot_bundles_the_same_pool_status_a_separate_call_would_return() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(dir.path());
+        let conn = crate::state::open(&ctx.dirs.db_path()).unwrap();
+        crate::pool::ensure_pool_schema(&conn).unwrap();
+        crate::pool::cooldown::bench(&conn, "groq", "groq", "default", crate::pool::cooldown::BenchKind::Transient, crate::pool::ledger::now_ms()).unwrap();
+
+        let separate = {
+            let Response::Ok { data: ResponseData::PoolStatus(status) } = handle(&ctx, Request::PoolStatus) else { panic!("unexpected response") };
+            status
+        };
+        let Response::Ok { data: ResponseData::NotchSnapshot(snapshot) } = handle(&ctx, Request::NotchSnapshot) else { panic!("unexpected response") };
+
+        assert_eq!(snapshot.pool.degraded, separate.degraded);
+        assert_eq!(snapshot.pool.healthy_ratio, separate.healthy_ratio);
+        assert_eq!(snapshot.pool.benched.len(), separate.benched.len());
+        assert!(snapshot.pool.benched.iter().any(|b| b.platform == "groq" && b.key_id == "default"), "{:?}", snapshot.pool.benched);
+        // The other three legs are present and non-panicking to extract
+        // -- their own dedicated handler tests cover correctness in depth.
+        assert!(!snapshot.agents.is_empty(), "agent_list_info must never return empty against the real registry");
     }
 
     #[test]

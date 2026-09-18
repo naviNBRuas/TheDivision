@@ -83,9 +83,22 @@ fn expect<T>(response: Response, extract: impl FnOnce(ResponseData) -> Option<T>
 }
 
 impl Poller {
-    /// Four-op compose (a later phase may try a single `NotchSnapshot`
-    /// request first if four-poll chatter turns out to matter).
+    /// Tries the composite `NotchSnapshot` op first (E30 Phase 7) -- one
+    /// round trip instead of four. An older daemon that doesn't know
+    /// this request answers `Response::Error` (unknown request), which
+    /// falls back to `tick_four_op` transparently; any other transport
+    /// error (daemon down) also fails over rather than erroring the
+    /// whole poll on what's meant to be a pure optimization.
     pub fn tick(&self) -> Result<model::NotchSnapshot> {
+        match client::call(&self.socket, &Request::NotchSnapshot) {
+            Ok(Response::Ok { data: ResponseData::NotchSnapshot(s) }) => {
+                Ok(model::aggregate(&s.pool, &s.keys, &s.coordinator, &s.agents))
+            }
+            _ => self.tick_four_op(),
+        }
+    }
+
+    fn tick_four_op(&self) -> Result<model::NotchSnapshot> {
         let pool = expect(client::call(&self.socket, &Request::PoolStatus)?, |d| match d {
             ResponseData::PoolStatus(p) => Some(p),
             _ => None,

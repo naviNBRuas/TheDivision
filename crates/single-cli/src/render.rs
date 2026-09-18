@@ -906,6 +906,10 @@ fn print_data(data: ResponseData) {
             }
         }
         ResponseData::Empty => {}
+        // No dedicated `single` subcommand exposes this directly -- it's
+        // single-notch's own poller preference (E30 Phase 7). Plain debug
+        // print is enough for the rare case someone hits it manually.
+        ResponseData::NotchSnapshot(snapshot) => println!("{snapshot:#?}"),
         ResponseData::Accounting(result) => {
             if result.events.is_empty() {
                 println!("(no usage events recorded yet)");

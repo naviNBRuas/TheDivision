@@ -534,6 +534,12 @@ pub enum Request {
     /// is stateless (no persisted entry/exit-grace hysteresis this
     /// iteration — see `PoolStatusInfo`'s doc comment).
     PoolStatus,
+    /// E30 Phase 7: bundles `PoolStatus` + `ProviderKeyStatus { platform:
+    /// None }` + `CoordinatorStatus` + `AgentList` into one round trip,
+    /// for `single-notch`'s poller to prefer over four separate calls.
+    /// Optional -- an older daemon that doesn't know this request just
+    /// errors, and the poller falls back to the four-op sequence.
+    NotchSnapshot,
     UsageShow {
         provider: Option<String>,
     },
@@ -822,6 +828,7 @@ pub enum ResponseData {
         synced: usize,
     },
     PoolKeyStatuses(Vec<PoolKeyStatusInfo>),
+    NotchSnapshot(NotchSnapshotInfo),
     PoolStatus(PoolStatusInfo),
     Usage(UsageSummary),
     /// Queryable accounting data: usage events and their token
@@ -1802,6 +1809,17 @@ pub struct PoolStatusInfo {
     pub degraded: bool,
     pub healthy_ratio: f64,
     pub benched: Vec<PoolBenchedKey>,
+}
+
+/// E30 Phase 7: the composite `NotchSnapshot` response -- exactly the
+/// four separate payloads `single-notch`'s poller would otherwise fetch
+/// one round trip each.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotchSnapshotInfo {
+    pub pool: PoolStatusInfo,
+    pub keys: Vec<PoolKeyStatusInfo>,
+    pub coordinator: CoordinatorSnapshot,
+    pub agents: Vec<AgentInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
