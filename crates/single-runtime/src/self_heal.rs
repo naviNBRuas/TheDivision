@@ -73,6 +73,11 @@ pub struct SelfHealConfig {
     /// Agent category (Task 22): a pool provider key failing validation
     /// for longer than this is auto-disabled.
     pub provider_key_grace_hours: u32,
+    /// Infra category: a finished task's git worktree (a full checkout,
+    /// hundreds of MB each) is removed once its task has been terminal for
+    /// this many hours and the worktree has no uncommitted changes. The
+    /// `single/task-*` branch is kept. `0` disables the sweep.
+    pub worktree_retention_hours: u32,
 }
 
 impl Default for SelfHealConfig {
@@ -84,6 +89,7 @@ impl Default for SelfHealConfig {
             blocked_reeval_minutes: 30,
             max_auto_reevals_per_goal: 3,
             provider_key_grace_hours: 24,
+            worktree_retention_hours: 24,
         }
     }
 }

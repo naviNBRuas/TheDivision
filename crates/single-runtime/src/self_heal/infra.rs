@@ -11,9 +11,55 @@ pub fn run(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig, report: &mut 
     run_step(conn, report, Category::Infra, "corrupt_config", || corrupt_config(ctx));
     run_step(conn, report, Category::Infra, "db_integrity", || db_integrity(ctx, conn, allow_db_restore));
     run_step(conn, report, Category::Infra, "db_backup", || db_backup(ctx, conn, cfg));
+    run_step(conn, report, Category::Infra, "stale_worktrees", || stale_worktrees(conn, cfg));
     run_step(conn, report, Category::Infra, "dead_agent_binaries", || dead_agent_binaries(ctx));
     run_step(conn, report, Category::Infra, "cooldown_probe", || cooldown_probe(conn));
     Ok(())
+}
+
+/// Removes the git worktree of every task that has been terminal for at
+/// least `worktree_retention_hours`, provided the worktree is clean. Each
+/// worktree is a full checkout, so without this they pile up without bound.
+/// Dirty worktrees are left in place (uncommitted work is never discarded)
+/// and the task's `single/task-*` branch always survives.
+fn stale_worktrees(conn: &Connection, cfg: &SelfHealConfig) -> Result<String> {
+    if cfg.worktree_retention_hours == 0 {
+        return Ok("disabled (worktree_retention_hours = 0)".into());
+    }
+    let Ok(tasks) = crate::task::list(conn) else {
+        return Ok("no task table yet -- nothing to sweep".into());
+    };
+    let now = chrono::Utc::now();
+    let (mut removed, mut dirty, mut freed_paths) = (0usize, 0usize, 0usize);
+    for t in tasks {
+        use single_protocol::TaskStatus::*;
+        if matches!(t.status, Created | Running) {
+            continue;
+        }
+        let Some(wt) = t.worktree_path.as_deref().map(std::path::Path::new) else { continue };
+        if !wt.exists() {
+            continue;
+        }
+        let age_hours = t.updated_at.parse::<chrono::DateTime<chrono::Utc>>().map(|u| (now - u).num_hours()).unwrap_or(0);
+        if age_hours < cfg.worktree_retention_hours as i64 {
+            continue;
+        }
+        freed_paths += 1;
+        let is_clean = std::process::Command::new("git")
+            .arg("-C").arg(wt).args(["status", "--porcelain"])
+            .output()
+            .map(|o| o.status.success() && o.stdout.is_empty())
+            .unwrap_or(false);
+        if !is_clean {
+            dirty += 1;
+            continue;
+        }
+        let Some(repo) = single_core::project_context::resolve(wt).repo_root else { continue };
+        if single_core::worktree::remove(std::path::Path::new(&repo), wt, false).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(format!("{removed} removed, {dirty} kept (uncommitted changes), {} eligible", freed_paths))
 }
 
 /// `runtime.sock` exists but nothing is actually listening on it — a
@@ -483,11 +529,45 @@ mod tests {
         let cfg = crate::self_heal::SelfHealConfig { categories: Categories::default(), ..crate::self_heal::SelfHealConfig::load(&ctx.dirs) };
         let mut report = PassReport::default();
         run(&ctx, &conn, &cfg, &mut report, true).unwrap();
-        assert_eq!(report.actions.len(), 6, "expected all 6 infra substeps to run: {report:?}");
+        assert_eq!(report.actions.len(), 7, "expected all 7 infra substeps to run: {report:?}");
         assert!(report.actions.iter().all(|a| a.ok), "a clean tempdir/fresh db should have nothing to repair: {report:?}");
 
         let events = crate::self_heal::recent_events(&conn, 20).unwrap();
-        assert_eq!(events.len(), 6);
+        assert_eq!(events.len(), 7);
+    }
+
+    #[test]
+    fn stale_worktrees_removes_clean_old_ones_and_keeps_dirty_ones() {
+        let git = |dir: &std::path::Path, args: &[&str]| {
+            let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+            assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]);
+        let conn = test_conn();
+        let old = (chrono::Utc::now() - chrono::Duration::hours(48)).to_rfc3339();
+        let mut paths = Vec::new();
+        for (i, name) in ["clean", "dirty"].iter().enumerate() {
+            let wt = tmp.path().join(format!("wt-{name}"));
+            single_core::worktree::add(&repo, &wt, &format!("single/task-{name}")).unwrap();
+            if *name == "dirty" {
+                std::fs::write(wt.join("scratch.txt"), "uncommitted").unwrap();
+            }
+            conn.execute(
+                "INSERT INTO tasks (id, description, agent, status, worktree_path, created_at, updated_at) VALUES (?1, 'x', 'a', 'completed', ?2, ?3, ?3)",
+                rusqlite::params![i as i64 + 1, wt.to_str().unwrap(), old],
+            )
+            .unwrap();
+            paths.push(wt);
+        }
+        let msg = stale_worktrees(&conn, &SelfHealConfig::default()).unwrap();
+        assert!(msg.starts_with("1 removed, 1 kept"), "{msg}");
+        assert!(!paths[0].exists(), "clean old worktree should be gone");
+        assert!(paths[1].exists(), "dirty worktree must survive");
+        git(&repo, &["rev-parse", "--verify", "single/task-clean"]);
     }
 
     #[test]
