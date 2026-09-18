@@ -9,6 +9,9 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+### Fixed
+- Agent runs under an isolated `$HOME` now share the real `~/.rustup` and `~/.cargo` (via `RUSTUP_HOME`/`CARGO_HOME`) instead of each downloading a ~1.5G toolchain plus registry into `~/.config/single/homes/<agent>/`.
+
 ### Added
 - Self-heal `stale_worktrees` step: removes `state/worktrees/task-*` worktrees of non-running tasks after `worktree_retention_hours` (default 24, `0` disables) when the worktree is clean. Dirty worktrees and `single/task-*` branches are kept. Previously every task's full-checkout worktree accumulated forever.
 

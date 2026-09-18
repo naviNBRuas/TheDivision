@@ -259,6 +259,25 @@ fn pin_real_config_dir(cmd: &mut Command) {
     if let Ok(dirs) = single_core::paths::SingleDirs::discover() {
         cmd.env("SINGLE_CONFIG_DIR", dirs.root());
     }
+    share_toolchain_caches(cmd);
+}
+
+/// Under an isolated `$HOME`, rustup and cargo would each download a full
+/// toolchain (~1.5G) and registry into every agent's home. Point them at the
+/// daemon's real ones instead so those caches exist once.
+fn share_toolchain_caches(cmd: &mut Command) {
+    if let Some(real_home) = std::env::var_os("HOME") {
+        share_toolchain_caches_from(cmd, Path::new(&real_home), |var| std::env::var_os(var).is_some());
+    }
+}
+
+fn share_toolchain_caches_from(cmd: &mut Command, real_home: &Path, already_set: impl Fn(&str) -> bool) {
+    for (var, dir) in [("RUSTUP_HOME", ".rustup"), ("CARGO_HOME", ".cargo")] {
+        let real = real_home.join(dir);
+        if !already_set(var) && real.is_dir() {
+            cmd.env(var, real);
+        }
+    }
 }
 
 /// Reads `pipe` line by line, accumulating into `buf` and — when `tee` is
@@ -283,6 +302,17 @@ fn drain_into(pipe: impl Read, buf: Arc<Mutex<String>>, tee: Option<Arc<Mutex<st
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn toolchain_caches_point_at_existing_real_dirs_only() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join(".rustup")).unwrap();
+        let mut cmd = std::process::Command::new("true");
+        super::share_toolchain_caches_from(&mut cmd, home.path(), |_| false);
+        let envs: std::collections::HashMap<_, _> = cmd.get_envs().collect();
+        assert_eq!(envs.get(std::ffi::OsStr::new("RUSTUP_HOME")).copied().flatten(), Some(home.path().join(".rustup").as_os_str()));
+        assert!(!envs.contains_key(std::ffi::OsStr::new("CARGO_HOME")), "no ~/.cargo, so nothing to pin");
+    }
+
     use super::*;
 
     #[test]
