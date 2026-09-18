@@ -1171,14 +1171,20 @@ impl AgentAdapter for KiloCodeAdapter {
         Ok(unsupported_write("kilo", home, "kilo mcp add/list is real (confirmed via --help) but its config file shape wasn't inspected without a logged-in account"))
     }
 
-    /// `kilo run -- "<prompt>"` — `kilo run [message..]` per `kilo run
-    /// --help` (v7.x). The earlier `--auto` / `--dir <cwd>` flags this
-    /// adapter passed were dropped in kilo 7.x (yargs now rejects them,
-    /// which hung the run) — kilo `run` auto-approves tool calls by
-    /// default now, and inherits the working directory from the spawned
-    /// process (`run_command_live` sets `current_dir`). The `--`
-    /// separator is kept so `single task run`'s `---`-prefixed memory
-    /// preamble isn't parsed as flags.
+    /// `kilo run --auto --model kilo/kilo-auto/free -- "<prompt>"` —
+    /// `kilo run [message..]` per `kilo run --help` (v7.5.9, live-verified
+    /// 2026-09-17). Corrects a prior, factually wrong assumption here:
+    /// `--auto` was **not** dropped in 7.x -- `kilo run --help` lists it
+    /// live (default `false`), and every non-interactive dispatch without
+    /// it failed with "pass --auto for autonomous use" (confirmed live,
+    /// no hang). Re-added, tested directly (`kilo run --auto -- "Say
+    /// OK"`) — returns in seconds, no hang. `--dir` genuinely isn't
+    /// needed: `run_command_live` already sets `current_dir`.
+    /// `--model kilo/kilo-auto/free` avoids kilo's own paid default model
+    /// ("Add credits to continue, or switch to a free model" — also
+    /// confirmed live) routing every dispatch to a real free-tier model
+    /// instead. The `--` separator is kept so `single task run`'s
+    /// `---`-prefixed memory preamble isn't parsed as flags.
     #[allow(clippy::too_many_arguments)]
     fn run_prompt(
         &self,
@@ -1191,7 +1197,14 @@ impl AgentAdapter for KiloCodeAdapter {
     ) -> Result<RunOutcome> {
         run_command_live(
             "kilo",
-            &["run".to_string(), "--".to_string(), prompt.to_string()],
+            &[
+                "run".to_string(),
+                "--auto".to_string(),
+                "--model".to_string(),
+                "kilo/kilo-auto/free".to_string(),
+                "--".to_string(),
+                prompt.to_string(),
+            ],
             cwd,
             backend,
             live_output_path,
