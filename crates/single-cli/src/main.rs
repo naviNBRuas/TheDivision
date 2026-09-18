@@ -246,6 +246,11 @@ enum Command {
         #[command(subcommand)]
         action: UsageCommand,
     },
+    /// Queryable token/cost accounting data (propose-only).
+    Accounting {
+        #[command(subcommand)]
+        action: AccountingCommand,
+    },
     /// Export/import your entire SingleCLI setup — config, agent
     /// credentials, keychain secrets, task history — as one
     /// password-encrypted archive, to move to another machine. Runs
@@ -1214,6 +1219,30 @@ enum UsageCommand {
     },
     /// Force a live re-fetch from every configured billing provider, bypassing the cache.
     Refresh {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AccountingCommand {
+    /// Query usage events and token breakdown (propose-only; no business data).
+    Show {
+        /// Filter by execution_id
+        #[arg(long)]
+        execution_id: Option<String>,
+        /// Filter by trace_id
+        #[arg(long)]
+        trace_id: Option<String>,
+        /// Filter by agent name
+        #[arg(long)]
+        agent: Option<String>,
+        /// Filter by provider name
+        #[arg(long)]
+        provider: Option<String>,
+        /// Filter breakdown by event type (input, output, cache)
+        #[arg(long)]
+        event_type: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -2683,6 +2712,30 @@ fn main() -> anyhow::Result<()> {
             }
             UsageCommand::Refresh { json } => {
                 let response = client::send(&socket_path, Request::UsageRefresh)?;
+                render::print(response, json);
+            }
+        },
+        Command::Accounting { action } => match action {
+            AccountingCommand::Show {
+                execution_id,
+                trace_id,
+                agent,
+                provider,
+                event_type,
+                json,
+            } => {
+                let response = client::send(
+                    &socket_path,
+                    Request::AccountingQuery {
+                        query: single_protocol::AccountingQuery {
+                            execution_id,
+                            trace_id,
+                            agent,
+                            provider,
+                            event_type,
+                        },
+                    },
+                )?;
                 render::print(response, json);
             }
         },

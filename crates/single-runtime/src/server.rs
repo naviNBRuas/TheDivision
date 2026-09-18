@@ -32,6 +32,7 @@ pub async fn serve(socket_path: &std::path::Path) -> Result<()> {
         let conn = crate::state::open(&ctx.dirs.db_path())?;
         crate::task::ensure_schema(&conn)?;
         crate::state::ensure_events_schema(&conn)?;
+        crate::accounting::ensure_schema(&conn)?;
         crate::coordinator::ensure_coordinator_schema(&conn)?;
         crate::pool::ensure_pool_schema(&conn)?; // E28: pool_usage/pool_leases/pool_cooldowns/pool_outcomes/pool_config + pool_keys
 

@@ -906,6 +906,45 @@ fn print_data(data: ResponseData) {
             }
         }
         ResponseData::Empty => {}
+        ResponseData::Accounting(result) => {
+            if result.events.is_empty() {
+                println!("(no usage events recorded yet)");
+            } else {
+                println!("Usage events:");
+                for e in &result.events {
+                    println!(
+                        "  {} {} {} {} {}:{}:{} in ${:.4} ({}) at {}",
+                        e.execution_id,
+                        e.trace_id,
+                        e.agent,
+                        e.provider,
+                        e.model,
+                        e.prompt_tokens,
+                        e.completion_tokens,
+                        e.cache_tokens,
+                        e.cost_usd,
+                        e.occurred_at
+                    );
+                }
+            }
+            if !result.breakdowns.is_empty() {
+                println!("Token breakdown:");
+                for b in &result.breakdowns {
+                    println!(
+                        "  {} {} {}: {}",
+                        b.execution_id, b.trace_id, b.event_type, b.token_count
+                    );
+                }
+            }
+            println!(
+                "Totals: {} in / {} out / {} cache / total {} tokens / ${:.4}",
+                result.totals.prompt_tokens,
+                result.totals.completion_tokens,
+                result.totals.cache_tokens,
+                result.totals.total_tokens,
+                result.totals.cost_usd
+            );
+        }
     }
 }
 

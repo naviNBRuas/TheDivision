@@ -538,6 +538,12 @@ pub enum Request {
         provider: Option<String>,
     },
     UsageRefresh,
+    /// Query token/cost accounting data (propose-only; no business
+    /// data is stored or exposed). Filter by execution_id, trace_id,
+    /// agent, or provider.
+    AccountingQuery {
+        query: AccountingQuery,
+    },
     KgCreateEntity {
         name: String,
         entity_type: String,
@@ -818,6 +824,9 @@ pub enum ResponseData {
     PoolKeyStatuses(Vec<PoolKeyStatusInfo>),
     PoolStatus(PoolStatusInfo),
     Usage(UsageSummary),
+    /// Queryable accounting data: usage events and their token
+    /// breakdown, with totals.
+    Accounting(AccountingResult),
     KgEntityId(i64),
     KgEntity(KgEntity),
     KgEntities(Vec<KgEntity>),
@@ -1871,6 +1880,64 @@ pub struct UsageSummary {
     pub agent_local_stats: Vec<AgentLocalStats>,
     pub total_usd: f64,
     pub last_refreshed: Option<String>,
+}
+
+/// Filter criteria for querying accounting data. All fields are
+/// optional — empty means "no filter".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AccountingQuery {
+    pub execution_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub agent: Option<String>,
+    pub provider: Option<String>,
+    /// Filter breakdown entries by event type ("input", "output", "cache").
+    pub event_type: Option<String>,
+}
+
+/// Result of an accounting query: matching usage events, their
+/// token breakdown entries, and aggregated totals.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AccountingResult {
+    pub events: Vec<UsageEvent>,
+    pub breakdowns: Vec<UsageEventBreakdown>,
+    pub totals: Totals,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Totals {
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub cache_tokens: i64,
+    pub total_tokens: i64,
+    pub cost_usd: f64,
+}
+
+/// One row from the `usage_events` table: a single token-usage event
+/// linked to an execution and trace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageEvent {
+    pub id: i64,
+    pub execution_id: String,
+    pub trace_id: String,
+    pub agent: String,
+    pub provider: String,
+    pub model: String,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub cache_tokens: i64,
+    pub cost_usd: f64,
+    pub occurred_at: String,
+}
+
+/// One row from the `usage_event_breakdown` table: per-input/output/cache
+/// token breakdown for a usage event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageEventBreakdown {
+    pub id: i64,
+    pub execution_id: String,
+    pub trace_id: String,
+    pub event_type: String,
+    pub token_count: i64,
 }
 
 /// Repository/git state + project doc discovery for a working directory

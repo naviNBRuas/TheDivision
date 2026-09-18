@@ -4,7 +4,10 @@ use anyhow::Context as _;
 use single_agent_sdk::adapters::for_agent_with_custom;
 use single_agent_sdk::Discovery;
 use single_core::registry::AgentDefinition;
-use single_protocol::{AgentInfo, McpServerInfo, Request, Response, ResponseData, RuntimeStatus};
+use single_protocol::{
+    AccountingQuery as ProtoAccountingQuery, AgentInfo, McpServerInfo,
+    Request, Response, ResponseData, RuntimeStatus,
+};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -1412,6 +1415,7 @@ fn dispatch(
         }
         Request::UsageShow { provider } => usage_summary(ctx, provider),
         Request::UsageRefresh => usage_summary(ctx, None),
+        Request::AccountingQuery { query } => accounting_query(ctx, &query),
         Request::PluginAdd { plugin } => {
             single_core::plugins::add(&ctx.dirs.plugins_registry_file(), plugin)?;
             Ok(ResponseData::Empty)
@@ -2091,6 +2095,25 @@ fn usage_summary(ctx: &Context, provider_filter: Option<String>) -> anyhow::Resu
         total_usd,
         last_refreshed: Some(chrono::Utc::now().to_rfc3339()),
     }))
+}
+
+fn accounting_query(ctx: &Context, query: &ProtoAccountingQuery) -> anyhow::Result<ResponseData> {
+    let conn = task_db(ctx)?;
+    crate::accounting::ensure_schema(&conn)?;
+    let q = crate::accounting::AccountingQuery {
+        execution_id: query.execution_id.clone(),
+        trace_id: query.trace_id.clone(),
+        agent: query.agent.clone(),
+        provider: query.provider.clone(),
+        event_type: query.event_type.clone(),
+    };
+    let result = crate::accounting::query_usage_events(&conn, &q)?;
+    let proto_result = single_protocol::AccountingResult {
+        events: result.events,
+        breakdowns: result.breakdowns,
+        totals: result.totals,
+    };
+    Ok(ResponseData::Accounting(proto_result))
 }
 
 fn task_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
