@@ -9,14 +9,21 @@
 //! `docs/superpowers/plans/2026-09-17-e30-notch-hud.md` Phase 4.
 
 use anyhow::{Context, Result};
-use iced::widget::container;
-use iced::{Element, Length, Subscription};
+use iced::keyboard::{self, Key};
+use iced::widget::{container, MouseArea};
+use iced::{Element, Event, Length, Subscription};
 use single_core::SingleDirs;
+use single_notch::anim::{AnimConfig, AnimPhase, AnimState};
 use single_notch::model::NotchSnapshot;
-use single_notch::poll::Poller;
-use single_notch::ui::pill;
+use single_notch::poll::{diff_notable, Poller};
+use single_notch::ui::{card, pill};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Duration;
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
 
 static TERMINATED: AtomicBool = AtomicBool::new(false);
 
@@ -80,6 +87,7 @@ fn run_stub() -> Result<()> {
 struct NotchApp {
     poller: Poller,
     snapshot: Option<NotchSnapshot>,
+    anim: AnimState,
 }
 
 impl Default for NotchApp {
@@ -93,6 +101,7 @@ impl Default for NotchApp {
         NotchApp {
             poller: Poller { socket, poll_ms_idle: 1000, poll_ms_active: 400 },
             snapshot: None,
+            anim: AnimState::new(AnimConfig::default()),
         }
     }
 }
@@ -100,30 +109,70 @@ impl Default for NotchApp {
 #[derive(Debug, Clone)]
 enum Message {
     Tick,
+    AnimTick,
+    PointerEnter,
+    PointerLeave,
+    Escape,
 }
 
 fn update(state: &mut NotchApp, message: Message) {
     match message {
         Message::Tick => match state.poller.tick() {
-            Ok(snap) => state.snapshot = Some(snap),
+            Ok(next) => {
+                if let Some(prev) = &state.snapshot {
+                    if !diff_notable(prev, &next).is_empty() {
+                        state.anim.on_notable(now_ms());
+                    }
+                }
+                state.snapshot = Some(next);
+            }
             // v1 polls best-effort: a daemon that's briefly down (restart,
             // not yet started) just means the last-known snapshot stays on
             // screen instead of the app crashing or flashing empty.
             Err(e) => eprintln!("single-notch: poll failed: {e:#}"),
         },
+        Message::AnimTick => {
+            state.anim.tick(now_ms());
+        }
+        Message::PointerEnter => state.anim.on_pointer_enter(now_ms()),
+        Message::PointerLeave => state.anim.on_pointer_leave(now_ms()),
+        Message::Escape => state.anim.on_escape(now_ms()),
     }
 }
 
 fn view(state: &NotchApp) -> Element<'_, Message> {
-    match &state.snapshot {
+    let (w, h, _opacity) = state.anim.width_height_opacity();
+    let content: Element<'_, Message> = match &state.snapshot {
+        Some(snap) if matches!(state.anim.phase(), AnimPhase::Expanded | AnimPhase::Expanding) => card::view(snap),
         Some(snap) => pill::view(snap),
-        None => container(iced::widget::text("…")).width(Length::Fixed(128.0)).height(Length::Fixed(28.0)).into(),
+        None => container(iced::widget::text("…")).into(),
+    };
+    let sized = container(content).width(Length::Fixed(w)).height(Length::Fixed(h));
+    MouseArea::new(sized)
+        .on_enter(Message::PointerEnter)
+        .on_exit(Message::PointerLeave)
+        .into()
+}
+
+fn handle_key(event: Event, _status: iced::event::Status, _window: iced::window::Id) -> Option<Message> {
+    if let Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(keyboard::key::Named::Escape), .. }) = event {
+        Some(Message::Escape)
+    } else {
+        None
     }
 }
 
 fn subscription(state: &NotchApp) -> Subscription<Message> {
-    let interval = state.poller.interval_ms(false, false);
-    iced::time::every(Duration::from_millis(interval)).map(|_| Message::Tick)
+    let expanded = matches!(state.anim.phase(), AnimPhase::Expanded);
+    let interval = state.poller.interval_ms(expanded, false);
+    let poll_sub = iced::time::every(Duration::from_millis(interval)).map(|_| Message::Tick);
+    let key_sub = iced::event::listen_with(handle_key);
+    let anim_sub = if matches!(state.anim.phase(), AnimPhase::Expanding | AnimPhase::Collapsing) {
+        iced::time::every(Duration::from_millis(16)).map(|_| Message::AnimTick)
+    } else {
+        Subscription::none()
+    };
+    Subscription::batch([poll_sub, key_sub, anim_sub])
 }
 
 fn run_ui() -> iced::Result {

@@ -22,7 +22,7 @@ fn tally_text(snapshot: &NotchSnapshot) -> String {
     }
 }
 
-fn dot<Message: 'static>(color: Color) -> Element<'static, Message> {
+pub(crate) fn dot<Message: 'static>(color: Color) -> Element<'static, Message> {
     container(text(""))
         .width(Length::Fixed(6.0))
         .height(Length::Fixed(6.0))
