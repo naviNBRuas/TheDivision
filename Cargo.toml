@@ -48,3 +48,16 @@ libc = "0.2"
 [profile.release]
 lto = true
 strip = true
+
+# `iced_layershell` 0.19.1 (single-notch's Wayland positioning, E30 Phase
+# 6) pins `iced_exdevtools = "0.19.1"`, which has a real upstream compile
+# bug on this toolchain -- an exhaustive match over winit-core 0.31.0-
+# beta.3's now-`#[non_exhaustive]` `NativeKeyCode` enum. 0.20.1 fixes it
+# and still targets `iced_program = "0.14"` (verified against its own
+# Cargo.toml, same as every other iced 0.14 crate here) -- low-risk patch,
+# not a version-surface change. `iced_layershell`'s manifest pins a `0.19.1`
+# caret requirement that a bare crates.io version bump can't satisfy (0.x
+# semver), so this vendors the real 0.20.1 source (`vendor/`) and patches
+# to it by path instead.
+[patch.crates-io]
+iced_exdevtools = { path = "vendor/iced_exdevtools-0.20.1" }

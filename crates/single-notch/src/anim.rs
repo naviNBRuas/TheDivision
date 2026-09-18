@@ -46,6 +46,10 @@ impl AnimState {
         AnimState { config, phase: AnimPhase::Collapsed, t0_ms: 0, progress: 0.0, pointer_inside: false, hold_until_ms: None }
     }
 
+    pub fn phase(&self) -> AnimPhase {
+        self.phase
+    }
+
     fn begin_expand(&mut self, now_ms: u64) {
         if self.phase != AnimPhase::Expanded {
             self.phase = AnimPhase::Expanding;

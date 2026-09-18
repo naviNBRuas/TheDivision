@@ -57,9 +57,44 @@ fn main() -> Result<()> {
         libc::signal(libc::SIGTERM, handle_sigterm as *const () as usize);
     }
 
-    let result = run_ui().map_err(|e| anyhow::anyhow!("{e}"));
+    let result = run_ui_with_fallback();
     remove_pidfile(&dirs);
     result
+}
+
+/// Live-verification finding 2026-09-17: GNOME/Mutter (this machine's
+/// real compositor) doesn't implement the wlr-layer-shell protocol at
+/// all -- a deliberate GNOME design choice, not a bug -- so
+/// `iced_layershell` panics deep inside its own `zwlr_layer_shell_v1`
+/// global bind with no pre-check API this crate exposes to detect it
+/// ahead of time. `catch_unwind` around the attempt is the pragmatic
+/// way to degrade gracefully to the plain window on GNOME/KDE while
+/// still getting real top-center layer-shell positioning on wlroots
+/// compositors (Sway, Hyprland, river) where the protocol exists.
+#[cfg(target_os = "linux")]
+fn run_ui_with_fallback() -> Result<()> {
+    // Suppress the default panic hook's own trace print for this one
+    // attempt -- a genuinely expected outcome on GNOME/KDE, not a real
+    // crash, so it shouldn't look like one. Restored immediately after,
+    // regardless of which branch below runs, so a real panic inside the
+    // plain-window fallback still prints normally.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let outcome = std::panic::catch_unwind(run_layershell_ui);
+    std::panic::set_hook(default_hook);
+    match outcome {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(anyhow::anyhow!("{e}")),
+        Err(_) => {
+            eprintln!("single-notch: this compositor doesn't support wlr-layer-shell (GNOME/KDE, most likely) -- falling back to a plain window, not top-center-anchored");
+            run_plain_ui().map_err(|e| anyhow::anyhow!("{e}"))
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_ui_with_fallback() -> Result<()> {
+    run_plain_ui().map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 /// Single-instance guard + pidfile write, shared by stub and real-UI
@@ -130,6 +165,7 @@ impl Default for NotchApp {
     }
 }
 
+#[cfg_attr(target_os = "linux", iced_layershell::to_layer_message)]
 #[derive(Debug, Clone)]
 enum Message {
     Tick,
@@ -140,30 +176,50 @@ enum Message {
     Control(single_notch::control::ControlCommand),
 }
 
-fn update(state: &mut NotchApp, message: Message) {
+fn update(state: &mut NotchApp, message: Message) -> iced::Task<Message> {
     match message {
-        Message::Tick => match state.poller.tick() {
-            Ok(next) => {
-                if let Some(prev) = &state.snapshot {
-                    if !diff_notable(prev, &next).is_empty() {
-                        state.anim.on_notable(now_ms());
+        Message::Tick => {
+            match state.poller.tick() {
+                Ok(next) => {
+                    if let Some(prev) = &state.snapshot {
+                        if !diff_notable(prev, &next).is_empty() {
+                            state.anim.on_notable(now_ms());
+                        }
                     }
+                    state.snapshot = Some(next);
                 }
-                state.snapshot = Some(next);
+                // v1 polls best-effort: a daemon that's briefly down
+                // (restart, not yet started) just means the last-known
+                // snapshot stays on screen instead of the app crashing
+                // or flashing empty.
+                Err(e) => eprintln!("single-notch: poll failed: {e:#}"),
             }
-            // v1 polls best-effort: a daemon that's briefly down (restart,
-            // not yet started) just means the last-known snapshot stays on
-            // screen instead of the app crashing or flashing empty.
-            Err(e) => eprintln!("single-notch: poll failed: {e:#}"),
-        },
+            iced::Task::none()
+        }
         Message::AnimTick => {
             state.anim.tick(now_ms());
+            iced::Task::none()
         }
-        Message::PointerEnter => state.anim.on_pointer_enter(now_ms()),
-        Message::PointerLeave => state.anim.on_pointer_leave(now_ms()),
-        Message::Escape => state.anim.on_escape(now_ms()),
-        Message::Control(single_notch::control::ControlCommand::Show) => state.anim.force_expand(now_ms()),
-        Message::Control(single_notch::control::ControlCommand::Hide) => state.anim.force_collapse(now_ms()),
+        Message::PointerEnter => {
+            state.anim.on_pointer_enter(now_ms());
+            iced::Task::none()
+        }
+        Message::PointerLeave => {
+            state.anim.on_pointer_leave(now_ms());
+            iced::Task::none()
+        }
+        Message::Escape => {
+            state.anim.on_escape(now_ms());
+            iced::Task::none()
+        }
+        Message::Control(single_notch::control::ControlCommand::Show) => {
+            state.anim.force_expand(now_ms());
+            iced::Task::none()
+        }
+        Message::Control(single_notch::control::ControlCommand::Hide) => {
+            state.anim.force_collapse(now_ms());
+            iced::Task::none()
+        }
         Message::Control(single_notch::control::ControlCommand::Quit) => {
             // `main`'s post-`run_ui()` cleanup never runs after a direct
             // `exit()` -- remove the pidfile here so both the control-
@@ -175,6 +231,12 @@ fn update(state: &mut NotchApp, message: Message) {
             }
             std::process::exit(0);
         }
+        // Layer-shell-injected variants (`#[to_layer_message]`, Linux
+        // only) this app never emits itself -- static Settings-time
+        // anchor/size cover our fixed top-center strip, no runtime
+        // layer-shell commands needed.
+        #[allow(unreachable_patterns)]
+        _ => iced::Task::none(),
     }
 }
 
@@ -186,10 +248,12 @@ fn view(state: &NotchApp) -> Element<'_, Message> {
         None => container(iced::widget::text("…")).into(),
     };
     let sized = container(content).width(Length::Fixed(w)).height(Length::Fixed(h));
-    MouseArea::new(sized)
-        .on_enter(Message::PointerEnter)
-        .on_exit(Message::PointerLeave)
-        .into()
+    let area = MouseArea::new(sized).on_enter(Message::PointerEnter).on_exit(Message::PointerLeave);
+    // On Linux this view fills a full-width, transparent top-anchored
+    // layer-shell strip (see `run_ui`'s `LayerShellSettings`) -- centering
+    // the actual pill/card content horizontally within it is what makes
+    // it visually sit top-center rather than pinned to a corner.
+    container(area).width(Length::Fill).center_x(Length::Fill).into()
 }
 
 fn handle_key(event: Event, _status: iced::event::Status, _window: iced::window::Id) -> Option<Message> {
@@ -225,9 +289,45 @@ fn subscription(state: &NotchApp) -> Subscription<Message> {
     Subscription::batch([poll_sub, key_sub, anim_sub, control_sub, sigterm_sub])
 }
 
-fn run_ui() -> iced::Result {
+fn run_plain_ui() -> iced::Result {
     iced::application(NotchApp::default, update, view)
         .subscription(subscription)
         .title("SingleCLI Notch")
+        .run()
+}
+
+/// Phase 6 Task 13: real Wayland layer-shell positioning. Anchoring
+/// `Top | Left | Right` with a small fixed height (not `Left`/`Right`
+/// alone) gives a full-width, transparent, top-anchored strip -- `view`
+/// then centers the actual pill/card content within it, which is the
+/// standard wlr-layer-shell way to get a horizontally-centered small
+/// element rather than one pinned to a screen corner (confirmed against
+/// `iced_layershell`'s own bottom-bar README example, which anchors the
+/// same three sides for its full-width bar). `exclusive_zone: 0` means
+/// this never reserves screen space or pushes other windows around.
+#[cfg(target_os = "linux")]
+fn namespace() -> String {
+    String::from("single-notch")
+}
+
+#[cfg(target_os = "linux")]
+fn run_layershell_ui() -> Result<(), iced_layershell::Error> {
+    use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
+    use iced_layershell::settings::{LayerShellSettings, Settings};
+
+    iced_layershell::application(NotchApp::default, namespace, update, view)
+        .subscription(subscription)
+        .settings(Settings {
+            layer_settings: LayerShellSettings {
+                anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+                layer: Layer::Top,
+                exclusive_zone: 0,
+                size: Some((0, 40)),
+                keyboard_interactivity: KeyboardInteractivity::OnDemand,
+                events_transparent: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .run()
 }
