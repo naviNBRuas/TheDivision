@@ -8,7 +8,24 @@
 
 use anyhow::{Context, Result};
 use single_core::SingleDirs;
+use std::io::Write;
 use std::time::{Duration, Instant};
+
+/// Sends a one-line JSON control command (`{"cmd":"show"|"hide"|"quit"}`)
+/// to a running HUD's control socket. Deliberately not shared with
+/// `single-notch::control`'s identical wire shape -- depending on that
+/// crate from here would drag the whole iced/wgpu stack into this plain
+/// CLI binary just for a socket write. Errors (no live HUD, stale
+/// socket) are the caller's to decide how to handle -- `show`/`hide`
+/// surface them, `disable`'s quit path treats them as "fall back to
+/// SIGTERM".
+pub fn send_command(dirs: &SingleDirs, cmd: &str) -> Result<()> {
+    let mut stream = std::os::unix::net::UnixStream::connect(dirs.notch_socket_path())
+        .with_context(|| "connecting to the notch control socket (is it running? `single notch enable`)")?;
+    let payload = format!("{{\"cmd\":\"{cmd}\"}}\n");
+    stream.write_all(payload.as_bytes())?;
+    Ok(())
+}
 
 pub fn read_pid(dirs: &SingleDirs) -> Option<u32> {
     let text = std::fs::read_to_string(dirs.notch_pid_file()).ok()?;

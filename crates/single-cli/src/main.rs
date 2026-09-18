@@ -1664,10 +1664,21 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             NotchCommand::Disable => {
-                if notch_proc::stop(&dirs)? {
-                    println!("single-notch disabled");
-                } else {
+                if !notch_proc::is_alive(&dirs) {
                     println!("single-notch was not running");
+                } else {
+                    // Prefer a clean quit over the control socket -- lets
+                    // the HUD process exit its own event loop and remove
+                    // its pidfile itself; SIGTERM (notch_proc::stop) is
+                    // the fallback for a HUD that isn't listening (stub
+                    // mode, or the control socket genuinely down).
+                    if notch_proc::send_command(&dirs, "quit").is_ok() {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                    }
+                    if notch_proc::is_alive(&dirs) {
+                        notch_proc::stop(&dirs)?;
+                    }
+                    println!("single-notch disabled");
                 }
             }
             NotchCommand::Status => {
@@ -1678,8 +1689,13 @@ fn main() -> anyhow::Result<()> {
                     println!("hud_alive=false");
                 }
             }
-            NotchCommand::Show | NotchCommand::Hide => {
-                println!("single notch show/hide is not yet available (needs the control socket, Phase 5)");
+            NotchCommand::Show => {
+                notch_proc::send_command(&dirs, "show")?;
+                println!("single-notch: show sent");
+            }
+            NotchCommand::Hide => {
+                notch_proc::send_command(&dirs, "hide")?;
+                println!("single-notch: hide sent");
             }
         },
         Command::Doctor { fix } => {

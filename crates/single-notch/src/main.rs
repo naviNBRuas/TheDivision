@@ -43,32 +43,56 @@ fn main() -> Result<()> {
     if stub_flag || stub_env {
         return run_stub();
     }
-    run_ui().map_err(|e| anyhow::anyhow!("{e}"))
+
+    let dirs = SingleDirs::discover()?;
+    if !claim_pidfile(&dirs)? {
+        return Ok(()); // a live instance already owns the pidfile
+    }
+    // SAFETY: `handle_sigterm` (shared with `run_stub`) only touches a
+    // static `AtomicBool` -- async-signal-safe. The flag is polled from
+    // an iced subscription (see `subscription`'s `sigterm_sub`) rather
+    // than acting on it here, so the actual exit + pidfile cleanup always
+    // happens on the normal event-loop thread, never inside the handler.
+    unsafe {
+        libc::signal(libc::SIGTERM, handle_sigterm as *const () as usize);
+    }
+
+    let result = run_ui().map_err(|e| anyhow::anyhow!("{e}"));
+    remove_pidfile(&dirs);
+    result
+}
+
+/// Single-instance guard + pidfile write, shared by stub and real-UI
+/// mode -- `disable`/`status`/`show`/`hide` all key off this same
+/// pidfile regardless of which mode is actually running, so a caller
+/// never needs to know or care which one it launched. Returns `Ok(true)`
+/// if this process should proceed (it now owns the pidfile), `Ok(false)`
+/// if a live instance already owns it (caller should exit cleanly, not
+/// race it for the file).
+fn claim_pidfile(dirs: &SingleDirs) -> Result<bool> {
+    dirs.ensure_created()?;
+    let pid_file = dirs.notch_pid_file();
+    if let Some(parent) = pid_file.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    if let Some(existing_pid) = std::fs::read_to_string(&pid_file).ok().and_then(|text| text.trim().parse::<u32>().ok()) {
+        if pid_alive(existing_pid) {
+            return Ok(false);
+        }
+    }
+    std::fs::write(&pid_file, std::process::id().to_string()).with_context(|| format!("writing {}", pid_file.display()))?;
+    Ok(true)
+}
+
+fn remove_pidfile(dirs: &SingleDirs) {
+    let _ = std::fs::remove_file(dirs.notch_pid_file());
 }
 
 fn run_stub() -> Result<()> {
     let dirs = SingleDirs::discover()?;
-    dirs.ensure_created()?;
-
-    let pid_file = dirs.notch_pid_file();
-    if let Some(parent) = pid_file.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
+    if !claim_pidfile(&dirs)? {
+        return Ok(());
     }
-
-    // Single-instance guard: a second launch while a live instance already
-    // owns the pidfile exits cleanly rather than racing it for the file.
-    if let Some(existing_pid) = std::fs::read_to_string(&pid_file)
-        .ok()
-        .and_then(|text| text.trim().parse::<u32>().ok())
-    {
-        if pid_alive(existing_pid) {
-            return Ok(());
-        }
-    }
-
-    std::fs::write(&pid_file, std::process::id().to_string())
-        .with_context(|| format!("writing {}", pid_file.display()))?;
 
     // SAFETY: `handle_sigterm` only touches a static `AtomicBool`, which is
     // async-signal-safe.
@@ -80,7 +104,7 @@ fn run_stub() -> Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    let _ = std::fs::remove_file(&pid_file);
+    remove_pidfile(&dirs);
     Ok(())
 }
 
@@ -113,6 +137,7 @@ enum Message {
     PointerEnter,
     PointerLeave,
     Escape,
+    Control(single_notch::control::ControlCommand),
 }
 
 fn update(state: &mut NotchApp, message: Message) {
@@ -137,6 +162,19 @@ fn update(state: &mut NotchApp, message: Message) {
         Message::PointerEnter => state.anim.on_pointer_enter(now_ms()),
         Message::PointerLeave => state.anim.on_pointer_leave(now_ms()),
         Message::Escape => state.anim.on_escape(now_ms()),
+        Message::Control(single_notch::control::ControlCommand::Show) => state.anim.force_expand(now_ms()),
+        Message::Control(single_notch::control::ControlCommand::Hide) => state.anim.force_collapse(now_ms()),
+        Message::Control(single_notch::control::ControlCommand::Quit) => {
+            // `main`'s post-`run_ui()` cleanup never runs after a direct
+            // `exit()` -- remove the pidfile here so both the control-
+            // socket quit path and a SIGTERM (routed to this same
+            // message via `subscription`'s `sigterm_sub`) leave no stale
+            // pidfile behind.
+            if let Ok(dirs) = SingleDirs::discover() {
+                remove_pidfile(&dirs);
+            }
+            std::process::exit(0);
+        }
     }
 }
 
@@ -172,7 +210,19 @@ fn subscription(state: &NotchApp) -> Subscription<Message> {
     } else {
         Subscription::none()
     };
-    Subscription::batch([poll_sub, key_sub, anim_sub])
+    let control_sub = single_notch::control::subscription().map(Message::Control);
+    // Poll the SIGTERM flag on the same cadence as the poll timer rather
+    // than a dedicated subscription -- `TERMINATED` only ever needs to be
+    // noticed within about a second, and this avoids one more always-on
+    // timer subscription for something that's normally never set.
+    let sigterm_sub = iced::time::every(Duration::from_millis(200)).map(|_| {
+        if TERMINATED.load(Ordering::SeqCst) {
+            Message::Control(single_notch::control::ControlCommand::Quit)
+        } else {
+            Message::AnimTick // harmless no-op-ish tick when not terminating (still ticks anim, which is idempotent when Collapsed)
+        }
+    });
+    Subscription::batch([poll_sub, key_sub, anim_sub, control_sub, sigterm_sub])
 }
 
 fn run_ui() -> iced::Result {

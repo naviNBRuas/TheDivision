@@ -3,6 +3,7 @@
 
 pub mod anim;
 pub mod client;
+pub mod control;
 pub mod model;
 pub mod poll;
 pub mod ui;
