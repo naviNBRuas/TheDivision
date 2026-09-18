@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 libc.workspace = true
+serde_json.workspace = true
 iced.workspace = true
 single-core = { path = "../single-core" }
 single-protocol = { path = "../single-protocol" }
