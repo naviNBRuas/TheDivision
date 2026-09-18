@@ -9,6 +9,8 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.19.0]
+
 ### Added
 - GNOME Shell extension notch (`extensions/gnome-shell/single-notch@nbr.company`): right-edge, vertically centered overlay drawn as shell chrome instead of a window. Faint sliver when idle, summary on hover, per-item tooltips, click to expand into a detail card, auto-hide on leave. `single notch enable/disable/status` install and toggle it on GNOME.
 - `single-notch --snapshot` prints the aggregated pool/goal/agent state as JSON.
