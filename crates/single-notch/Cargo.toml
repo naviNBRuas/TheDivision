@@ -15,3 +15,4 @@ anyhow.workspace = true
 libc.workspace = true
 iced.workspace = true
 single-core = { path = "../single-core" }
+single-protocol = { path = "../single-protocol" }
