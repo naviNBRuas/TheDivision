@@ -9,6 +9,12 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.22.0]
+
+### Changed
+- Notch hover strip is now a slim vertical stack (health, Goals, Pool, Agents) instead of a horizontal row, about 124px wide.
+- Clicking the strip's padding reopens the last-used tab; that section is subtly marked in the strip.
+
 ## [0.21.0]
 
 ### Added

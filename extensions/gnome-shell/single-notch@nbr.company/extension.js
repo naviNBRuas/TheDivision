@@ -133,7 +133,7 @@ export default class SingleNotch extends Extension {
         });
         this._pressId = this._root.connect('button-press-event', () => {
             if (this._state === 'peek')
-                this._openTab('overview');
+                this._openTab(this._tab);
             return Clutter.EVENT_STOP;
         });
         this._stageId = global.stage.connect('captured-event', (_s, event) => this._onStageEvent(event));
@@ -581,7 +581,7 @@ export default class SingleNotch extends Extension {
         this._bar.visible = this._state === 'hidden';
         this._content.destroy_all_children();
         this._content.visible = this._state !== 'hidden';
-        this._content.style = `padding: ${this._state === 'peek' ? '4px 5px' : `${PAD}px`}; spacing: 6px;`;
+        this._content.style = `padding: ${this._state === 'peek' ? '5px 5px 5px 7px' : `${PAD}px`}; spacing: 6px;`;
 
         if (this._state === 'hidden')
             return;
@@ -660,15 +660,16 @@ export default class SingleNotch extends Extension {
     }
 
     _peekStrip(s, color, running) {
-        const CHIP = 'spacing: 5px; padding: 4px 9px; border-radius: 10px; background-color: transparent;';
-        const CHIP_HOVER = 'spacing: 5px; padding: 4px 9px; border-radius: 10px; background-color: rgba(255,255,255,0.10);';
-        const strip = new St.BoxLayout({style: 'spacing: 1px;'});
+        const style = (bg) => `spacing: 8px; padding: 5px 9px; border-radius: 10px; background-color: ${bg};`;
+        const strip = new St.BoxLayout({vertical: true, style: 'spacing: 2px;'});
         const chip = (id, children, tip) => {
-            const c = new St.BoxLayout({reactive: true, track_hover: true, style: CHIP});
+            // Marks the section a background click would reopen.
+            const rest = id === this._tab ? 'rgba(255,255,255,0.05)' : 'transparent';
+            const c = new St.BoxLayout({reactive: true, track_hover: true, x_expand: true, style: style(rest)});
             children.forEach(ch => c.add_child(ch));
             c.connect('notify::hover', () => {
                 if (c.get_stage())
-                    c.style = c.hover ? CHIP_HOVER : CHIP;
+                    c.style = style(c.hover ? 'rgba(255,255,255,0.11)' : rest);
             });
             c.connect('button-press-event', () => {
                 this._openTab(id);
@@ -677,23 +678,29 @@ export default class SingleNotch extends Extension {
             this._tipFor(c, tip);
             strip.add_child(c);
         };
+        const row = (name, badge, badgeColor) => [
+            this._label(name, {size: 12, expand: true, ellipsize: false}),
+            this._label(badge, {color: badgeColor, size: 11, ellipsize: false}),
+        ];
 
         const head = this._offline ? 'offline' : !s ? 'loading…' : `${this._pct()}%`;
-        chip('overview', [this._dot(color, 8, running), this._label(head, {bold: true, size: 12, ellipsize: false})],
-            `${this._summaryTip()}\nClick for the overview.`);
+        const word = s && !this._offline ? (TONE_WORD[s.tone] ?? '') : '';
+        chip('overview', [
+            this._dot(color, 8, running),
+            this._label(head, {bold: true, size: 12, ellipsize: false}),
+            this._label(word, {color: MUTED, size: 11, expand: true, ellipsize: false}),
+        ], `${this._summaryTip()}\nClick for the overview.`);
         if (!s || this._offline)
             return strip;
 
         const d = s.detail;
-        const goalTone = d.goals_blocked ? RED : d.goals_running ? TEAL : MUTED;
-        chip('goals', [this._label('Goals', {size: 12, ellipsize: false}), this._label(d.goals.length, {color: goalTone, size: 11, ellipsize: false})],
-            `${d.goals_running} running, ${d.goals_queued} queued, ${d.goals_waiting} waiting, ${d.goals_blocked} blocked. Click to open Goals.`);
         const benched = s.benches.length;
-        chip('pool', [this._label('Pool', {size: 12, ellipsize: false}),
-            this._label(benched ? `${benched} benched` : s.provider_count, {color: benched ? AMBER : MUTED, size: 11, ellipsize: false})],
-            `${s.provider_count} providers, ${s.total_keys} keys, ${benched} benched. Click to open Pool.`);
         const signed = d.agent_rows.filter(a => a.detected).length;
-        chip('agents', [this._label('Agents', {size: 12, ellipsize: false}), this._label(signed, {color: MUTED, size: 11, ellipsize: false})],
+        chip('goals', row('Goals', d.goals.length, d.goals_blocked ? RED : d.goals_running ? TEAL : MUTED),
+            `${d.goals_running} running, ${d.goals_queued} queued, ${d.goals_waiting} waiting, ${d.goals_blocked} blocked. Click to open Goals.`);
+        chip('pool', row('Pool', benched ? `${benched} benched` : s.provider_count, benched ? AMBER : MUTED),
+            `${s.provider_count} providers, ${s.total_keys} keys, ${benched} benched. Click to open Pool.`);
+        chip('agents', row('Agents', signed, MUTED),
             `${signed} of ${d.agent_rows.length} agents installed. Click to open Agents.`);
         return strip;
     }
