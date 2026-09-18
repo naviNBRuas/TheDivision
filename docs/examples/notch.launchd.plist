@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SingleCLI notch HUD -- launchd user agent (macOS).
+
+  Install:
+    cp notch.launchd.plist ~/Library/LaunchAgents/company.nbr.single-notch.plist
+    launchctl load ~/Library/LaunchAgents/company.nbr.single-notch.plist
+
+  `KeepAlive` is deliberately `false`: this only runs the HUD once at
+  login, matching macOS panel conventions, rather than respawning it in
+  a tight loop the way the systemd unit's `Restart=on-failure` does.
+
+  This plist starts the *process* at login regardless of `notch.toml`'s
+  `enabled` flag -- the HUD itself still checks that flag and stays
+  collapsed/inert if you haven't run `single notch enable` at least
+  once. Only install this file if you actually want the HUD to persist
+  across logout/login; day-to-day toggling should go through
+  `single notch enable`/`disable` instead.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>company.nbr.single-notch</string>
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Adjust if `single-notch` isn't installed at the default location. -->
+        <string>/usr/local/bin/single-notch</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/single-notch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/single-notch.err</string>
+</dict>
+</plist>

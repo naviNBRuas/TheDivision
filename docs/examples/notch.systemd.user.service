@@ -1,0 +1,34 @@
+# SingleCLI notch HUD -- systemd user unit (Linux).
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp notch.systemd.user.service ~/.config/systemd/user/single-notch.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now single-notch.service
+#
+# The HUD itself still respects `notch.toml`'s `enabled = false` default
+# -- this unit only controls whether the *process* starts at login, not
+# whether it renders anything. Prefer `single notch enable`/`disable` for
+# day-to-day toggling; use this unit only if you want it to survive a
+# logout/login cycle automatically.
+#
+# Positioning note: real top-center layer-shell placement only works on
+# wlroots-based Wayland compositors (Sway, Hyprland, river). On GNOME
+# (Mutter) or KDE (KWin), the HUD automatically falls back to an ordinary
+# window -- confirmed live, not a guess -- since neither implements the
+# wlr-layer-shell protocol.
+
+[Unit]
+Description=SingleCLI notch HUD
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Adjust if `single-notch` isn't installed at the default location.
+ExecStart=%h/.local/bin/single-notch
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

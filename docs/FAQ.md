@@ -57,6 +57,22 @@ No — their tests skip cleanly rather than fail when
 "Development" section for how to run them locally against real instances
 if you want to exercise that code path.
 
+## What is `single notch`?
+
+An optional top-center overlay (macOS / Linux) that shows live free-provider
+pool health — key tallies, benches, recent goals, agent auth dots. It is
+off by default. Enable with `single notch enable` (starts a companion
+`single-notch` process that polls `runtime.sock`). Disable with
+`single notch disable`. It does not replace the TUI Pool tab and does not
+edit pool config. Session autostart examples: `docs/examples/notch.*`.
+
+Real top-center layer-shell positioning only works on wlroots-based
+Wayland compositors (Sway, Hyprland, river) — confirmed live. On GNOME
+(Mutter) or KDE (KWin), which don't implement the `wlr-layer-shell`
+protocol, the HUD automatically and cleanly falls back to an ordinary
+window instead of crashing; it's still fully functional, just not
+pinned to the top-center notch area.
+
 ## Where do I report a bug or ask something not covered here?
 
 See [SUPPORT.md](../SUPPORT.md).
