@@ -9,6 +9,47 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.18.0]
+
+The notch HUD (E30, `docs/superpowers/plans/2026-09-17-e30-notch-hud.md`):
+an opt-in, top-center overlay showing live free-provider pool health —
+key tallies, benches, recent goal activity, agent auth dots. Off by
+default; the daemon stays headless either way.
+
+- Added: `single-notch` — a new workspace crate, real iced 0.14 UI. Polls
+  `single-runtimed` (composite `NotchSnapshot` op when the daemon
+  supports it, four-op fallback otherwise) and renders a collapsed pill
+  that expands into a detail card on hover or a notable pool event
+  (new bench, degraded flip, a goal going terminal, an agent losing
+  auth, a healthy-ratio drop), auto-collapsing after a configurable
+  hold.
+- Added: `single notch enable/disable/status/show/hide` — companion
+  process lifecycle (pidfile + single-instance guard, shared between the
+  real UI and a `--stub` test mode) and a control socket for `show`/
+  `hide`/`quit`. `disable` prefers a clean quit over the socket, falling
+  back to SIGTERM only if the HUD isn't listening.
+- Added: real Wayland layer-shell positioning (`iced_layershell`) on
+  wlroots compositors (Sway, Hyprland, river) — genuinely top-center,
+  transparent, zero exclusive zone. On GNOME (Mutter) or KDE (KWin),
+  which don't implement `wlr-layer-shell` at all, this is detected live
+  and the HUD falls back to an ordinary window automatically rather than
+  crashing — confirmed against a real GNOME session, not assumed.
+- Added: `NotchConfig` (`single-core`) — `notch.toml`, default
+  `enabled = false`, idle/active poll intervals, auto-hide duration.
+- Fixed (found during this epic, unrelated to the HUD itself but
+  encountered live): a real upstream compile bug in `iced_exdevtools`
+  0.19.1 (a `#[non_exhaustive]` enum version-skew against `winit-core`)
+  — vendored the fixed 0.20.1 source and patched via `[patch.crates-io]`
+  since `iced_layershell`'s manifest pins a caret range too narrow to
+  resolve it directly.
+- Deferred: macOS panel semantics/vibrancy (plan Task 12) and an X11
+  fallback (plan Task 13's second half) — this machine's real environment
+  is Wayland/GNOME, so neither was implementable-and-verifiable here.
+  The Wayland layer-shell path and its GNOME/KDE fallback are both real
+  and live-tested; macOS/X11 remain open follow-up work.
+- Docs: FAQ entry + systemd user unit / launchd plist examples for
+  session autostart (`docs/examples/notch.*`).
+
 ## [0.17.6]
 
 - Added: `single-lsp` now evicts idle language servers instead of holding
