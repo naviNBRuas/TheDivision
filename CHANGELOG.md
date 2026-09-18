@@ -9,6 +9,15 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.21.0]
+
+### Added
+- Notch hover strip lists the sections (overview, Goals, Pool, Agents) with live counts; clicking one opens the card straight on that tab. Clicking the strip's padding opens Overview.
+
+### Changed
+- The hover strip is smaller, sized to its content, and no longer shows the health bar (the expanded card still does).
+- Removed the box-shadow on the notch and its tooltip, which drew a translucent rectangle behind the rounded corners.
+
 ## [0.20.0]
 
 ### Added

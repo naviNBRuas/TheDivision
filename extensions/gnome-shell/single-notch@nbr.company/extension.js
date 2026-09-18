@@ -24,10 +24,8 @@ const TEXT = '#ECECEE';
 const SURFACE = 'rgba(255,255,255,0.05)';
 
 const W_HIDDEN = 6;
-const W_PEEK = 236;
 const W_CARD = 392;
 const H_HIDDEN = 72;
-const H_PEEK = 48;
 const PAD = 14;
 const ANIM_MS = 200;
 const FADE_MS = 140;
@@ -121,7 +119,7 @@ export default class SingleNotch extends Extension {
             reactive: false,
             style: 'background-color: rgba(14,15,18,0.96); color: ' + TEXT + '; border-radius: 9px; ' +
                 'border: 1px solid rgba(255,255,255,0.10); padding: 7px 11px; font-size: 12px; ' +
-                'max-width: 320px; box-shadow: 0 6px 20px rgba(0,0,0,0.45);',
+                'max-width: 320px;',
         });
         this._tip.clutter_text.line_wrap = true;
         this._tip.set_position(-4000, -4000);
@@ -135,7 +133,7 @@ export default class SingleNotch extends Extension {
         });
         this._pressId = this._root.connect('button-press-event', () => {
             if (this._state === 'peek')
-                this._setState('card');
+                this._openTab('overview');
             return Clutter.EVENT_STOP;
         });
         this._stageId = global.stage.connect('captured-event', (_s, event) => this._onStageEvent(event));
@@ -197,7 +195,7 @@ export default class SingleNotch extends Extension {
     _rootStyle(accent) {
         return 'background-color: rgba(16,17,20,0.94); border-radius: 16px 0 0 16px; ' +
             'border: 1px solid rgba(255,255,255,0.09); border-right-width: 0; ' +
-            `border-left: 2px solid ${accent}; box-shadow: -6px 0 28px rgba(0,0,0,0.40);`;
+            `border-left: 2px solid ${accent};`;
     }
 
     // ---- data -----------------------------------------------------------------
@@ -425,8 +423,11 @@ export default class SingleNotch extends Extension {
         const mon = Main.layoutManager.primaryMonitor;
         if (this._state === 'hidden')
             return [W_HIDDEN, H_HIDDEN];
-        if (this._state === 'peek')
-            return [W_PEEK, H_PEEK];
+        if (this._state === 'peek') {
+            const [, pw] = this._content.get_preferred_width(-1);
+            const [, ph] = this._content.get_preferred_height(pw);
+            return [Math.ceil(pw) + 2, Math.ceil(ph) + 2];
+        }
         const maxH = Math.round(mon.height * 0.78);
         const [, natH] = this._content.get_preferred_height(W_CARD);
         return [W_CARD, Math.min(natH, maxH)];
@@ -553,25 +554,6 @@ export default class SingleNotch extends Extension {
         return Math.round((this._snapshot?.healthy_ratio ?? 0) * 100);
     }
 
-    _peekText() {
-        const s = this._snapshot;
-        if (this._offline)
-            return 'daemon unreachable';
-        if (!s)
-            return 'loading…';
-        const d = s.detail;
-        const parts = [`${this._pct()}%`];
-        if (d.goals_running)
-            parts.push(`${d.goals_running} running`);
-        if (d.goals_blocked)
-            parts.push(`${d.goals_blocked} blocked`);
-        if (s.benches.length)
-            parts.push(`${s.benches.length} benched`);
-        if (parts.length === 1)
-            parts.push(`${s.total_keys} keys`);
-        return parts.join(' · ');
-    }
-
     _summaryTip() {
         const s = this._snapshot;
         if (this._offline || !s)
@@ -599,17 +581,14 @@ export default class SingleNotch extends Extension {
         this._bar.visible = this._state === 'hidden';
         this._content.destroy_all_children();
         this._content.visible = this._state !== 'hidden';
-        this._content.style = `padding: ${this._state === 'peek' ? '7px 14px' : `${PAD}px`}; spacing: 6px;`;
+        this._content.style = `padding: ${this._state === 'peek' ? '4px 5px' : `${PAD}px`}; spacing: 6px;`;
 
         if (this._state === 'hidden')
             return;
 
         const running = !!s && s.detail.goals_running > 0;
         if (this._state === 'peek') {
-            this._content.add_child(this._row(
-                [this._dot(color, 9, running), this._label(this._peekText(), {bold: true, expand: true, size: 13})],
-                this._summaryTip(), {pad: '0'}));
-            this._content.add_child(this._ratioBar(s?.healthy_ratio ?? 0, color, W_PEEK - 28 - 2));
+            this._content.add_child(this._peekStrip(s, color, running));
         } else {
             this._renderCard(s, color, running);
         }
@@ -666,6 +645,57 @@ export default class SingleNotch extends Extension {
                     a.value = saved;
                 return GLib.SOURCE_REMOVE;
             });
+    }
+
+    _openTab(id) {
+        this._tab = id;
+        this._scrollPos = 0;
+        if (this._state === 'card') {
+            this._hideTip();
+            this._render(true);
+            this._place(true);
+        } else {
+            this._setState('card');
+        }
+    }
+
+    _peekStrip(s, color, running) {
+        const CHIP = 'spacing: 5px; padding: 4px 9px; border-radius: 10px; background-color: transparent;';
+        const CHIP_HOVER = 'spacing: 5px; padding: 4px 9px; border-radius: 10px; background-color: rgba(255,255,255,0.10);';
+        const strip = new St.BoxLayout({style: 'spacing: 1px;'});
+        const chip = (id, children, tip) => {
+            const c = new St.BoxLayout({reactive: true, track_hover: true, style: CHIP});
+            children.forEach(ch => c.add_child(ch));
+            c.connect('notify::hover', () => {
+                if (c.get_stage())
+                    c.style = c.hover ? CHIP_HOVER : CHIP;
+            });
+            c.connect('button-press-event', () => {
+                this._openTab(id);
+                return Clutter.EVENT_STOP;
+            });
+            this._tipFor(c, tip);
+            strip.add_child(c);
+        };
+
+        const head = this._offline ? 'offline' : !s ? 'loading…' : `${this._pct()}%`;
+        chip('overview', [this._dot(color, 8, running), this._label(head, {bold: true, size: 12, ellipsize: false})],
+            `${this._summaryTip()}\nClick for the overview.`);
+        if (!s || this._offline)
+            return strip;
+
+        const d = s.detail;
+        const goalTone = d.goals_blocked ? RED : d.goals_running ? TEAL : MUTED;
+        chip('goals', [this._label('Goals', {size: 12, ellipsize: false}), this._label(d.goals.length, {color: goalTone, size: 11, ellipsize: false})],
+            `${d.goals_running} running, ${d.goals_queued} queued, ${d.goals_waiting} waiting, ${d.goals_blocked} blocked. Click to open Goals.`);
+        const benched = s.benches.length;
+        chip('pool', [this._label('Pool', {size: 12, ellipsize: false}),
+            this._label(benched ? `${benched} benched` : s.provider_count, {color: benched ? AMBER : MUTED, size: 11, ellipsize: false})],
+            `${s.provider_count} providers, ${s.total_keys} keys, ${benched} benched. Click to open Pool.`);
+        const signed = d.agent_rows.filter(a => a.detected).length;
+        chip('agents', [this._label('Agents', {size: 12, ellipsize: false}), this._label(signed, {color: MUTED, size: 11, ellipsize: false})],
+            `${signed} of ${d.agent_rows.length} agents installed. Click to open Agents.`);
+        return strip;
     }
 
     _vadj() {
