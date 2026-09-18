@@ -4729,6 +4729,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "directories",
+ "libc",
  "reqwest",
  "rpassword",
  "rusqlite",
@@ -4807,11 +4808,10 @@ dependencies = [
 name = "single-notch"
 version = "0.17.7"
 dependencies = [
+ "anyhow",
  "iced",
+ "libc",
  "single-core",
- "single-protocol",
- "single-runtime",
- "single-tui",
 ]
 
 [[package]]
