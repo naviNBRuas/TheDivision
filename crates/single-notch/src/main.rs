@@ -4,18 +4,19 @@
 //! SIGTERM, so `single notch enable|disable|status` (see
 //! `single-cli::notch_proc`) has a real companion process to spawn,
 //! detect, and stop even while the real UI is still being built.
-//! Otherwise runs the Phase 1 spike window: minimal, no custom container
-//! styling or close-key handling yet -- both need iced 0.14's real widget
-//! API confirmed live (docs.rs, not memory) before adding; the OS window
-//! chrome's own close control is enough for a discardable spike. See
-//! `docs/superpowers/plans/2026-09-17-e30-notch-hud.md` Phase 1 Task 1
-//! and Phase 2's stub-lifecycle goal.
+//! Otherwise runs the real (if still collapsed-pill-only) notch window,
+//! polling `single-runtimed` on a timer per
+//! `docs/superpowers/plans/2026-09-17-e30-notch-hud.md` Phase 4.
 
 use anyhow::{Context, Result};
-use iced::widget::{column, container, text};
-use iced::{Element, Length};
+use iced::widget::container;
+use iced::{Element, Length, Subscription};
 use single_core::SingleDirs;
+use single_notch::model::NotchSnapshot;
+use single_notch::poll::Poller;
+use single_notch::ui::pill;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 static TERMINATED: AtomicBool = AtomicBool::new(false);
 
@@ -76,25 +77,58 @@ fn run_stub() -> Result<()> {
     Ok(())
 }
 
-#[derive(Default)]
-struct NotchApp;
-
-#[derive(Debug, Clone)]
-enum Message {}
-
-fn update(_state: &mut NotchApp, message: Message) {
-    match message {}
+struct NotchApp {
+    poller: Poller,
+    snapshot: Option<NotchSnapshot>,
 }
 
-fn view(_state: &NotchApp) -> Element<'_, Message> {
-    container(column![text("SingleCLI Notch").size(14)].padding(10))
-        .width(Length::Fixed(128.0))
-        .height(Length::Fixed(28.0))
-        .into()
+impl Default for NotchApp {
+    fn default() -> Self {
+        // Best-effort socket discovery -- if `SingleDirs::discover` fails
+        // (config dir genuinely missing), fall back to a path that will
+        // simply fail every poll rather than panic the whole app on boot.
+        let socket = SingleDirs::discover()
+            .map(|d| d.socket_path())
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/single-notch-no-socket"));
+        NotchApp {
+            poller: Poller { socket, poll_ms_idle: 1000, poll_ms_active: 400 },
+            snapshot: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    Tick,
+}
+
+fn update(state: &mut NotchApp, message: Message) {
+    match message {
+        Message::Tick => match state.poller.tick() {
+            Ok(snap) => state.snapshot = Some(snap),
+            // v1 polls best-effort: a daemon that's briefly down (restart,
+            // not yet started) just means the last-known snapshot stays on
+            // screen instead of the app crashing or flashing empty.
+            Err(e) => eprintln!("single-notch: poll failed: {e:#}"),
+        },
+    }
+}
+
+fn view(state: &NotchApp) -> Element<'_, Message> {
+    match &state.snapshot {
+        Some(snap) => pill::view(snap),
+        None => container(iced::widget::text("…")).width(Length::Fixed(128.0)).height(Length::Fixed(28.0)).into(),
+    }
+}
+
+fn subscription(state: &NotchApp) -> Subscription<Message> {
+    let interval = state.poller.interval_ms(false, false);
+    iced::time::every(Duration::from_millis(interval)).map(|_| Message::Tick)
 }
 
 fn run_ui() -> iced::Result {
     iced::application(NotchApp::default, update, view)
+        .subscription(subscription)
         .title("SingleCLI Notch")
         .run()
 }

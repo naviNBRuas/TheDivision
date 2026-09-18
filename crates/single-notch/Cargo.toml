@@ -14,6 +14,6 @@ path = "src/main.rs"
 anyhow.workspace = true
 libc.workspace = true
 serde_json.workspace = true
-iced.workspace = true
+iced = { workspace = true, features = ["tokio"] }
 single-core = { path = "../single-core" }
 single-protocol = { path = "../single-protocol" }
