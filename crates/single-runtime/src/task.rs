@@ -279,43 +279,84 @@ pub fn list_recent(conn: &Connection, limit: usize) -> Result<Vec<TaskRecord>> {
 pub fn local_stats_by_agent(conn: &Connection) -> Result<Vec<single_protocol::AgentLocalStats>> {
     use std::collections::BTreeMap;
 
-    let tasks = list(conn)?;
-    let mut by_agent: BTreeMap<String, Vec<&TaskRecord>> = BTreeMap::new();
-    for task in &tasks {
-        by_agent.entry(task.agent.clone()).or_default().push(task);
-    }
+    // Per-run token counts above this are treated as parse noise, not usage.
+    const MAX_PLAUSIBLE_TOKENS: i64 = 5_000_000;
 
-    let mut stats = Vec::new();
-    for (agent, records) in by_agent {
-        let run_count = records.len() as u64;
-        let mut total_ms: u64 = 0;
-        let mut counted = 0u64;
-        let mut last_run_at: Option<String> = None;
-        for record in &records {
-            if let (Ok(created), Ok(updated)) = (
-                chrono::DateTime::parse_from_rfc3339(&record.created_at),
-                chrono::DateTime::parse_from_rfc3339(&record.updated_at),
-            ) {
-                let delta = (updated - created).num_milliseconds();
-                if delta >= 0 {
-                    total_ms += delta as u64;
-                    counted += 1;
-                }
-            }
-            if last_run_at
-                .as_deref()
-                .is_none_or(|last| record.updated_at.as_str() > last)
-            {
-                last_run_at = Some(record.updated_at.clone());
+    // Only the light columns: `description`/`summary` can be many KB each and
+    // this runs on every poll of the notch.
+    let mut stmt = conn.prepare(
+        "SELECT agent, created_at, updated_at, prompt_tokens, completion_tokens, tokens_estimated, rate_limited FROM tasks",
+    )?;
+    let now = chrono::Utc::now();
+    let mut by_agent: BTreeMap<String, single_protocol::AgentLocalStats> = BTreeMap::new();
+    let mut totals: BTreeMap<String, (u64, u64)> = BTreeMap::new(); // (duration_ms_sum, counted)
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, Option<i64>>(3)?,
+            r.get::<_, Option<i64>>(4)?,
+            r.get::<_, i64>(5)? != 0,
+            r.get::<_, i64>(6)? != 0,
+        ))
+    })?;
+    for row in rows {
+        let (agent, created_at, updated_at, prompt, completion, estimated, rate_limited) = row?;
+        let stat = by_agent.entry(agent.clone()).or_insert_with(|| single_protocol::AgentLocalStats {
+            agent: agent.clone(),
+            run_count: 0,
+            avg_duration_ms: 0,
+            last_run_at: None,
+            runs_24h: 0,
+            runs_7d: 0,
+            prompt_tokens_7d: 0,
+            completion_tokens_7d: 0,
+            estimated_runs_7d: 0,
+            rate_limited_7d: 0,
+            discarded_token_rows: 0,
+        });
+        stat.run_count += 1;
+        let created = chrono::DateTime::parse_from_rfc3339(&created_at);
+        if let (Ok(c), Ok(u)) = (created, chrono::DateTime::parse_from_rfc3339(&updated_at)) {
+            let delta = (u - c).num_milliseconds();
+            if delta >= 0 {
+                let t = totals.entry(agent.clone()).or_default();
+                t.0 += delta as u64;
+                t.1 += 1;
             }
         }
-        let avg_duration_ms = total_ms.checked_div(counted).unwrap_or(0);
-        stats.push(single_protocol::AgentLocalStats {
-            agent,
-            run_count,
-            avg_duration_ms,
-            last_run_at,
-        });
+        if stat.last_run_at.as_deref().is_none_or(|last| updated_at.as_str() > last) {
+            stat.last_run_at = Some(updated_at.clone());
+        }
+        let age = created.map(|c| now.signed_duration_since(c.with_timezone(&chrono::Utc)));
+        if let Ok(age) = age {
+            if age.num_hours() < 24 {
+                stat.runs_24h += 1;
+            }
+            if age.num_days() < 7 {
+                stat.runs_7d += 1;
+                if rate_limited {
+                    stat.rate_limited_7d += 1;
+                }
+                let (p, c) = (prompt.unwrap_or(0), completion.unwrap_or(0));
+                if p > MAX_PLAUSIBLE_TOKENS || c > MAX_PLAUSIBLE_TOKENS {
+                    stat.discarded_token_rows += 1;
+                } else {
+                    stat.prompt_tokens_7d += p.max(0) as u64;
+                    stat.completion_tokens_7d += c.max(0) as u64;
+                    if estimated {
+                        stat.estimated_runs_7d += 1;
+                    }
+                }
+            }
+        }
+    }
+    let mut stats: Vec<_> = by_agent.into_values().collect();
+    for stat in &mut stats {
+        if let Some((sum, counted)) = totals.get(&stat.agent) {
+            stat.avg_duration_ms = sum.checked_div(*counted).unwrap_or(0);
+        }
     }
     Ok(stats)
 }
@@ -1491,6 +1532,34 @@ mod tests {
         assert_eq!(rec.prompt_tokens, Some(111));
         assert_eq!(rec.completion_tokens, Some(22));
         assert!(rec.tokens_estimated);
+    }
+
+    #[test]
+    fn local_stats_window_tokens_and_drop_implausible_counts() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        let cwd = std::path::Path::new("/tmp");
+        let a = create_for_cwd(&conn, "t", "claude", cwd).unwrap();
+        let b = create_for_cwd(&conn, "t", "claude", cwd).unwrap();
+        let c = create_for_cwd(&conn, "t", "claude", cwd).unwrap();
+        record_token_usage(&conn, a, 100, 20, false).unwrap();
+        record_token_usage(&conn, b, 50, 10, true).unwrap();
+        record_token_usage(&conn, c, 1, 1_234_573_874, true).unwrap();
+        // An old run: counted in totals but outside the 7-day window.
+        let old = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+        let d = create_for_cwd(&conn, "t", "claude", cwd).unwrap();
+        conn.execute("UPDATE tasks SET created_at = ?1 WHERE id = ?2", params![old, d]).unwrap();
+        record_token_usage(&conn, d, 999, 999, false).unwrap();
+
+        let stats = local_stats_by_agent(&conn).unwrap();
+        let s = stats.iter().find(|s| s.agent == "claude").unwrap();
+        assert_eq!(s.run_count, 4);
+        assert_eq!(s.runs_7d, 3);
+        assert_eq!(s.runs_24h, 3);
+        assert_eq!(s.prompt_tokens_7d, 150);
+        assert_eq!(s.completion_tokens_7d, 30);
+        assert_eq!(s.estimated_runs_7d, 1);
+        assert_eq!(s.discarded_token_rows, 1);
     }
 
     fn test_conn() -> Connection {

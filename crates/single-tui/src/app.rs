@@ -552,6 +552,10 @@ impl App {
         // the Pool tab is visible, same pattern as Usage.
         if self.tab == Tab::Pool {
             self.begin_pool_fetch();
+        }
+        // Agents and Usage classify/annotate against the same per-provider
+        // statuses (single_core::auth_class), so they need them too.
+        if matches!(self.tab, Tab::Pool | Tab::Agents | Tab::Usage) {
             self.begin_provider_key_status_fetch();
         }
         if self.tab == Tab::Goals {

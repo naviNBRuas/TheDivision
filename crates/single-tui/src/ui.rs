@@ -165,24 +165,20 @@ fn draw_agents(frame: &mut Frame, area: Rect, app: &App) {
         .enumerate()
         .map(|(rel_i, a)| {
             let i = window.start + rel_i;
-            // The dot is a single-glance readiness signal, so it must reflect
-            // whether the agent can actually be dispatched to right now, not
-            // just whether its binary exists on disk. A detected-but-not-
-            // authenticated agent used to render an identical green dot to a
-            // fully working one — misleading, since `detected` alone says
-            // nothing about whether `task run` would succeed. `Unsupported`
-            // (SingleCLI can't determine auth state for this agent) is also
-            // WARN rather than OK: an unconfirmed auth state is not the same
-            // claim as a confirmed one.
-            let (dot, color) = if !a.detected {
-                ("○", MUTED)
-            } else {
-                match a.authenticated {
-                    single_protocol::AuthState::Authenticated => ("●", OK),
-                    single_protocol::AuthState::NotAuthenticated => ("●", WARN),
-                    single_protocol::AuthState::Unsupported => ("●", WARN),
-                }
+            // Same classification the notch uses (single_core::auth_class), so
+            // the two surfaces can't disagree. Only agents with real login
+            // detection are ever "authed"/"login needed"; the rest are
+            // "unverified" rather than guessed.
+            let providers = app.provider_key_statuses.as_deref().unwrap_or(&[]);
+            let class = single_core::auth_class::classify_agent(a, providers);
+            let (dot, color, auth_label) = match class.class {
+                "authed" => ("●", OK, "authed"),
+                "needs_login" => ("●", BAD, "login needed"),
+                "no_auth_needed" => ("●", ACCENT, "no auth"),
+                "not_installed" => ("○", MUTED, "not installed"),
+                _ => ("●", WARN, "unverified"),
             };
+            let auth_color = color;
             let caps = [
                 (a.capabilities.mcp, "mcp"),
                 (a.capabilities.lsp, "lsp"),
@@ -194,18 +190,6 @@ fn draw_agents(frame: &mut Frame, area: Rect, app: &App) {
             .map(|(_, n)| *n)
             .collect::<Vec<_>>()
             .join(",");
-            let (auth_label, auth_color) = match a.authenticated {
-                single_protocol::AuthState::Authenticated => ("auth", OK),
-                single_protocol::AuthState::NotAuthenticated => ("no auth", MUTED),
-                // `Unsupported` is genuinely ambiguous in the data model
-                // (see AuthState's doc comment): it covers both "this
-                // agent is keyless/needs no login" and "SingleCLI can't
-                // detect this agent's auth state" -- there is no separate
-                // "no auth required" variant to render differently, so
-                // this label says exactly what's known rather than
-                // guessing which of the two it is.
-                single_protocol::AuthState::Unsupported => ("n/a", MUTED),
-            };
             let flag = if a.unverified { "unverified" } else { "" };
             let style = if i == app.selected && app.tab == Tab::Agents { selected_style() } else { Style::default() };
             Row::new(vec![
@@ -226,7 +210,7 @@ fn draw_agents(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(2),
             Constraint::Length(12),
             Constraint::Length(20),
-            Constraint::Length(9),
+            Constraint::Length(14),
             Constraint::Min(20),
             Constraint::Length(12),
         ],
@@ -480,7 +464,7 @@ fn draw_accounts(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
-    let chunks = Layout::vertical([Constraint::Percentage(60), Constraint::Percentage(40)]).split(area);
+    let chunks = Layout::vertical([Constraint::Percentage(25), Constraint::Percentage(35), Constraint::Percentage(40)]).split(area);
 
     let Some(usage) = &app.usage else {
         let text = if app.usage_loading { "Loading usage…" } else { "No usage data yet — press 'r' to fetch" };
@@ -513,22 +497,58 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
         .block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(table, chunks[0]);
 
+    // Pool providers: requests counted by single's own ledger. Only providers
+    // with a published daily limit can show what's left; the rest are honest
+    // "unmetered" counts.
+    let pool_rows: Vec<Row> = app
+        .provider_key_statuses
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .filter(|k| k.requests_today > 0 || k.rpd_limit.is_some() || k.tpd_limit.is_some())
+        .map(|k| {
+            let limit = match (k.rpd_limit, k.tpd_limit) {
+                (Some(r), _) => format!("{}/{} req/day", k.requests_today, r),
+                (None, Some(t)) => format!("{} req; cap {t} tok/day", k.requests_today),
+                _ => format!("{} req, no published limit", k.requests_today),
+            };
+            Row::new(vec![
+                Cell::from(k.platform.clone()),
+                Cell::from(if k.key_count > 1 { format!("{} keys", k.key_count) } else { "1 key".into() }),
+                Cell::from(limit),
+            ])
+        })
+        .collect();
+    let table = Table::new(pool_rows, [Constraint::Length(14), Constraint::Length(9), Constraint::Min(20)])
+        .header(Row::new(vec!["Provider", "Keys", "Today (counted by single)"]).style(Style::default().add_modifier(Modifier::BOLD)))
+        .block(Block::default().borders(Borders::ALL).title(" Pool usage — requests counted locally; limits only where published "));
+    frame.render_widget(table, chunks[1]);
+
+    let fmt_tok = |n: u64| if n >= 1_000_000 { format!("{:.1}M", n as f64 / 1e6) } else if n >= 1_000 { format!("{:.1}K", n as f64 / 1e3) } else { n.to_string() };
     let rows: Vec<Row> = usage
         .agent_local_stats
         .iter()
         .map(|a| {
+            let tokens = a.prompt_tokens_7d + a.completion_tokens_7d;
+            let est = if a.estimated_runs_7d > 0 && a.estimated_runs_7d == a.runs_7d { "~" } else { "" };
             Row::new(vec![
                 Cell::from(Span::styled(a.agent.clone(), Style::default().add_modifier(Modifier::BOLD))),
                 Cell::from(a.run_count.to_string()),
+                Cell::from(a.runs_7d.to_string()),
+                Cell::from(format!("{est}{}", fmt_tok(tokens))),
+                Cell::from(Span::styled(a.rate_limited_7d.to_string(), Style::default().fg(if a.rate_limited_7d > 0 { WARN } else { MUTED }))),
                 Cell::from(format!("{}ms", a.avg_duration_ms)),
                 Cell::from(Span::styled(a.last_run_at.clone().unwrap_or_else(|| "never".into()), Style::default().fg(MUTED))),
             ])
         })
         .collect();
-    let table = Table::new(rows, [Constraint::Length(14), Constraint::Length(8), Constraint::Length(14), Constraint::Min(20)])
-        .header(Row::new(vec!["Agent", "Runs", "Avg Duration", "Last Run"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(" Connected agents — local stats only, no billing API "));
-    frame.render_widget(table, chunks[1]);
+    let table = Table::new(
+        rows,
+        [Constraint::Length(20), Constraint::Length(7), Constraint::Length(7), Constraint::Length(10), Constraint::Length(9), Constraint::Length(10), Constraint::Min(20)],
+    )
+    .header(Row::new(vec!["Agent", "Runs", "7d", "Tokens 7d", "Limited", "Avg", "Last Run"]).style(Style::default().add_modifier(Modifier::BOLD)))
+    .block(Block::default().borders(Borders::ALL).title(" Agents — local stats; ~ = estimated tokens; no subscription limits are known "));
+    frame.render_widget(table, chunks[2]);
 }
 
 /// The coordinator's goal list — the primary way work runs now that the
@@ -618,16 +638,26 @@ fn draw_pool(frame: &mut Frame, area: Rect, app: &App) {
         Some(ks) => ks
             .iter()
             .map(|k| {
-                let validity = match (k.keyed, k.valid) {
-                    (false, _) => "no key",
-                    (true, true) => "ok",
-                    (true, false) => "invalid",
+                let (validity, vcolor) = match k.auth_state.as_str() {
+                    "authed" => ("authed", OK),
+                    "no_auth_needed" => ("no auth", ACCENT),
+                    "unverified" => ("unverified", WARN),
+                    "invalid" => ("rejected", BAD),
+                    "disabled" => ("disabled", MUTED),
+                    "blocked" => ("blocked", MUTED),
+                    _ => ("no key", MUTED),
+                };
+                let keys = if k.key_count > 1 { format!("{validity} ×{}", k.key_count) } else { validity.to_string() };
+                let usage = if k.rpd_limit.is_some() {
+                    k.headroom.clone()
+                } else {
+                    format!("{} req today (unmetered)", k.requests_today)
                 };
                 Row::new(vec![
                     Cell::from(k.platform.clone()),
-                    Cell::from(validity),
+                    Cell::from(Span::styled(keys, Style::default().fg(vcolor))),
                     Cell::from(k.cooldown.clone()),
-                    Cell::from(k.headroom.clone()),
+                    Cell::from(usage),
                     Cell::from(
                         k.disabled_reason
                             .as_deref()
@@ -641,14 +671,14 @@ fn draw_pool(frame: &mut Frame, area: Rect, app: &App) {
     };
     let widths = [
         Constraint::Length(14),
-        Constraint::Length(9),
-        Constraint::Length(18),
-        Constraint::Length(22),
+        Constraint::Length(16),
+        Constraint::Length(14),
+        Constraint::Length(26),
         Constraint::Min(20),
     ];
     let table = Table::new(key_rows, widths)
         .header(
-            Row::new(vec!["platform", "key", "cooldown", "headroom", "note"])
+            Row::new(vec!["platform", "auth", "cooldown", "usage", "note"])
                 .style(Style::default().add_modifier(Modifier::BOLD)),
         )
         .block(Block::default().borders(Borders::ALL).title(format!(" Pool — {} ", status_text)));

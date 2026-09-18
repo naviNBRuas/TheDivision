@@ -9,6 +9,18 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.23.0]
+
+### Added
+- Shared auth classification (`single_core::auth_class`) used by the TUI and the notch. Providers: authed, no auth needed (keyless), unverified, key rejected, disabled, signup blocked, no key. Agents: authed, needs login, can't verify login, no auth needed, not installed. A state is only claimed when something checked it; the 27 agents without login detection are "unverified", and `single-*` provider proxies take the state of their pool key.
+- `provider key-status` rows now carry every registered key (count, valid, rejected, unvalidated, disabled) so multi-key providers are visible, plus the local request count for today and the published limits (rpd, rpm, tpm, tpd). A key that has served a real successful call counts as working even where the provider has no validation endpoint.
+- Agent usage stats include 24h and 7d runs, 7d token totals (with how many runs were estimated), rate-limited runs, and a guard that drops implausible per-run token counts.
+- TUI: Agents, Pool and Usage tabs show the new classification, multi-key counts, per-provider request counts (unmetered where no limit is published), and agent tokens.
+- Notch: Pool tab lists every provider grouped by auth state with multi-key tags; Agents tab groups by the five categories; new Usage tab (agent runs and tokens, pool requests against known limits); credentials summary on Overview; Usage entry in the hover strip.
+
+### Changed
+- `local_stats_by_agent` reads only the columns it needs instead of every task row, and the notch snapshot now includes it.
+
 ## [0.22.0]
 
 ### Changed

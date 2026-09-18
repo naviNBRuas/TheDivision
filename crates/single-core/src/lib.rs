@@ -1,5 +1,6 @@
 pub mod account;
 pub mod agent_home;
+pub mod auth_class;
 pub mod backup;
 pub mod billing;
 pub mod config;

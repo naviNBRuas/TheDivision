@@ -98,6 +98,22 @@ impl Poller {
                     .into_iter()
                     .map(|t| model::TaskRow { id: t.id, agent: t.agent, status: t.status, description: t.description, updated_at: t.updated_at })
                     .collect();
+                snap.detail.agent_usage = s
+                    .agent_usage
+                    .into_iter()
+                    .map(|u| model::AgentUsage {
+                        agent: u.agent,
+                        runs_24h: u.runs_24h,
+                        runs_7d: u.runs_7d,
+                        runs_total: u.run_count,
+                        prompt_tokens_7d: u.prompt_tokens_7d,
+                        completion_tokens_7d: u.completion_tokens_7d,
+                        estimated_runs_7d: u.estimated_runs_7d,
+                        rate_limited_7d: u.rate_limited_7d,
+                        discarded_token_rows: u.discarded_token_rows,
+                        last_run_at: u.last_run_at,
+                    })
+                    .collect();
                 Ok(snap)
             }
             _ => self.tick_four_op(),

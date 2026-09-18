@@ -68,6 +68,9 @@ pub struct AgentRow {
     pub name: String,
     pub detected: bool,
     pub version: Option<String>,
+    /// `authed | needs_login | unverified | no_auth_needed | not_installed`
+    pub class: String,
+    pub why: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -85,6 +88,44 @@ pub struct TaskRow {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProviderRow {
+    pub platform: String,
+    /// `key` or `keyless`.
+    pub auth_kind: String,
+    /// `authed | unverified | invalid | disabled | no_key | blocked | no_auth_needed`
+    pub auth_state: String,
+    pub key_count: u32,
+    pub keys_valid: u32,
+    pub keys_invalid: u32,
+    pub keys_unvalidated: u32,
+    pub keys_disabled: u32,
+    pub can_validate: bool,
+    pub reason: Option<String>,
+    pub cooldown: String,
+    pub requests_today: u64,
+    pub rpd_limit: Option<u32>,
+    pub rpm_limit: Option<u32>,
+    pub tpm_limit: Option<u32>,
+    pub tpd_limit: Option<u64>,
+    /// A published daily limit exists, so usage can be shown against it.
+    pub metered: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AgentUsage {
+    pub agent: String,
+    pub runs_24h: u64,
+    pub runs_7d: u64,
+    pub runs_total: u64,
+    pub prompt_tokens_7d: u64,
+    pub completion_tokens_7d: u64,
+    pub estimated_runs_7d: u64,
+    pub rate_limited_7d: u64,
+    pub discarded_token_rows: u64,
+    pub last_run_at: Option<String>,
+}
+
 /// Everything beyond the compact pill/card view -- consumed by the GNOME
 /// extension's Goals / Pool / Agents tabs.
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
@@ -100,6 +141,8 @@ pub struct NotchDetail {
     pub problem_keys: Vec<ProblemKey>,
     pub keys_unkeyed: usize,
     pub recent_tasks: Vec<TaskRow>,
+    pub providers_full: Vec<ProviderRow>,
+    pub agent_usage: Vec<AgentUsage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -202,7 +245,35 @@ fn build_detail(keys: &[PoolKeyStatusInfo], coord: &CoordinatorSnapshot, agents:
             .iter()
             .map(|p| AgentSlot { agent: p.agent.clone(), running: p.running, cap: p.cap, rate_limited: p.rate_limited })
             .collect(),
-        agent_rows: agents.iter().map(|a| AgentRow { name: a.name.clone(), detected: a.detected, version: a.version.clone() }).collect(),
+        agent_rows: agents
+            .iter()
+            .map(|a| {
+                let c = single_core::auth_class::classify_agent(a, keys);
+                AgentRow { name: a.name.clone(), detected: a.detected, version: a.version.clone(), class: c.class.into(), why: c.why }
+            })
+            .collect(),
+        providers_full: keys
+            .iter()
+            .map(|k| ProviderRow {
+                platform: k.platform.clone(),
+                auth_kind: k.auth_kind.clone(),
+                auth_state: k.auth_state.clone(),
+                key_count: k.key_count,
+                keys_valid: k.keys_valid,
+                keys_invalid: k.keys_invalid,
+                keys_unvalidated: k.keys_unvalidated,
+                keys_disabled: k.keys_disabled,
+                can_validate: k.can_validate,
+                reason: k.disabled_reason.as_deref().map(|r| brief(r, 100)),
+                cooldown: k.cooldown.clone(),
+                requests_today: k.requests_today,
+                rpd_limit: k.rpd_limit,
+                rpm_limit: k.rpm_limit,
+                tpm_limit: k.tpm_limit,
+                tpd_limit: k.tpd_limit,
+                metered: k.rpd_limit.is_some() || k.tpd_limit.is_some(),
+            })
+            .collect(),
         problem_keys: keys
             .iter()
             .filter(|k| k.keyed && k.disabled_reason.is_some())
@@ -210,6 +281,7 @@ fn build_detail(keys: &[PoolKeyStatusInfo], coord: &CoordinatorSnapshot, agents:
             .collect(),
         keys_unkeyed: keys.iter().filter(|k| !k.keyed).count(),
         recent_tasks: Vec::new(),
+        agent_usage: Vec::new(),
     }
 }
 
@@ -275,6 +347,7 @@ mod tests {
             disabled_reason: None,
             cooldown: "clear".into(),
             headroom: "40/50 rpd".into(),
+            ..Default::default()
         }
     }
 

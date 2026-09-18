@@ -1783,7 +1783,7 @@ pub struct FreeProviderInfo {
 }
 
 /// One row of `single provider key-status`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PoolKeyStatusInfo {
     pub platform: String,
     pub keyed: bool,
@@ -1796,6 +1796,46 @@ pub struct PoolKeyStatusInfo {
     /// `"<remaining>/<limit> rpd"` when the provider publishes an RPD
     /// limit, else `"unbounded/unknown"`.
     pub headroom: String,
+    /// Registered keys for this provider (`keyed`/`valid`/`headroom` above
+    /// describe only the first one). More than one means the pool rotates
+    /// across them.
+    #[serde(default)]
+    pub key_count: u32,
+    #[serde(default)]
+    pub keys_valid: u32,
+    /// Validated and rejected.
+    #[serde(default)]
+    pub keys_invalid: u32,
+    /// Never validated (yet, or ever -- see `can_validate`).
+    #[serde(default)]
+    pub keys_unvalidated: u32,
+    #[serde(default)]
+    pub keys_disabled: u32,
+    /// `"key"` or `"keyless"` (the provider needs no credential).
+    #[serde(default)]
+    pub auth_kind: String,
+    /// One of `authed`, `unverified`, `invalid`, `disabled`, `no_key`,
+    /// `blocked`, `no_auth_needed` -- see `single_core::auth_class`.
+    #[serde(default)]
+    pub auth_state: String,
+    /// Whether the provider publishes an endpoint `provider validate` can
+    /// probe; without one a key stays `unverified` until a real call.
+    #[serde(default)]
+    pub can_validate: bool,
+    #[serde(default)]
+    pub signup_url: String,
+    /// Requests recorded by the local ledger since UTC midnight, summed over
+    /// every key. Counted by single itself, not reported by the provider.
+    #[serde(default)]
+    pub requests_today: u64,
+    #[serde(default)]
+    pub rpd_limit: Option<u32>,
+    #[serde(default)]
+    pub rpm_limit: Option<u32>,
+    #[serde(default)]
+    pub tpm_limit: Option<u32>,
+    #[serde(default)]
+    pub tpd_limit: Option<u64>,
 }
 
 /// `single pool status`. `degraded`/`healthy_ratio` are a **stateless
@@ -1824,6 +1864,9 @@ pub struct NotchSnapshotInfo {
     /// side so the notch never has to pull the whole task history.
     #[serde(default)]
     pub recent_tasks: Vec<NotchTaskBrief>,
+    /// Per-agent run/token usage (same source as the Usage page).
+    #[serde(default)]
+    pub agent_usage: Vec<AgentLocalStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1903,6 +1946,26 @@ pub struct AgentLocalStats {
     pub run_count: u64,
     pub avg_duration_ms: u64,
     pub last_run_at: Option<String>,
+    #[serde(default)]
+    pub runs_24h: u64,
+    #[serde(default)]
+    pub runs_7d: u64,
+    /// Token counts over the last 7 days. Real when the agent reported them,
+    /// otherwise a `chars / 4` estimate -- `estimated_runs_7d` says how many
+    /// of the runs in the window were estimates.
+    #[serde(default)]
+    pub prompt_tokens_7d: u64,
+    #[serde(default)]
+    pub completion_tokens_7d: u64,
+    #[serde(default)]
+    pub estimated_runs_7d: u64,
+    #[serde(default)]
+    pub rate_limited_7d: u64,
+    /// Runs whose recorded token counts were implausible (> 5M in one run,
+    /// e.g. a parser picking up an unrelated number) and were left out of
+    /// the token sums rather than trusted.
+    #[serde(default)]
+    pub discarded_token_rows: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

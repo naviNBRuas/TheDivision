@@ -1914,8 +1914,14 @@ fn dispatch(
             coordinator: coordinator_status_info(ctx)?,
             agents: agent_list_info_cached(ctx),
             recent_tasks: recent_task_briefs(ctx),
+            agent_usage: agent_usage_stats(ctx),
         })),
     }
+}
+
+fn agent_usage_stats(ctx: &Context) -> Vec<single_protocol::AgentLocalStats> {
+    let Ok(conn) = crate::state::open(&ctx.dirs.db_path()) else { return Vec::new() };
+    crate::task::local_stats_by_agent(&conn).unwrap_or_default()
 }
 
 /// Best-effort: a task-table read failure leaves the notch's task list empty
@@ -2328,15 +2334,37 @@ fn pool_key_statuses(conn: &rusqlite::Connection, dirs: &single_core::SingleDirs
             Ok(None) => "clear".to_string(),
             Err(_) => "n/a".to_string(),
         };
+        let since = crate::pool::ledger::next_utc_midnight_ms(now) - 24 * 60 * 60 * 1000;
+        // Requests counted by our own ledger, over every registered key -- the
+        // pool rotates across all of them, so the first key alone undercounts.
+        let requests_today: u64 = if keys.is_empty() {
+            0
+        } else {
+            keys.iter().map(|k| crate::pool::ledger::recorded_requests_since(conn, provider.id, &k.key_id, since).unwrap_or(0)).sum()
+        };
+        let first_key_used: u64 = crate::pool::ledger::recorded_requests_since(conn, provider.id, key_id, since).unwrap_or(0);
         let headroom = provider
             .limits
             .rpd
-            .map(|limit| {
-                let since = crate::pool::ledger::next_utc_midnight_ms(now) - 24 * 60 * 60 * 1000;
-                let used: u64 = crate::pool::ledger::recorded_requests_since(conn, provider.id, key_id, since).unwrap_or(0);
-                format!("{}/{} rpd", limit.saturating_sub(used as u32), limit)
-            })
+            .map(|limit| format!("{}/{} rpd", limit.saturating_sub(first_key_used as u32), limit))
             .unwrap_or_else(|| "unbounded/unknown".to_string());
+
+        // A key that has served a real successful call is working whether or
+        // not the provider offers a validation endpoint to probe.
+        let proven: std::collections::HashSet<String> = conn
+            .prepare("SELECT DISTINCT key_id FROM pool_outcomes WHERE platform = ?1 AND ok = 1")
+            .and_then(|mut st| st.query_map([provider.id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>())
+            .unwrap_or_default();
+        let works = |k: &single_core::pool_keys::PoolProviderKey| k.valid || proven.contains(&k.key_id);
+        let counts = single_core::auth_class::KeyCounts {
+            total: keys.len() as u32,
+            valid: keys.iter().filter(|k| !k.disabled && works(k)).count() as u32,
+            invalid: keys.iter().filter(|k| !k.disabled && !works(k) && k.last_validated_at.is_some()).count() as u32,
+            unvalidated: keys.iter().filter(|k| !k.disabled && !works(k) && k.last_validated_at.is_none()).count() as u32,
+            disabled: keys.iter().filter(|k| k.disabled).count() as u32,
+        };
+        let keyless = matches!(provider.auth, single_core::free_pool::Auth::Keyless(_));
+        let auth_state = single_core::auth_class::provider_auth_state(keyless, single_core::free_pool::default_disabled_reason(provider.id), &counts);
 
         statuses.push(single_protocol::PoolKeyStatusInfo {
             platform: provider.id.to_string(),
@@ -2346,6 +2374,20 @@ fn pool_key_statuses(conn: &rusqlite::Connection, dirs: &single_core::SingleDirs
             disabled_reason,
             cooldown,
             headroom,
+            key_count: counts.total,
+            keys_valid: counts.valid,
+            keys_invalid: counts.invalid,
+            keys_unvalidated: counts.unvalidated,
+            keys_disabled: counts.disabled,
+            auth_kind: if keyless { "keyless" } else { "key" }.to_string(),
+            auth_state: auth_state.to_string(),
+            can_validate: provider.quirks.validate_url.is_some(),
+            signup_url: provider.signup_url.to_string(),
+            requests_today,
+            rpd_limit: provider.limits.rpd,
+            rpm_limit: provider.limits.rpm,
+            tpm_limit: provider.limits.tpm,
+            tpd_limit: provider.limits.tpd,
         });
     }
     Ok(statuses)
