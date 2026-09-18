@@ -9,11 +9,16 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+### Added
+- GNOME Shell extension notch (`extensions/gnome-shell/single-notch@nbr.company`): right-edge, vertically centered overlay drawn as shell chrome instead of a window. Faint sliver when idle, summary on hover, per-item tooltips, click to expand into a detail card, auto-hide on leave. `single notch enable/disable/status` install and toggle it on GNOME.
+- `single-notch --snapshot` prints the aggregated pool/goal/agent state as JSON.
+- Self-heal `stale_worktrees` step: removes `state/worktrees/task-*` worktrees of non-running tasks after `worktree_retention_hours` (default 24, `0` disables) when the worktree is clean. Dirty worktrees and `single/task-*` branches are kept. Previously every task's full-checkout worktree accumulated forever.
+
+### Changed
+- `single-notch` no longer falls back to an ordinary window when layer-shell is missing; it exits with an explanation unless `--window` is passed.
+
 ### Fixed
 - Agent runs under an isolated `$HOME` now share the real `~/.rustup` and `~/.cargo` (via `RUSTUP_HOME`/`CARGO_HOME`) instead of each downloading a ~1.5G toolchain plus registry into `~/.config/single/homes/<agent>/`.
-
-### Added
-- Self-heal `stale_worktrees` step: removes `state/worktrees/task-*` worktrees of non-running tasks after `worktree_retention_hours` (default 24, `0` disables) when the worktree is clean. Dirty worktrees and `single/task-*` branches are kept. Previously every task's full-checkout worktree accumulated forever.
 
 ## [0.18.0]
 

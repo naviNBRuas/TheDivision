@@ -2,16 +2,18 @@
 //! `NotchSnapshot` the UI renders. No iced, no I/O -- fully unit-testable.
 //! See `docs/superpowers/plans/2026-09-17-e30-notch-hud.md` Phase 3 Task 5.
 
+use serde::Serialize;
 use single_protocol::{AgentInfo, AuthState, CoordinatorSnapshot, GoalSummary, PoolBenchedKey, PoolKeyStatusInfo, PoolStatusInfo};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum HealthTone {
     Healthy,
     Amber,
     Degraded,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProviderTally {
     pub platform: String,
     pub key_count: usize,
@@ -19,7 +21,7 @@ pub struct ProviderTally {
     pub headroom: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BenchRow {
     pub platform: String,
     pub model: String,
@@ -28,20 +30,20 @@ pub struct BenchRow {
     pub provenance: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GoalActivity {
     pub id: String,
     pub text: String,
     pub status: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AgentAuthDot {
     pub name: String,
     pub state: AuthState,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct NotchSnapshot {
     pub tone: HealthTone,
     pub degraded: bool,
@@ -261,5 +263,16 @@ mod tests {
         assert_eq!(snap.agents.len(), 1);
         assert_eq!(snap.agents[0].name, "grok");
         assert_eq!(snap.agents[0].state, AuthState::Authenticated);
+    }
+
+    #[test]
+    fn snapshot_serializes_the_shape_the_gnome_extension_reads() {
+        let pool = PoolStatusInfo { degraded: false, healthy_ratio: 1.0, benched: vec![] };
+        let snap = aggregate(&pool, &[], &empty_coord(), &[]);
+        let v: serde_json::Value = serde_json::to_value(&snap).unwrap();
+        assert!(matches!(v["tone"].as_str(), Some("healthy" | "amber" | "degraded")), "tone must be snake_case: {v}");
+        for key in ["healthy_ratio", "total_keys", "providers", "benches", "activity", "agents"] {
+            assert!(v.get(key).is_some(), "extension.js reads `{key}`: {v}");
+        }
     }
 }

@@ -103,3 +103,85 @@ pub fn stop(dirs: &SingleDirs) -> Result<bool> {
     }
     anyhow::bail!("single-notch (pid {pid}) did not exit within 3s of SIGTERM")
 }
+
+// ---- GNOME Shell backend ----------------------------------------------------
+//
+// GNOME's compositor has no wlr-layer-shell, so a client process cannot be an
+// overlay there. The notch is instead a Shell extension drawn as compositor
+// chrome; it shells out to `single-notch --snapshot` for its data.
+
+const GNOME_UUID: &str = "single-notch@nbr.company";
+const GNOME_EXTENSION_JS: &str = include_str!("../../../extensions/gnome-shell/single-notch@nbr.company/extension.js");
+const GNOME_METADATA: &str = include_str!("../../../extensions/gnome-shell/single-notch@nbr.company/metadata.json");
+
+pub fn is_gnome() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.split(':').any(|p| p.eq_ignore_ascii_case("gnome")))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum GnomeState {
+    Active,
+    /// Installed and set to load, but this shell session predates the install
+    /// (GNOME on Wayland only discovers new extensions at login).
+    NeedsRelogin,
+    Disabled,
+}
+
+fn gnome_dir() -> Result<std::path::PathBuf> {
+    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    Ok(std::path::PathBuf::from(home).join(".local/share/gnome-shell/extensions").join(GNOME_UUID))
+}
+
+fn gnome_extensions(args: &[&str]) -> Result<(bool, String)> {
+    let out = std::process::Command::new("gnome-extensions").args(args).output().context("running gnome-extensions (is gnome-shell installed?)")?;
+    Ok((out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned()))
+}
+
+pub fn gnome_install() -> Result<()> {
+    let dir = gnome_dir()?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    std::fs::write(dir.join("extension.js"), GNOME_EXTENSION_JS)?;
+    std::fs::write(dir.join("metadata.json"), GNOME_METADATA)?;
+    Ok(())
+}
+
+pub fn gnome_state() -> GnomeState {
+    match gnome_extensions(&["info", GNOME_UUID]) {
+        Ok((true, info)) if info.contains("State: ACTIVE") || info.contains("State: ENABLED") => GnomeState::Active,
+        Ok((true, info)) if info.contains("Enabled: Yes") => GnomeState::NeedsRelogin,
+        _ if gnome_enabled_in_settings() => GnomeState::NeedsRelogin,
+        _ => GnomeState::Disabled,
+    }
+}
+
+fn gnome_enabled_in_settings() -> bool {
+    std::process::Command::new("gsettings")
+        .args(["get", "org.gnome.shell", "enabled-extensions"])
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(GNOME_UUID))
+}
+
+pub fn gnome_enable() -> Result<GnomeState> {
+    gnome_install()?;
+    if gnome_extensions(&["enable", GNOME_UUID])?.0 {
+        return Ok(gnome_state());
+    }
+    // Not known to the running shell yet: record it in `enabled-extensions` so
+    // it loads at the next login.
+    let (_, current) = std::process::Command::new("gsettings")
+        .args(["get", "org.gnome.shell", "enabled-extensions"])
+        .output()
+        .map(|o| (o.status.success(), String::from_utf8_lossy(&o.stdout).into_owned()))?;
+    if !current.contains(GNOME_UUID) {
+        let trimmed = current.trim().trim_start_matches("@as ").trim_start_matches('[').trim_end_matches(']').trim();
+        let updated = if trimmed.is_empty() { format!("['{GNOME_UUID}']") } else { format!("[{trimmed}, '{GNOME_UUID}']") };
+        let status = std::process::Command::new("gsettings").args(["set", "org.gnome.shell", "enabled-extensions", &updated]).status()?;
+        anyhow::ensure!(status.success(), "gsettings could not update enabled-extensions");
+    }
+    Ok(GnomeState::NeedsRelogin)
+}
+
+pub fn gnome_disable() -> Result<()> {
+    let _ = gnome_extensions(&["disable", GNOME_UUID])?;
+    Ok(())
+}

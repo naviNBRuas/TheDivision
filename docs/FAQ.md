@@ -66,12 +66,20 @@ off by default. Enable with `single notch enable` (starts a companion
 `single notch disable`. It does not replace the TUI Pool tab and does not
 edit pool config. Session autostart examples: `docs/examples/notch.*`.
 
-Real top-center layer-shell positioning only works on wlroots-based
-Wayland compositors (Sway, Hyprland, river) — confirmed live. On GNOME
-(Mutter) or KDE (KWin), which don't implement the `wlr-layer-shell`
-protocol, the HUD automatically and cleanly falls back to an ordinary
-window instead of crashing; it's still fully functional, just not
-pinned to the top-center notch area.
+Placement depends on the desktop:
+
+- **GNOME (Wayland or X11):** the notch is a GNOME Shell extension
+  (`extensions/gnome-shell/`), drawn as compositor chrome on the middle of the
+  right screen edge, so tiling extensions never treat it as a window. It stays
+  a faint sliver, reveals a summary pill on hover, shows a tooltip when you
+  hover an item, and expands into a detail card on click; it hides again when
+  the pointer leaves. `single notch enable` installs and enables it. GNOME on
+  Wayland only discovers a newly installed extension at login, so log out and
+  back in once. The extension gets its data from `single-notch --snapshot`.
+- **wlroots compositors (Sway, Hyprland, river) and macOS:** the `single-notch`
+  process draws a top-center overlay itself.
+- **KDE (KWin):** no layer-shell and no extension yet, so it exits with an
+  explanatory error; `single-notch --window` runs it as an ordinary window.
 
 ## Where do I report a bug or ask something not covered here?
 

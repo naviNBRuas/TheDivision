@@ -38,6 +38,15 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 fn main() -> Result<()> {
+    // One-shot JSON for the GNOME Shell extension (`extensions/gnome-shell`),
+    // which draws the notch itself and reuses this crate's aggregation
+    // rather than re-implementing pool logic in JS.
+    if std::env::args().any(|arg| arg == "--snapshot") {
+        let socket = SingleDirs::discover()?.socket_path();
+        let snapshot = Poller { socket, poll_ms_idle: 1000, poll_ms_active: 400 }.tick()?;
+        println!("{}", serde_json::to_string(&snapshot)?);
+        return Ok(());
+    }
     let stub_flag = std::env::args().any(|arg| arg == "--stub");
     let stub_env = std::env::var("SINGLE_NOTCH_STUB").as_deref() == Ok("1");
     if stub_flag || stub_env {
@@ -85,10 +94,13 @@ fn run_ui_with_fallback() -> Result<()> {
     match outcome {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(anyhow::anyhow!("{e}")),
-        Err(_) => {
-            eprintln!("single-notch: this compositor doesn't support wlr-layer-shell (GNOME/KDE, most likely) -- falling back to a plain window, not top-center-anchored");
+        Err(_) if std::env::args().any(|arg| arg == "--window") => {
+            eprintln!("single-notch: no wlr-layer-shell here -- running as an ordinary window because --window was given");
             run_plain_ui().map_err(|e| anyhow::anyhow!("{e}"))
         }
+        Err(_) => Err(anyhow::anyhow!(
+            "this compositor has no wlr-layer-shell (GNOME/KDE), so the notch cannot be drawn as a real overlay from a client process. On GNOME use the shell extension (`single notch enable` installs it); pass --window for an ordinary window"
+        )),
     }
 }
 

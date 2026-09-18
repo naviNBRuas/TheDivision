@@ -1655,6 +1655,29 @@ fn main() -> anyhow::Result<()> {
             }
         },
         Command::Notch { action } => match action {
+            NotchCommand::Enable if notch_proc::is_gnome() => {
+                daemon::ensure_running(&dirs)?;
+                match notch_proc::gnome_enable()? {
+                    notch_proc::GnomeState::Active => println!("single-notch enabled (GNOME Shell extension active)"),
+                    _ => println!(
+                        "single-notch installed and set to load. GNOME on Wayland only discovers new extensions at login: log out and back in once, then the notch appears on the right edge."
+                    ),
+                }
+            }
+            NotchCommand::Disable if notch_proc::is_gnome() => {
+                notch_proc::gnome_disable()?;
+                println!("single-notch disabled");
+            }
+            NotchCommand::Status if notch_proc::is_gnome() => {
+                println!("gnome_extension={}", match notch_proc::gnome_state() {
+                    notch_proc::GnomeState::Active => "active",
+                    notch_proc::GnomeState::NeedsRelogin => "installed (log out and back in to load)",
+                    notch_proc::GnomeState::Disabled => "disabled",
+                });
+            }
+            NotchCommand::Show | NotchCommand::Hide if notch_proc::is_gnome() => {
+                println!("single-notch: on GNOME the notch is hover-driven; show/hide apply only to the layer-shell HUD");
+            }
             NotchCommand::Enable => {
                 daemon::ensure_running(&dirs)?;
                 notch_proc::spawn(&dirs)?;
