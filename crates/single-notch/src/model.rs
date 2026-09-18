@@ -44,6 +44,65 @@ pub struct AgentAuthDot {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GoalRow {
+    pub id: String,
+    pub text: String,
+    pub status: String,
+    pub dispatches: u32,
+    pub max_dispatches: u32,
+    /// Why a blocked/waiting goal is held.
+    pub note: Option<String>,
+    pub eta: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AgentSlot {
+    pub agent: String,
+    pub running: usize,
+    pub cap: Option<usize>,
+    pub rate_limited: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AgentRow {
+    pub name: String,
+    pub detected: bool,
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProblemKey {
+    pub platform: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TaskRow {
+    pub id: i64,
+    pub agent: String,
+    pub status: String,
+    pub description: String,
+    pub updated_at: String,
+}
+
+/// Everything beyond the compact pill/card view -- consumed by the GNOME
+/// extension's Goals / Pool / Agents tabs.
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct NotchDetail {
+    pub goals: Vec<GoalRow>,
+    pub goals_running: usize,
+    pub goals_queued: usize,
+    pub goals_waiting: usize,
+    pub goals_blocked: usize,
+    pub max_parallel: usize,
+    pub slots: Vec<AgentSlot>,
+    pub agent_rows: Vec<AgentRow>,
+    pub problem_keys: Vec<ProblemKey>,
+    pub keys_unkeyed: usize,
+    pub recent_tasks: Vec<TaskRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct NotchSnapshot {
     pub tone: HealthTone,
     pub degraded: bool,
@@ -55,6 +114,7 @@ pub struct NotchSnapshot {
     pub activity: Vec<GoalActivity>,
     pub agents: Vec<AgentAuthDot>,
     pub any_goal_running: bool,
+    pub detail: NotchDetail,
 }
 
 fn cooldown_is_benched(cooldown: &str) -> bool {
@@ -104,6 +164,55 @@ fn pick_activity(coord: &CoordinatorSnapshot) -> Vec<GoalActivity> {
         .collect()
 }
 
+/// First non-empty line, capped, so a multi-KB prompt doesn't bloat the
+/// snapshot the shell extension re-reads every couple of seconds.
+pub fn brief(text: &str, max_chars: usize) -> String {
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    if line.chars().count() <= max_chars {
+        return line.to_string();
+    }
+    let cut: String = line.chars().take(max_chars.saturating_sub(1)).collect();
+    format!("{cut}…")
+}
+
+fn build_detail(keys: &[PoolKeyStatusInfo], coord: &CoordinatorSnapshot, agents: &[AgentInfo]) -> NotchDetail {
+    let row = |g: &GoalSummary, note: Option<String>, eta: Option<String>| GoalRow {
+        id: g.id.clone(),
+        text: brief(&g.text, 160),
+        status: g.status.clone(),
+        dispatches: g.dispatches,
+        max_dispatches: g.max_dispatches,
+        note,
+        eta,
+    };
+    let mut goals = Vec::new();
+    goals.extend(coord.running_goals.iter().map(|g| row(g, None, None)));
+    goals.extend(coord.waiting_goals.iter().map(|g| row(g, g.capacity_reason.clone(), g.capacity_eta.clone())));
+    goals.extend(coord.queued_goals.iter().map(|g| row(g, None, None)));
+    goals.extend(coord.blocked_goals.iter().map(|g| row(g, g.blocked_reason.clone(), None)));
+    NotchDetail {
+        goals,
+        goals_running: coord.running_goals.len(),
+        goals_queued: coord.queued_goals.len(),
+        goals_waiting: coord.waiting_goals.len(),
+        goals_blocked: coord.blocked_goals.len(),
+        max_parallel: coord.max_parallel,
+        slots: coord
+            .pool
+            .iter()
+            .map(|p| AgentSlot { agent: p.agent.clone(), running: p.running, cap: p.cap, rate_limited: p.rate_limited })
+            .collect(),
+        agent_rows: agents.iter().map(|a| AgentRow { name: a.name.clone(), detected: a.detected, version: a.version.clone() }).collect(),
+        problem_keys: keys
+            .iter()
+            .filter(|k| k.keyed && k.disabled_reason.is_some())
+            .map(|k| ProblemKey { platform: k.platform.clone(), reason: brief(k.disabled_reason.as_deref().unwrap_or_default(), 120) })
+            .collect(),
+        keys_unkeyed: keys.iter().filter(|k| !k.keyed).count(),
+        recent_tasks: Vec::new(),
+    }
+}
+
 pub fn aggregate(pool: &PoolStatusInfo, keys: &[PoolKeyStatusInfo], coord: &CoordinatorSnapshot, agents: &[AgentInfo]) -> NotchSnapshot {
     let providers = tally_providers(keys);
     let total_keys = providers.iter().map(|p| p.key_count).sum();
@@ -138,6 +247,7 @@ pub fn aggregate(pool: &PoolStatusInfo, keys: &[PoolKeyStatusInfo], coord: &Coor
         activity: pick_activity(coord),
         agents: agents.iter().map(|a| AgentAuthDot { name: a.name.clone(), state: a.authenticated }).collect(),
         any_goal_running: !coord.running_goals.is_empty(),
+        detail: build_detail(keys, coord, agents),
     }
 }
 
@@ -274,5 +384,23 @@ mod tests {
         for key in ["healthy_ratio", "total_keys", "providers", "benches", "activity", "agents"] {
             assert!(v.get(key).is_some(), "extension.js reads `{key}`: {v}");
         }
+    }
+
+    #[test]
+    fn brief_keeps_the_first_line_and_caps_length() {
+        assert_eq!(brief("\n  first line\nsecond", 50), "first line");
+        assert_eq!(brief("abcdefghij", 5), "abcd…");
+    }
+
+    #[test]
+    fn detail_counts_goals_by_state_and_flags_only_explicitly_disabled_keys() {
+        let mut k = key("nvidia", true, false);
+        let mut bad = key("google", true, false);
+        bad.disabled_reason = Some("401 unauthorized".into());
+        k.disabled_reason = None;
+        let d = build_detail(&[k, bad], &empty_coord(), &[]);
+        assert_eq!(d.problem_keys.len(), 1);
+        assert_eq!(d.problem_keys[0].platform, "google");
+        assert_eq!(d.goals_running + d.goals_queued + d.goals_waiting + d.goals_blocked, 0);
     }
 }

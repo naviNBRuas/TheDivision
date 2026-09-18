@@ -92,7 +92,13 @@ impl Poller {
     pub fn tick(&self) -> Result<model::NotchSnapshot> {
         match client::call(&self.socket, &Request::NotchSnapshot) {
             Ok(Response::Ok { data: ResponseData::NotchSnapshot(s) }) => {
-                Ok(model::aggregate(&s.pool, &s.keys, &s.coordinator, &s.agents))
+                let mut snap = model::aggregate(&s.pool, &s.keys, &s.coordinator, &s.agents);
+                snap.detail.recent_tasks = s
+                    .recent_tasks
+                    .into_iter()
+                    .map(|t| model::TaskRow { id: t.id, agent: t.agent, status: t.status, description: t.description, updated_at: t.updated_at })
+                    .collect();
+                Ok(snap)
             }
             _ => self.tick_four_op(),
         }
@@ -144,6 +150,7 @@ mod tests {
             activity: vec![],
             agents: vec![],
             any_goal_running: false,
+            detail: Default::default(),
         }
     }
 

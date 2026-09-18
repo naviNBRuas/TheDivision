@@ -71,6 +71,7 @@ mod tests {
             activity: vec![],
             agents: vec![],
             any_goal_running: false,
+            detail: Default::default(),
         }
     }
 

@@ -258,6 +258,16 @@ pub fn list(conn: &Connection) -> Result<Vec<TaskRecord>> {
     Ok(rows)
 }
 
+/// The newest `limit` tasks -- a bounded read for callers (the notch) that
+/// must not pull the entire history on every poll.
+pub fn list_recent(conn: &Connection, limit: usize) -> Result<Vec<TaskRecord>> {
+    let mut stmt = conn.prepare("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?1")?;
+    let rows = stmt
+        .query_map(params![limit as i64], row_to_task)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Per-agent activity for the Usage page's "connected agents" table (see
 /// `single_protocol::AgentLocalStats`) — every OAuth-authenticated agent
 /// has no billing-API `$` data, so this is the only real signal available

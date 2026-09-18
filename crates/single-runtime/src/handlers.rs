@@ -1912,9 +1912,55 @@ fn dispatch(
             pool: pool_status_info(ctx)?,
             keys: provider_key_status_info(ctx, None)?,
             coordinator: coordinator_status_info(ctx)?,
-            agents: agent_list_info(ctx),
+            agents: agent_list_info_cached(ctx),
+            recent_tasks: recent_task_briefs(ctx),
         })),
     }
+}
+
+/// Best-effort: a task-table read failure leaves the notch's task list empty
+/// rather than failing the whole snapshot.
+fn recent_task_briefs(ctx: &Context) -> Vec<single_protocol::NotchTaskBrief> {
+    let Ok(conn) = crate::state::open(&ctx.dirs.db_path()) else { return Vec::new() };
+    let Ok(tasks) = crate::task::list_recent(&conn, 8) else { return Vec::new() };
+    tasks
+        .into_iter()
+        .map(|t| {
+            let first_line = t.description.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            let description: String = first_line.chars().take(110).collect();
+            single_protocol::NotchTaskBrief {
+                id: t.id,
+                agent: t.agent,
+                status: format!("{:?}", t.status).to_lowercase(),
+                description,
+                updated_at: t.updated_at,
+            }
+        })
+        .collect()
+}
+
+/// Agent discovery probes every registered agent (~1s for the full registry),
+/// which is far too slow for the notch's couple-of-seconds poll and changes
+/// rarely, so the composite reuses a recent result. `Request::AgentList`
+/// itself stays uncached.
+fn agent_list_info_cached(ctx: &Context) -> Vec<single_protocol::AgentInfo> {
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+    static CACHE: OnceLock<Mutex<Option<(Instant, Vec<single_protocol::AgentInfo>)>>> = OnceLock::new();
+    const TTL: Duration = Duration::from_secs(30);
+    let cell = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cell.lock() {
+        if let Some((at, agents)) = guard.as_ref() {
+            if at.elapsed() < TTL {
+                return agents.clone();
+            }
+        }
+    }
+    let fresh = agent_list_info(ctx);
+    if let Ok(mut guard) = cell.lock() {
+        *guard = Some((Instant::now(), fresh.clone()));
+    }
+    fresh
 }
 
 /// Shared with `Request::AgentList` and the `NotchSnapshot` composite

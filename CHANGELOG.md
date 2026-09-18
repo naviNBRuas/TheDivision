@@ -9,6 +9,17 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.20.0]
+
+### Added
+- Notch (GNOME extension): tabbed detail card with Overview, Goals, Pool and Agents views. Goals shows running/waiting/queued/blocked with the reason and retry ETA, Pool shows benches, key issues and per-provider headroom, Agents shows install/sign-in state and running slots. Health bar, activity pulse on the edge sliver, animated expand and tab crossfades.
+- Notch: dismisses on click outside and on Esc; the card collapses shortly after the pointer leaves.
+- `NotchSnapshot` request now includes the eight most recent tasks (bounded and truncated by the daemon).
+
+### Fixed
+- Notch tooltip could stay on screen after clicking away: the shell rewrites `visible` on tracked chrome, so it is now hidden with opacity and parked off-screen, and pointer position is polled rather than trusting enter/leave events of rebuilt rows.
+- Notch snapshot took ~1s because agent discovery probes every agent; the daemon now reuses a 30s-old agent list for `NotchSnapshot` (`agent list` itself stays uncached).
+
 ## [0.19.0]
 
 ### Added

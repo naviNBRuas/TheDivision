@@ -1820,6 +1820,19 @@ pub struct NotchSnapshotInfo {
     pub keys: Vec<PoolKeyStatusInfo>,
     pub coordinator: CoordinatorSnapshot,
     pub agents: Vec<AgentInfo>,
+    /// The few most recent tasks, already truncated -- bounded on the daemon
+    /// side so the notch never has to pull the whole task history.
+    #[serde(default)]
+    pub recent_tasks: Vec<NotchTaskBrief>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotchTaskBrief {
+    pub id: i64,
+    pub agent: String,
+    pub status: String,
+    pub description: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
