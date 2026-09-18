@@ -10,7 +10,7 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 ## [Unreleased]
 
 ### Added
-- Self-heal `stale_worktrees` step: removes the git worktree of finished tasks after `worktree_retention_hours` (default 24, `0` disables) when the worktree is clean. Dirty worktrees and `single/task-*` branches are kept. Previously every task's full-checkout worktree accumulated forever.
+- Self-heal `stale_worktrees` step: removes `state/worktrees/task-*` worktrees of non-running tasks after `worktree_retention_hours` (default 24, `0` disables) when the worktree is clean. Dirty worktrees and `single/task-*` branches are kept. Previously every task's full-checkout worktree accumulated forever.
 
 ## [0.18.0]
 
