@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn upsert_and_search_round_trip_against_real_qdrant() {
         let Some(()) = skip_if_unavailable() else { return };
-        let collection = "singlecli_test_roundtrip";
+        let collection = "divisi_test_roundtrip";
         upsert_point(TEST_URL, collection, 1, &[0.1, 0.2, 0.3, 0.4], json!({"text": "hello world"})).unwrap();
         upsert_point(TEST_URL, collection, 2, &[0.9, 0.8, 0.7, 0.6], json!({"text": "unrelated"})).unwrap();
 
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn search_on_nonexistent_collection_errors_cleanly() {
         let Some(()) = skip_if_unavailable() else { return };
-        let result = search(TEST_URL, "singlecli_test_does_not_exist", &[0.1, 0.2], 5);
+        let result = search(TEST_URL, "divisi_test_does_not_exist", &[0.1, 0.2], 5);
         assert!(result.is_err());
     }
 

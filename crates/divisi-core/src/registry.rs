@@ -739,7 +739,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
         AgentDefinition {
             name: "single-agent".into(),
             adapter: "single-agent".into(),
-            command: "single-agent".into(),
+            command: "divisi-agent".into(),
             install_method: InstallMethod::Native {
                 detail: "Built from this workspace's divisi-native-agent crate \
                          via `cargo build --release -p divisi-native-agent`; \

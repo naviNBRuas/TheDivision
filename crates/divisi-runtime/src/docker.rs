@@ -109,7 +109,7 @@ mod tests {
             eprintln!("skipping: docker not installed");
             return;
         }
-        let container = "singlecli-test-lifecycle";
+        let container = "divisi-test-lifecycle";
         let _ = Command::new("docker").args(["rm", "-f", container]).output(); // clean slate
         let home_dir = tempfile::tempdir().unwrap();
         let cwd_dir = tempfile::tempdir().unwrap();
@@ -143,6 +143,6 @@ mod tests {
             eprintln!("skipping: docker not installed");
             return;
         }
-        assert_eq!(is_running("singlecli-definitely-does-not-exist").unwrap(), None);
+        assert_eq!(is_running("divisi-definitely-does-not-exist").unwrap(), None);
     }
 }

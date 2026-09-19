@@ -458,7 +458,7 @@ mod tests {
             eprintln!("skipping: docker not available");
             return;
         }
-        let container = "singlecli-test-run-rs-env-passthrough";
+        let container = "divisi-test-run-rs-env-passthrough";
         let _ = Command::new("docker").args(["rm", "-f", container]).output();
         let status = Command::new("docker")
             .args(["run", "-d", "--name", container, "alpine", "sleep", "60"])

@@ -220,8 +220,8 @@ mod tests {
         #[test]
         fn labeled_per_agent_key_resolves_to_the_providers_env_var_name() {
             let (_tmp, dirs) = test_dirs();
-            let provider = "singlecli-test-provider-labeled";
-            let agent = "singlecli-test-agent-labeled";
+            let provider = "divisi-test-provider-labeled";
+            let agent = "divisi-test-agent-labeled";
             crate::providers::add(&dirs.providers_registry_file(), divisi_protocol::ProviderSpec {
                 name: provider.into(),
                 env_var_name: "SINGLECLI_TEST_LABELED_KEY".into(),
@@ -250,7 +250,7 @@ mod tests {
         #[test]
         fn shared_key_falls_back_when_provider_name_matches_agent_name() {
             let (_tmp, dirs) = test_dirs();
-            let provider_and_agent = "singlecli-test-agent-shared";
+            let provider_and_agent = "divisi-test-agent-shared";
             let secret_name = format!("provider:{provider_and_agent}");
             crate::providers::add(&dirs.providers_registry_file(), divisi_protocol::ProviderSpec {
                 name: provider_and_agent.into(),
@@ -272,7 +272,7 @@ mod tests {
         #[test]
         fn unrelated_agent_gets_nothing_injected() {
             let (_tmp, dirs) = test_dirs();
-            let provider = "singlecli-test-provider-unrelated";
+            let provider = "divisi-test-provider-unrelated";
             crate::providers::add(&dirs.providers_registry_file(), divisi_protocol::ProviderSpec {
                 name: provider.into(),
                 env_var_name: "SINGLECLI_TEST_UNRELATED_KEY".into(),

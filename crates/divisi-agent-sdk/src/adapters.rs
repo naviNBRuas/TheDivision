@@ -1226,7 +1226,7 @@ impl AgentAdapter for KiloCodeAdapter {
 
 impl AgentAdapter for DivisiAgentAdapter {
     fn command(&self) -> &str {
-        "single-agent"
+        "divisi-agent"
     }
 
     /// single-agent has no on-disk MCP config surface — it talks directly
@@ -1261,7 +1261,7 @@ impl AgentAdapter for DivisiAgentAdapter {
         let model = std::env::var("DIVISI_AGENT_MODEL").unwrap_or_else(|_| "laguna-s-2.1-free".into());
 
         run_command_live(
-            "single-agent",
+            "divisi-agent",
             &[
                 "run".to_string(),
                 "--provider".to_string(),

@@ -227,8 +227,8 @@ key_path = "mcpServers"
     #[test]
     fn to_agent_definition_never_claims_tools_for_a_run_based_custom_agent() {
         let def = CustomAgentFile {
-            name: "single-example".into(),
-            command: "single-agent-example".into(),
+            name: "divisi-example".into(),
+            command: "divisi-agent-example".into(),
             install: None,
             run: Some(RunSpec { mode: "flag".into(), value: "--prompt".into() }),
             mcp: None,

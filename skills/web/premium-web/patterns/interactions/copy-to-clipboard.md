@@ -12,7 +12,7 @@ browsers, and reports the result to screen readers via `aria-live`.
 
 ```html
 <div class="copyable">
-  <pre><code id="cmd">npm install @nbr/singlecli</code></pre>
+  <pre><code id="cmd">npm install @nbr/divisi</code></pre>
   <button class="copy-btn" data-copy="#cmd" aria-label="Copy to clipboard">
     <svg class="icon icon--copy"></svg>
     <svg class="icon icon--check" aria-hidden="true"></svg>

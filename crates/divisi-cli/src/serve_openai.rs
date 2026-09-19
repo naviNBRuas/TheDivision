@@ -242,9 +242,9 @@ fn handle_conn(mut stream: TcpStream, srv: &Server) -> Result<()> {
 
 fn models_body(ctx: &divisi_runtime::Context) -> Value {
     let now = unix_now();
-    let mut data = vec![json!({ "id": "pool", "object": "model", "created": now, "owned_by": "singlecli" })];
+    let mut data = vec![json!({ "id": "pool", "object": "model", "created": now, "owned_by": "divisi" })];
     for a in &ctx.registry {
-        data.push(json!({ "id": a.name, "object": "model", "created": now, "owned_by": "singlecli" }));
+        data.push(json!({ "id": a.name, "object": "model", "created": now, "owned_by": "divisi" }));
     }
     json!({ "object": "list", "data": data })
 }

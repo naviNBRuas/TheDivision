@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn set_get_delete_round_trip_against_real_redis() {
         let Some(()) = skip_if_unavailable() else { return };
-        let key = "singlecli:test:roundtrip";
+        let key = "divisi:test:roundtrip";
         set(TEST_URL, key, "hello", None).unwrap();
         assert_eq!(get(TEST_URL, key).unwrap().as_deref(), Some("hello"));
         assert!(delete(TEST_URL, key).unwrap());
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn ttl_expires_the_key() {
         let Some(()) = skip_if_unavailable() else { return };
-        let key = "singlecli:test:ttl";
+        let key = "divisi:test:ttl";
         set(TEST_URL, key, "temp", Some(1)).unwrap();
         assert_eq!(get(TEST_URL, key).unwrap().as_deref(), Some("temp"));
         std::thread::sleep(std::time::Duration::from_millis(1200));
@@ -105,12 +105,12 @@ mod tests {
     #[test]
     fn list_keys_matches_pattern() {
         let Some(()) = skip_if_unavailable() else { return };
-        set(TEST_URL, "singlecli:test:list:a", "1", None).unwrap();
-        set(TEST_URL, "singlecli:test:list:b", "2", None).unwrap();
-        let keys = list_keys(TEST_URL, "singlecli:test:list:*").unwrap();
-        assert_eq!(keys, vec!["singlecli:test:list:a", "singlecli:test:list:b"]);
-        delete(TEST_URL, "singlecli:test:list:a").unwrap();
-        delete(TEST_URL, "singlecli:test:list:b").unwrap();
+        set(TEST_URL, "divisi:test:list:a", "1", None).unwrap();
+        set(TEST_URL, "divisi:test:list:b", "2", None).unwrap();
+        let keys = list_keys(TEST_URL, "divisi:test:list:*").unwrap();
+        assert_eq!(keys, vec!["divisi:test:list:a", "divisi:test:list:b"]);
+        delete(TEST_URL, "divisi:test:list:a").unwrap();
+        delete(TEST_URL, "divisi:test:list:b").unwrap();
     }
 
     #[test]

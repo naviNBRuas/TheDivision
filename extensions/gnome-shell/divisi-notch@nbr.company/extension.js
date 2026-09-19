@@ -40,7 +40,7 @@ const NOTABLE_PEEK_MS = 3800;
 
 const TABS = [['overview', 'Overview'], ['goals', 'Goals'], ['pool', 'Pool'], ['agents', 'Agents'], ['usage', 'Usage']];
 
-// [label, colour] per provider auth_state / agent class (see single_core::auth_class).
+// [label, colour] per provider auth_state / agent class (see divisi_core::auth_class).
 const PROVIDER_STATES = [
     ['authed', 'AUTHED', TEAL],
     ['no_auth_needed', 'NO AUTH NEEDED', BLUE],

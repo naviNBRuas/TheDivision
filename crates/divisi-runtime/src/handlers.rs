@@ -970,7 +970,7 @@ fn dispatch(
             let settings_path = home.join(".claude/settings.json");
             let hook_command = format!(
                 "{} internal claude-pretooluse-hook",
-                resolve_single_binary_path()
+                resolve_divisi_binary_path()
             );
             let updated = divisi_agent_sdk::formats::claude_settings::apply_hook(
                 &settings_path,
@@ -989,7 +989,7 @@ fn dispatch(
                 .join(".claude/settings.json");
             let hook_command = format!(
                 "{} internal claude-pretooluse-hook",
-                resolve_single_binary_path()
+                resolve_divisi_binary_path()
             );
             if let Some(updated) = divisi_agent_sdk::formats::claude_settings::remove_hook(
                 &settings_path,
@@ -2261,16 +2261,16 @@ fn to_document_info(doc: crate::documents::DocumentInfo) -> divisi_protocol::Doc
 /// like when Claude Code spawns the hook process — falls back to the bare
 /// command name (relying on `PATH`) if `which` can't find it, same
 /// resolution style `divisi-agent-sdk::discover` already uses.
-fn resolve_single_binary_path() -> String {
+fn resolve_divisi_binary_path() -> String {
     std::process::Command::new("which")
-        .arg("single")
+        .arg("divisi")
         .output()
         .ok()
         .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "single".to_string())
+        .unwrap_or_else(|| "divisi".to_string())
 }
 
 fn write_settings_with_backup(

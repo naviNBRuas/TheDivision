@@ -11,3 +11,12 @@ install.sh	Phase B: ships with the first divisi release
 docker/*	Phase B: image names
 README.md	install section keeps the old release names until Phase B
 crates/divisi-core/src/mcp.rs	legacy MCP server names removed on sync
+crates/divisi-mcp/src/server.rs	MCP permission resource prefix singlecli:<tool> is persisted in users' permission rules
+crates/divisi-runtime/src/docker.rs	DEFAULT_IMAGE singlecli-agents ships in Phase B
+crates/divisi-lsp/src/main.rs	references a historical spec filename
+crates/divisi-runtime/src/coordinator/mod.rs	references a historical epic folder name
+docs/architecture.md	release asset name singlecli-<target> until Phase B
+crates/divisi-core/src/preferences.rs	tests use the persisted singlecli:<tool> permission resource prefix
+crates/divisi-core/src/backup.rs	__singlecli_secrets__.toml is persisted inside existing backup archives
+crates/divisi-cli/src/update.rs	release asset name singlecli-<target> until Phase B
+crates/divisi-cli/src/internal_lsp_manifest.rs	references a historical spec filename

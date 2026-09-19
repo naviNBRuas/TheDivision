@@ -587,7 +587,7 @@ mod tests {
     #[test]
     fn resolve_cwd_errors_instead_of_falling_back_on_missing_path() {
         let args: Map<String, Value> =
-            json!({ "cwd": "/definitely/does/not/exist/singlecli-mcp-test-fixture" }).as_object().unwrap().clone();
+            json!({ "cwd": "/definitely/does/not/exist/divisi-mcp-test-fixture" }).as_object().unwrap().clone();
         let err = DivisiServer::resolve_cwd(&args).expect_err("nonexistent cwd must error, not silently fall back");
         assert!(err.to_string().contains("could not be resolved"));
     }

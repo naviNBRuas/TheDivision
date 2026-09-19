@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn singlecli_mcp_is_always_included_regardless_of_gateway_mode() {
+    fn divisi_mcp_is_always_included_regardless_of_gateway_mode() {
         let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());

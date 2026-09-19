@@ -179,9 +179,9 @@ mod tests {
         let conn = test_conn();
         create_entity(&conn, "alice", "person").unwrap();
         add_observation(&conn, "alice", "likes rust").unwrap();
-        add_observation(&conn, "alice", "works on singlecli").unwrap();
+        add_observation(&conn, "alice", "works on divisi").unwrap();
         let entity = get_entity(&conn, "alice").unwrap().unwrap();
-        assert_eq!(entity.observations, vec!["likes rust", "works on singlecli"]);
+        assert_eq!(entity.observations, vec!["likes rust", "works on divisi"]);
     }
 
     #[test]
@@ -219,11 +219,11 @@ mod tests {
     #[test]
     fn query_matches_name_type_and_observation_content() {
         let conn = test_conn();
-        create_entity(&conn, "singlecli", "project").unwrap();
+        create_entity(&conn, "divisi", "project").unwrap();
         create_entity(&conn, "alice", "person").unwrap();
-        add_observation(&conn, "alice", "maintains singlecli").unwrap();
+        add_observation(&conn, "alice", "maintains divisi").unwrap();
 
-        assert_eq!(query(&conn, "singlecli").unwrap().len(), 2); // matches entity name AND the observation mentioning it
+        assert_eq!(query(&conn, "divisi").unwrap().len(), 2); // matches entity name AND the observation mentioning it
         assert_eq!(query(&conn, "project").unwrap().len(), 1);
     }
 

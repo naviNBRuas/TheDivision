@@ -359,9 +359,9 @@ mod tests {
             let providers_path = dir.path().join("providers.toml");
             let keys_path = dir.path().join("provider_keys.toml");
             add(&providers_path, ProviderSpec {
-                name: "singlecli-test-unconfigured".into(),
+                name: "divisi-test-unconfigured".into(),
                 env_var_name: "SINGLECLI_TEST_UNCONFIGURED_KEY".into(),
-                secret_name: "provider:singlecli-test-unconfigured".into(),
+                secret_name: "provider:divisi-test-unconfigured".into(),
                 base_url: None,
                 models: Vec::new(),
             })
@@ -376,9 +376,9 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let providers_path = dir.path().join("providers.toml");
             let keys_path = dir.path().join("provider_keys.toml");
-            let secret_name = "provider:singlecli-test-shared-configured".to_string();
+            let secret_name = "provider:divisi-test-shared-configured".to_string();
             add(&providers_path, ProviderSpec {
-                name: "singlecli-test-shared-configured".into(),
+                name: "divisi-test-shared-configured".into(),
                 env_var_name: "SINGLECLI_TEST_SHARED_CONFIGURED_KEY".into(),
                 secret_name: secret_name.clone(),
                 base_url: None,
@@ -390,7 +390,7 @@ mod tests {
 
             let result = configured(&providers_path, &keys_path).unwrap();
             assert_eq!(result.len(), 1);
-            assert_eq!(result[0].name, "singlecli-test-shared-configured");
+            assert_eq!(result[0].name, "divisi-test-shared-configured");
 
             SecretStore::delete(&store, &secret_name).unwrap();
         }
@@ -400,7 +400,7 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let providers_path = dir.path().join("providers.toml");
             let keys_path = dir.path().join("provider_keys.toml");
-            let provider = "singlecli-test-labeled-configured";
+            let provider = "divisi-test-labeled-configured";
             add(&providers_path, ProviderSpec {
                 name: provider.into(),
                 env_var_name: "SINGLECLI_TEST_LABELED_CONFIGURED_KEY".into(),
