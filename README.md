@@ -103,7 +103,7 @@ divisi install-integrations --yes   # sync MCP config into every agent, with bac
 divisi task run "add a .gitignore" --agent claude --cwd ~/code/some-project   # delegate a prompt in any project directory
 divisi orchestrate "add tests for the parser" --agents claude,codex --worktree   # relay across multiple agents
 
-# use an agent, through single, to actually set up a fresh machine (real $HOME, not the sandbox):
+# use an agent, through divisi, to actually set up a fresh machine (real $HOME, not the sandbox):
 divisi task run "install my usual dev tools, set up my dotfiles, configure the desktop" \
   --agent claude --real-home --timeout-secs 3600
 
@@ -229,7 +229,7 @@ Every list/inspect command supports `--json` for scripting.
 - **Account labels, status, and concurrent multi-account execution** —
   captured account profiles can carry a human label and a manually-set
   status (`available`/`rate_limited`/`needs_topup`/`unknown` — never
-  auto-detected, since no agent exposes a verified quota API). `single
+  auto-detected, since no agent exposes a verified quota API). `divisi
   task run --account <name>` runs against a materialized, isolated
   `$HOME` for that account instead of swapping the live one in place, so
   multiple accounts of the same agent (two `claude`, three `codex`, ...)
@@ -302,7 +302,7 @@ Two more pieces plug into this:
   a Thompson-sampling bandit over a vendored ~44-provider free-LLM
   catalog (`divisi provider list-free`) and dispatches straight to that
   provider's HTTP API, benching whatever's rate-limited/failing and
-  retrying the next candidate before you ever see a failure. `single
+  retrying the next candidate before you ever see a failure. `divisi
   provider add-free <id>` keys a provider; `divisi provider validate`
   re-probes existing keys on demand; `divisi provider key-status` shows
   keyed/valid/cooldown/headroom per provider — real, live state, not a
