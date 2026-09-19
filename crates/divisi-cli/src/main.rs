@@ -1571,6 +1571,17 @@ enum NotchCommand {
 fn main() -> anyhow::Result<()> {
     divisi_core::env::adopt_legacy_env();
     let cli = Cli::parse();
+    // These never need the config dir, and resolving it migrates a pre-rename
+    // one, so they run before `DivisiDirs::discover()`. `migrate` resolves it
+    // itself, and only with `--apply`.
+    match &cli.command {
+        Some(Command::Logo { animate }) => {
+            logo::print_logo(*animate);
+            return Ok(());
+        }
+        Some(Command::Migrate { apply }) => return migrate_cmd::run(*apply),
+        _ => {}
+    }
     let dirs = DivisiDirs::discover()?;
     dirs.ensure_created()?;
     let socket_path = dirs.socket_path();
@@ -1736,8 +1747,7 @@ fn main() -> anyhow::Result<()> {
                 println!("divisi-notch: hide sent");
             }
         },
-        Command::Logo { animate } => logo::print_logo(animate),
-        Command::Migrate { apply } => migrate_cmd::run(apply)?,
+        Command::Logo { .. } | Command::Migrate { .. } => unreachable!("handled before the config dir is resolved"),
         Command::Doctor { fix } => {
             let response = client::send(&socket_path, Request::Doctor { fix })?;
             render::print(response, false);
