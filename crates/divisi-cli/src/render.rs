@@ -855,6 +855,11 @@ fn print_data(data: ResponseData) {
                 }
             }
         }
+        ResponseData::Chat(outcome) => {
+            for e in outcome.events {
+                print_chat_event(&e.kind, &e.body);
+            }
+        }
         ResponseData::CoordinatorEvents(events) => {
             for e in events {
                 println!("{} {:<12} {}", e.ts, e.kind, e.body);
@@ -1116,3 +1121,16 @@ mod tests {
         assert_eq!(one_line_description(&"x".repeat(200), 10), format!("{}…", "x".repeat(10)));
     }
 }
+
+/// One chat event as a terminal line: `you`, `divisi`, `? ` for a confirmation, `= ` for its result.
+pub fn print_chat_event(kind: &str, body: &str) {
+    use divisi_protocol::{chat_line, ChatRole};
+    let Some(l) = chat_line(kind, body) else { return };
+    match l.role {
+        ChatRole::You => println!("you     {}", l.text),
+        ChatRole::Divisi => println!("divisi  {}{}", l.text, if l.degraded { "  (rules only)" } else { "" }),
+        ChatRole::Confirm => println!("?       {}   [divisi chat confirm {} --allow|--deny]", l.text, l.approval_id.unwrap_or_default()),
+        ChatRole::Result => println!("=       {}", l.text),
+    }
+}
+

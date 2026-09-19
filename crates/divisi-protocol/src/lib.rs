@@ -740,6 +740,24 @@ pub enum Request {
         session_id: String,
         since_event_id: i64,
     },
+    /// Say something to divisi in plain language. `session: None` is the shared main
+    /// conversation that the TUI, the notch and `divisi chat` all open. Returns the events
+    /// this message appended; a reply that needs a model arrives later as further events.
+    ChatSend {
+        #[serde(default)]
+        session: Option<String>,
+        text: String,
+        /// Where it was typed: `zed`, `tui`, `notch` or `cli`.
+        surface: String,
+    },
+    /// Answer a confirmation divisi asked for (a `chat_confirm` event). The first answer wins;
+    /// answering an already-resolved confirmation returns its recorded outcome.
+    ChatConfirm {
+        approval_id: i64,
+        allow: bool,
+        #[serde(default)]
+        remember: bool,
+    },
     /// Cross-thread snapshot: running/queued goals + pool capacity.
     CoordinatorStatus,
     /// Pending merge confirmations from the coordinator's opt-in
@@ -878,6 +896,7 @@ pub enum ResponseData {
     GoalView(GoalView),
     Goals(Vec<GoalSummary>),
     CoordinatorEvents(Vec<CoordinatorEvent>),
+    Chat(ChatOutcome),
     CoordinatorSnapshot(CoordinatorSnapshot),
 
     Empty,
@@ -949,6 +968,13 @@ pub struct CoordinatorEvent {
     pub ts: String,
     pub kind: String,
     pub body: String,
+}
+
+/// What a `ChatSend` or `ChatConfirm` appended to the conversation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatOutcome {
+    pub session_id: String,
+    pub events: Vec<CoordinatorEvent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2045,6 +2071,52 @@ pub struct ProjectContext {
     pub project_docs: Vec<String>,
 }
 
+/// Who a chat line is from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatRole {
+    You,
+    Divisi,
+    /// A risky action waiting for your yes or no.
+    Confirm,
+    /// How a confirmation ended.
+    Result,
+}
+
+/// One displayable line of the shared conversation, read from a `chat_*` event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatLine {
+    pub role: ChatRole,
+    pub text: String,
+    pub approval_id: Option<i64>,
+    /// True when divisi answered without a model (rules-only mode).
+    pub degraded: bool,
+}
+
+/// Reads a `chat_*` coordinator event into a display line. Returns `None` for any other event
+/// kind (goal progress, plans, ...). A body that is not the expected JSON is shown as-is.
+pub fn chat_line(kind: &str, body: &str) -> Option<ChatLine> {
+    let role = match kind {
+        "chat_user" => ChatRole::You,
+        "chat_assistant" => ChatRole::Divisi,
+        "chat_confirm" => ChatRole::Confirm,
+        "chat_result" => ChatRole::Result,
+        _ => return None,
+    };
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let field = match role {
+        ChatRole::Confirm => "summary",
+        ChatRole::Result => "outcome",
+        _ => "text",
+    };
+    let text = v.get(field).and_then(|t| t.as_str()).map(str::to_owned).unwrap_or_else(|| body.to_owned());
+    Some(ChatLine {
+        role,
+        text,
+        approval_id: v.get("approval_id").and_then(|i| i.as_i64()),
+        degraded: v.get("degraded").and_then(|d| d.as_bool()).unwrap_or(false),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2240,6 +2312,9 @@ mod tests {
             Request::GoalResume { goal_id: "goal_1".into() },
             Request::GoalRetryNode { goal_id: "goal_1".into(), node_id: "s2".into() },
             Request::SessionEvents { session_id: "sess_1".into(), since_event_id: 4 },
+            Request::ChatSend { session: None, text: "how is the pool?".into(), surface: "tui".into() },
+            Request::ChatSend { session: Some("sess_1".into()), text: "cancel goal_1".into(), surface: "zed".into() },
+            Request::ChatConfirm { approval_id: 7, allow: true, remember: false },
             Request::CoordinatorStatus,
             Request::GoalMergeList,
             Request::GoalMergeShow { id: 1 },
@@ -2274,5 +2349,24 @@ mod tests {
             let json = serde_json::to_string(&d).unwrap();
             let _back: ResponseData = serde_json::from_str(&json).unwrap();
         }
+    }
+
+    #[test]
+    fn chat_lines_are_read_from_event_bodies() {
+        let you = chat_line("chat_user", r#"{"text":"how is the pool","surface":"tui"}"#).unwrap();
+        assert_eq!((you.role, you.text.as_str()), (ChatRole::You, "how is the pool"));
+        let reply = chat_line("chat_assistant", r#"{"text":"all healthy","degraded":true}"#).unwrap();
+        assert_eq!((reply.role, reply.text.as_str(), reply.degraded), (ChatRole::Divisi, "all healthy", true));
+        let ask = chat_line("chat_confirm", r#"{"approval_id":7,"summary":"cancel goal_1"}"#).unwrap();
+        assert_eq!((ask.role, ask.text.as_str(), ask.approval_id), (ChatRole::Confirm, "cancel goal_1", Some(7)));
+        let done = chat_line("chat_result", r#"{"approval_id":7,"outcome":"approved"}"#).unwrap();
+        assert_eq!((done.role, done.text.as_str(), done.approval_id), (ChatRole::Result, "approved", Some(7)));
+    }
+
+    #[test]
+    fn non_chat_events_and_bad_bodies_are_handled() {
+        assert!(chat_line("node_output", r#"{"text":"x"}"#).is_none(), "goal progress is not chat");
+        let raw = chat_line("chat_assistant", "not json at all").unwrap();
+        assert_eq!(raw.text, "not json at all", "a malformed body is shown as-is, never dropped");
     }
 }

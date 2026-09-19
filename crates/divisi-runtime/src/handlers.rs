@@ -1907,6 +1907,7 @@ fn dispatch(
                 .collect();
             Ok(ResponseData::CoordinatorEvents(out))
         }
+        Request::ChatSend { .. } | Request::ChatConfirm { .. } => anyhow::bail!("chat is not wired up yet"),
         Request::CoordinatorStatus => Ok(ResponseData::CoordinatorSnapshot(coordinator_status_info(ctx)?)),
         Request::NotchSnapshot => Ok(ResponseData::NotchSnapshot(divisi_protocol::NotchSnapshotInfo {
             pool: pool_status_info(ctx)?,
