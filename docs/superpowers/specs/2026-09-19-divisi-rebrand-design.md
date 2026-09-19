@@ -145,21 +145,41 @@ and global `CLAUDE.md`; Zed `agent_servers`; systemd `PATH` and unit names; the
 **Versioning:** 0.24.0 (minor bump, per the pre-1.0 SemVer rule).
 
 **Rollout, one atomic commit per step**
-0. Prerequisites: repair the `gh` login, confirm the daemon stays stopped,
-   branch.
-1. Brand kit: logo SVGs, colour tokens, motion spec.
-2. Mechanical rename: crates, binaries, env compatibility; build and full tests
-   pass.
-3. Migrations: config dir, systemd unit, notch UUID.
+
+Phase A: local only. Needs no GitHub or GitLab access; commits stay on the
+`rebrand/divisi` branch. Nothing is pushed.
+0. Branch and baseline (build and full tests pass before touching anything;
+   the daemon stays stopped).
+1. Brand kit: logo SVGs, colour tokens, motion spec and renderers.
+2. Mechanical rename: crates, binaries, identifiers, env vars, paths; build
+   and full tests pass after each stage.
+3. Compatibility and migrations: legacy `SINGLE_*` adoption, config-dir move,
+   `single*` shims, `divisi migrate` (systemd unit, notch UUID).
 4. TUI and notch: animated mark and the `/` prompt glyph.
-5. Docs and site: README, docs, CHANGELOG, `divisi.nbr.company`.
-6. Repo rename and 0.24.0 release.
-7. External re-sync, then resume the daemon and epics.
+5. Docs and CHANGELOG, version 0.24.0 (no tag).
+6. Cutover, on explicit go only: install binaries, run `divisi migrate
+   --apply`, re-sync integrations, resume the daemon.
+
+Phase B: deferred until the forge is available (E28 local forge first, then
+GitHub and GitLab). Repo rename to `naviNBRuas/divisi` and the `repository`
+URL; `install.sh`, `release.yml` and Docker image names (they must ship
+together with the first divisi release, since installers fetch release
+assets); tag and 0.24.0 release; `divisi.nbr.company` site publish;
+GitHub redirect notes in the README.
 
 ## 4. Risks and known open items
 
 - The `gh` keyring token is invalid and authenticated API calls return
-  "account was suspended". Must be resolved before step 6.
+  "account was suspended". Decision 2026-09-19: work around it. All remote
+  work is Phase B and waits for the E28 local forge, then GitHub and GitLab.
+  Until then the `repository` URL and the release and install paths keep the
+  SingleCLI names.
+- Persisted identifiers keep their legacy names in 0.24.0 and get a later
+  migration: agent ids `single-pool` and `single-agent`, the opencode provider
+  namespace `single-<provider>`, the Qdrant collection `single_memory`, and the
+  keyring entry `single-redact-master-key`. Renaming them without a data
+  migration would orphan stored state or secrets. `state/single.db` is renamed
+  to `divisi.db` as part of the config-dir migration.
 - `divisi.dev` is held by a third party (registered 2021, expires
   2027-05-17); acquiring it is optional and out of scope.
 - Unresolved carry-overs from the pause note that the rename must not disturb:
