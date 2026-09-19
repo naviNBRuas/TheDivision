@@ -1,3 +1,4 @@
+pub mod migrate;
 pub mod env;
 pub mod account;
 pub mod agent_home;

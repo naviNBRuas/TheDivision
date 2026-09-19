@@ -22,7 +22,7 @@ impl DivisiDirs {
         }
         let base = directories::BaseDirs::new()
             .context("could not determine home/config directory for this platform")?;
-        Ok(Self { root: base.config_dir().join("divisi") })
+        Ok(Self { root: crate::migrate::resolve_default_root(base.config_dir()) })
     }
 
     pub fn from_root(root: PathBuf) -> Self {
