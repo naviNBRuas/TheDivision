@@ -13,8 +13,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Never rewritten: vendored code, build output, lockfile, history, and the docs
 # that describe the rename itself.
-SKIP_PREFIXES = ("vendor/", "target/", ".git/", "docs/adr/", "docs/superpowers/")
-SKIP_FILES = {"Cargo.lock", "CHANGELOG.md", "scripts/rename_divisi.py", "scripts/legacy-allowlist.txt"}
+# Release plumbing (.github, docker, install.sh) is Phase B: it ships as one unit with the first divisi release.
+SKIP_PREFIXES = ("vendor/", "target/", ".git/", "docs/adr/", "docs/superpowers/", ".github/", "docker/")
+SKIP_FILES = {"Cargo.lock", "CHANGELOG.md", "install.sh", "scripts/rename_divisi.py", "scripts/legacy-allowlist.txt"}
 # Files that must keep legacy names on purpose (created after the rename stages).
 STAGE_SKIP = {
     "env": {"crates/divisi-core/src/env.rs"},
