@@ -9,6 +9,28 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.24.0]
+
+Renamed from SingleCLI to divisi.
+
+### Changed
+
+- Binaries: `single` → `divisi`, `single-runtimed` → `divisid`, `singlecli-mcp` → `divisi-mcp`, `single-mcp` → `divisi-gateway`, `single-lsp` → `divisi-lsp`, `single-notch` → `divisi-notch`, `single-agent` → `divisi-agent`. The old names remain as aliases until 0.26.
+- Crates `single-*` → `divisi-*`; environment `SINGLE_*` → `DIVISI_*` (the old names are still read); config `~/.config/single` → `~/.config/divisi`, moved automatically on first run with a symlink left behind and `state/single.db` renamed to `divisi.db`.
+- Integration sync now also removes the old `single-mcp` and `singlecli-mcp` entries from agent configs, so an upgrade replaces them instead of leaving duplicates.
+- The GNOME notch extension UUID is now `divisi-notch@nbr.company`.
+
+### Added
+
+- The divisi mark (÷ while working, / at rest) with a shared motion spec, rendered in the TUI header, in the GNOME notch and by `divisi logo [--animate]`. `NO_MOTION`, `NO_COLOR` and `TERM=dumb` degrade to a static or ASCII mark.
+- `divisi migrate`: moves a pre-rename install onto divisi names (config dir, systemd unit, notch extension). Dry run unless `--apply`.
+- `.cargo/config.toml` sandboxes `XDG_CONFIG_HOME` for cargo-launched processes so tests cannot migrate a real config directory.
+
+### Unchanged for now
+
+- Persisted names keep their legacy form so existing state and secrets keep working: agent ids `single-pool` and `single-agent`, the opencode `single-<provider>` namespace, the Qdrant collection `single_memory`, the `single-redact-master-key` keyring entry, the MCP permission resource prefix `singlecli:<tool>` (saved rules keep working), and the `__singlecli_secrets__.toml` backup manifest name.
+- The repository URL, `install.sh` and release artifact names still use SingleCLI until the first divisi release.
+
 ## [0.23.0]
 
 ### Added

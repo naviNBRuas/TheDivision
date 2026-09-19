@@ -20,7 +20,8 @@ use std::collections::BTreeMap;
 #[command(
     name = "divisi",
     version,
-    about = "divisi — unified control plane for AI coding agents"
+    long_version = concat!(env!("CARGO_PKG_VERSION"), "\nAn independent project, endorsed by NBR Company. Built by Navin B. Ruas (naviNBRuas)."),
+    about = "divisi — the orchestration layer for AI agents. An independent project, endorsed by NBR Company."
 )]
 struct Cli {
     #[command(subcommand)]
