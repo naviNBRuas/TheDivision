@@ -512,7 +512,9 @@ mod tests {
         assert_eq!(kinds(&o), ["chat_user", "chat_assistant"]);
 
         // A risky request answers with a confirmation, and ChatConfirm resolves it through the same handler.
-        let Response::Ok { data: ResponseData::Chat(ask) } = send("push the branch") else { panic!() };
+        // The phrase is matched by a rule on purpose: this test goes through the real pool model
+        // otherwise, which would run real agents.
+        let Response::Ok { data: ResponseData::Chat(ask) } = send("cancel goal_e2e_0001") else { panic!() };
         let id = body(&ask, "chat_confirm")["approval_id"].as_i64().unwrap();
         let Response::Ok { data: ResponseData::Chat(done) } =
             crate::handlers::handle(&e.ctx, Request::ChatConfirm { approval_id: id, allow: false, remember: false })

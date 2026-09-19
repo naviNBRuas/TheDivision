@@ -1,4 +1,5 @@
 mod acp;
+mod chat_cmd;
 mod client;
 mod daemon;
 mod internal_lsp_manifest;
@@ -324,6 +325,11 @@ enum Command {
     Session {
         #[command(subcommand)]
         action: SessionCommand,
+    },
+    /// Talk to divisi in plain language (the shared conversation). No subcommand opens a chat.
+    Chat {
+        #[command(subcommand)]
+        action: Option<chat_cmd::ChatCommand>,
     },
     /// Submit and track coordinator goals.
     Goal {
@@ -2986,6 +2992,7 @@ fn main() -> anyhow::Result<()> {
                 render::print(response, false);
             }
         },
+        Command::Chat { action } => chat_cmd::run(&socket_path, action)?,
         Command::Goal { action } => match action {
             GoalCommand::Submit {
                 text,

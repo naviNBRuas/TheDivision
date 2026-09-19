@@ -1,6 +1,6 @@
 # Conversational divisi: design
 
-Status: approved 2026-09-19 section by section, awaiting spec review.
+Status: approved 2026-09-19. Stage 1 (core and `divisi chat`) implemented; stages 2 to 4 in progress.
 Successor step: one implementation plan per delivery stage (writing-plans).
 Builds on: the divisi rename (`rebrand/divisi`, 0.24.0). Branch from it, not from `main`.
 
@@ -43,21 +43,24 @@ use and stores its id under the settings key `chat.main_session`. Chat messages 
 
 | kind | body (JSON) |
 |---|---|
-| `chat.user` | `{ "text", "surface" }`, surface is `zed`, `tui`, `notch` or `cli` |
-| `chat.assistant` | `{ "text", "intent", "goal_ids": [], "degraded": false }` |
-| `chat.confirm` | `{ "approval_id", "summary", "action", "expires_at" }` |
-| `chat.result` | `{ "approval_id", "outcome": "approved"\|"denied"\|"expired" }` |
+| `chat_user` | `{ "text", "surface" }`, surface is `zed`, `tui`, `notch` or `cli` |
+| `chat_assistant` | `{ "text", "intent", "goal_ids": [], "degraded": false }` |
+| `chat_confirm` | `{ "approval_id", "summary", "action", "expires_at" }` |
+| `chat_result` | `{ "approval_id", "outcome": "approved"\|"denied"\|"expired" }` |
 
 Goals created from chat keep their existing progress events in the same session, so the
 thread reads as one story: request, goal created, goal progress, goal done.
 
-**Requests.** History and live tailing reuse the existing `SessionEvents` long-poll. Two
+**Requests.** Event kinds are snake_case like the existing ones (`chat_user`, and so on). Three
 requests are added to `divisi-protocol`:
 
 - `ChatSend { session: Option<String>, text: String, surface: String }`. `session: None`
   means the shared thread. Returns the events appended before the call returns (the
   `chat.user` row and either an immediate `chat.assistant` row or a `chat.confirm` row).
   Model-backed replies arrive later as further events on the same session.
+- `ChatHistory { session: Option<String>, since_event_id: i64 }`. Returns every event in a
+  conversation after an id (chat lines and the goals' own progress). `session: None` is the
+  shared thread, which is how a client learns its id before it has said anything.
 - `ChatConfirm { approval_id: i64, allow: bool, remember: bool }`. A thin wrapper over
   `ApprovalResolve` that also executes the stored action exactly once.
 
@@ -72,7 +75,7 @@ One structured value is produced for every message:
 ```
 Intent = Status | Usage | PoolQuery
        | GoalCreate { text, mode }
-       | GoalControl { goal_id, action }      // action: retry | resume | amend | cancel
+       | GoalControl { goal_id, action }      // action: resume (also "retry") | amend | cancel
        | MergeApply { goal_id }
        | Config { what }                      // provider | key | account | mcp | plugin | daemon
        | Question { text }
@@ -133,7 +136,18 @@ gate.
   recorded as a follow-up; the other four rules do not depend on it.
 
 **Configuration** (`config.toml`, section `[chat]`): `confirm_expiry_secs = 1800`,
-`fanout_cap = 12`, `risky_verbs = [...]` (the list above as the default).
+`fanout_cap = 12`, `default_mode = "auto"` (goal mode when a message does not say), and
+`risky_verbs` (the list above as the default).
+
+**Implemented behaviour worth knowing:**
+- Goal ids (`goal_…`) are protected from secret redaction, since they look random enough to be
+  mistaken for keys; real secrets are still replaced before anything is logged.
+- In rules-only mode a message that opens with a control verb (cancel, stop, retry, merge, …)
+  and has no goal id asks for the id instead of becoming a goal.
+- An approval acted on immediately is marked used (`preferences::mark_used`), because the
+  approval store otherwise treats a resolved approval as a one-time grant for the next request.
+- Approving a `Config` intent runs nothing yet: the reply says so and points at the CLI.
+- `ChatConfirm` only resolves approvals whose resource starts with `chat:`.
 
 ## 7. Surfaces
 
