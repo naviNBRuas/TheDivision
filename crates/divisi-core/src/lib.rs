@@ -1,3 +1,4 @@
+pub mod shim;
 pub mod migrate;
 pub mod env;
 pub mod account;
