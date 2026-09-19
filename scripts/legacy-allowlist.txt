@@ -1,0 +1,12 @@
+# Files that must keep legacy names. Phase B rows are removed when those files ship.
+CHANGELOG.md	history
+crates/divisi-core/src/env.rs	SINGLE_* adoption
+crates/divisi-core/src/migrate.rs	old config dir and db
+crates/divisi-core/src/shim.rs	deprecation shims
+crates/divisi-cli/src/bin/*	single* shim binaries
+crates/divisi-cli/src/migrate_cmd.rs	pre-rename install migration
+crates/divisi-cli/src/notch_proc.rs	legacy notch UUID
+install.sh	Phase B: ships with the first divisi release
+.github/workflows/*	Phase B: release artifact names
+docker/*	Phase B: image names
+README.md	install section keeps the old release names until Phase B
