@@ -829,7 +829,7 @@ enum MemoryCommand {
         #[arg(long)]
         project: Option<String>,
         /// Embed the query and search by meaning instead of substring —
-        /// requires an embeddings key + SINGLE_QDRANT_URL (falls back to
+        /// requires an embeddings key + DIVISI_QDRANT_URL (falls back to
         /// substring search with a warning otherwise).
         #[arg(long)]
         semantic: bool,
@@ -859,12 +859,12 @@ enum MemoryCommand {
         #[command(subcommand)]
         action: KgCommand,
     },
-    /// Fast ephemeral Redis-backed working memory. Requires SINGLE_REDIS_URL.
+    /// Fast ephemeral Redis-backed working memory. Requires DIVISI_REDIS_URL.
     Cache {
         #[command(subcommand)]
         action: CacheCommand,
     },
-    /// Vector store for RAG (Qdrant-backed). Requires SINGLE_QDRANT_URL.
+    /// Vector store for RAG (Qdrant-backed). Requires DIVISI_QDRANT_URL.
     /// Stores/searches pre-computed vectors directly — for text, use
     /// `single memory search --semantic` instead, which embeds the query
     /// for you (needs an embeddings key too, see `single secret set

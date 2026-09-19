@@ -1,5 +1,5 @@
 //! End-to-end: starts the real Unix socket server against a temp socket
-//! path and temp `SINGLE_CONFIG_DIR`, then drives it exactly the way
+//! path and temp `DIVISI_CONFIG_DIR`, then drives it exactly the way
 //! `divisi-cli`'s client does — proving the runtime/CLI IPC boundary
 //! actually works, not just the in-process handler function.
 
@@ -29,7 +29,7 @@ fn send(socket_path: &std::path::Path, request: &Request) -> Response {
 async fn status_and_agent_list_round_trip_over_the_socket() {
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let dir = tempfile::tempdir().unwrap();
-    std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+    std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
     let socket_path = dir.path().join("state").join("runtime.sock");
 
     let serve_socket = socket_path.clone();

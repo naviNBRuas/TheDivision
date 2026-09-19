@@ -1728,7 +1728,7 @@ mod tests {
     #[test]
     fn rate_limited_stays_false_for_a_successful_task_whose_output_merely_contains_429() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -1788,7 +1788,7 @@ value = "-c"
     #[test]
     fn a_zero_exit_with_empty_stdout_and_rate_limit_shaped_stderr_is_reclassified_as_failed() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -1836,7 +1836,7 @@ value = "-c"
     #[test]
     fn run_fails_cleanly_for_unknown_agent() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -1854,7 +1854,7 @@ value = "-c"
     #[test]
     fn run_falls_back_to_no_worktree_outside_a_git_repo() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -1939,7 +1939,7 @@ value = "-c"
     #[test]
     fn remember_failure_records_the_resolved_project_when_one_exists() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -1988,7 +1988,7 @@ value = "-c"
     #[test]
     fn fail_over_starts_a_linked_follow_up_task_when_the_chain_has_one() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -2048,7 +2048,7 @@ value = "-c"
     #[test]
     fn fail_over_does_nothing_when_the_failure_does_not_look_like_a_rate_limit() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
@@ -2218,7 +2218,7 @@ value = "-c"
     #[test]
     fn task_run_with_agent_single_pool_calls_pool_agent_not_a_cli() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
         let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();

@@ -772,8 +772,8 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
                 "SingleCLI's own native in-process coding agent. Requires \
                  --provider and --model flags which aren't part of the \
                  standard prompt-only adapter interface; the adapter \
-                 currently reads these from SINGLE_AGENT_PROVIDER and \
-                 SINGLE_AGENT_MODEL env vars (falling back to \
+                 currently reads these from DIVISI_AGENT_PROVIDER and \
+                 DIVISI_AGENT_MODEL env vars (falling back to \
                  opencode-zen/laguna-s-2.1-free), documented in the \
                  adapter impl. Exposes a call_mcp tool that spawns \
                  divisi-gateway as a child process (lazily, once per run) \

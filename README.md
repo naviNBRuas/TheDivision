@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.s
 
 Downloads the prebuilt `single` and `divisid` binaries for your
 platform from the latest [release](https://github.com/naviNBRuas/SingleCLI/releases)
-to `~/.local/bin` (override with `SINGLE_INSTALL_DIR`). See
+to `~/.local/bin` (override with `DIVISI_INSTALL_DIR`). See
 [`install.sh`](install.sh) — it's a plain shell script, read it before
 piping it into `sh` if you want to know exactly what it does.
 
@@ -172,8 +172,8 @@ Every list/inspect command supports `--json` for scripting.
 - **Memory upgrades** — a shared SQLite knowledge graph (entities,
   observations, typed relations — `single memory graph ...`), plus
   optional Redis working memory (`single memory cache ...`,
-  `SINGLE_REDIS_URL`) and Qdrant vector storage/search for RAG
-  (`single memory vector ...`, `SINGLE_QDRANT_URL`) — both built and
+  `DIVISI_REDIS_URL`) and Qdrant vector storage/search for RAG
+  (`single memory vector ...`, `DIVISI_QDRANT_URL`) — both built and
   tested against real local instances. Task failures are automatically
   recorded as searchable memory ("learn from errors").
 - **Multi-agent orchestration** — `single orchestrate "<goal>" --agents
@@ -321,14 +321,14 @@ No API keys are required to build, test, or run `doctor`/`agent list`.
 use`, and `single provider sync --yes` touch real files/run real
 installers — everything else is read-only or operates in a temp directory
 during tests. The Redis and Qdrant backends are optional (unset
-`SINGLE_REDIS_URL`/`SINGLE_QDRANT_URL` and their commands just report "not
+`DIVISI_REDIS_URL`/`DIVISI_QDRANT_URL` and their commands just report "not
 configured"); their tests skip cleanly, rather than fail, when no such
 service is reachable — to actually exercise them locally:
 
 ```bash
 docker run -d -p 6379:6379 redis:7-alpine
 docker run -d -p 6333:6333 qdrant/qdrant
-SINGLE_REDIS_URL=redis://127.0.0.1:6379 SINGLE_QDRANT_URL=http://127.0.0.1:6333 cargo test --workspace
+DIVISI_REDIS_URL=redis://127.0.0.1:6379 DIVISI_QDRANT_URL=http://127.0.0.1:6333 cargo test --workspace
 ```
 
 ## Documentation

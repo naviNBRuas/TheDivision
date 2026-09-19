@@ -17,10 +17,10 @@
 use anyhow::{Context, Result};
 use redis::Commands;
 
-/// `SINGLE_REDIS_URL`, e.g. `redis://127.0.0.1:6379`. Returns `None` (not
+/// `DIVISI_REDIS_URL`, e.g. `redis://127.0.0.1:6379`. Returns `None` (not
 /// an error) when unset — Redis is opt-in.
 pub fn resolve_url() -> Option<String> {
-    std::env::var("SINGLE_REDIS_URL").ok()
+    std::env::var("DIVISI_REDIS_URL").ok()
 }
 
 fn connect(url: &str) -> Result<redis::Connection> {
@@ -115,9 +115,9 @@ mod tests {
 
     #[test]
     fn resolve_url_reads_env_var() {
-        std::env::set_var("SINGLE_REDIS_URL", "redis://example.invalid:6379");
+        std::env::set_var("DIVISI_REDIS_URL", "redis://example.invalid:6379");
         assert_eq!(resolve_url().as_deref(), Some("redis://example.invalid:6379"));
-        std::env::remove_var("SINGLE_REDIS_URL");
+        std::env::remove_var("DIVISI_REDIS_URL");
         assert_eq!(resolve_url(), None);
     }
 

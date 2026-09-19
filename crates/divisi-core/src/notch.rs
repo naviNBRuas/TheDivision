@@ -3,9 +3,9 @@
 //! `~/.config/single/notch.toml`, same load/save shape as
 //! `docker.rs`/`task_hooks.rs`.
 //!
-//! `SINGLE_NOTCH_POLL_MS` overrides the on-disk `poll_ms` at load time
+//! `DIVISI_NOTCH_POLL_MS` overrides the on-disk `poll_ms` at load time
 //! (tests, and anyone who wants a one-off poll interval without editing
-//! the config file) — same override precedence as `SINGLE_CONFIG_DIR` in
+//! the config file) — same override precedence as `DIVISI_CONFIG_DIR` in
 //! `paths.rs`.
 
 use anyhow::{Context, Result};
@@ -30,7 +30,7 @@ impl Default for NotchConfig {
 
 /// Loads `path`, falling back to defaults if it doesn't exist. Whatever
 /// `poll_ms` results (file or default) is then overridden by
-/// `SINGLE_NOTCH_POLL_MS`, if set and parseable, so a caller never needs
+/// `DIVISI_NOTCH_POLL_MS`, if set and parseable, so a caller never needs
 /// to special-case "no config file yet" vs. "config file with an env
 /// override" — both land on the same value.
 pub fn load(path: &Path) -> Result<NotchConfig> {
@@ -40,8 +40,8 @@ pub fn load(path: &Path) -> Result<NotchConfig> {
     } else {
         NotchConfig::default()
     };
-    if let Ok(raw) = std::env::var("SINGLE_NOTCH_POLL_MS") {
-        config.poll_ms = raw.parse().with_context(|| format!("SINGLE_NOTCH_POLL_MS={raw:?} is not a valid u64"))?;
+    if let Ok(raw) = std::env::var("DIVISI_NOTCH_POLL_MS") {
+        config.poll_ms = raw.parse().with_context(|| format!("DIVISI_NOTCH_POLL_MS={raw:?} is not a valid u64"))?;
     }
     Ok(config)
 }
@@ -59,14 +59,14 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    // `SINGLE_NOTCH_POLL_MS` is process-global env state — serialize the
+    // `DIVISI_NOTCH_POLL_MS` is process-global env state — serialize the
     // tests that touch it so they can't interleave and clobber each other.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn load_missing_file_returns_defaults() {
         let _guard = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("SINGLE_NOTCH_POLL_MS");
+        std::env::remove_var("DIVISI_NOTCH_POLL_MS");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("notch.toml");
         assert_eq!(load(&path).unwrap(), NotchConfig::default());
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn save_then_load_round_trips() {
         let _guard = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("SINGLE_NOTCH_POLL_MS");
+        std::env::remove_var("DIVISI_NOTCH_POLL_MS");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("notch.toml");
         let config = NotchConfig { poll_ms: 2500 };
@@ -89,9 +89,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("notch.toml");
         save(&path, &NotchConfig { poll_ms: 2500 }).unwrap();
-        std::env::set_var("SINGLE_NOTCH_POLL_MS", "42");
+        std::env::set_var("DIVISI_NOTCH_POLL_MS", "42");
         let result = load(&path);
-        std::env::remove_var("SINGLE_NOTCH_POLL_MS");
+        std::env::remove_var("DIVISI_NOTCH_POLL_MS");
         assert_eq!(result.unwrap().poll_ms, 42);
     }
 
@@ -100,9 +100,9 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("notch.toml");
-        std::env::set_var("SINGLE_NOTCH_POLL_MS", "77");
+        std::env::set_var("DIVISI_NOTCH_POLL_MS", "77");
         let result = load(&path);
-        std::env::remove_var("SINGLE_NOTCH_POLL_MS");
+        std::env::remove_var("DIVISI_NOTCH_POLL_MS");
         assert_eq!(result.unwrap().poll_ms, 77);
     }
 
@@ -111,9 +111,9 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("notch.toml");
-        std::env::set_var("SINGLE_NOTCH_POLL_MS", "not-a-number");
+        std::env::set_var("DIVISI_NOTCH_POLL_MS", "not-a-number");
         let result = load(&path);
-        std::env::remove_var("SINGLE_NOTCH_POLL_MS");
+        std::env::remove_var("DIVISI_NOTCH_POLL_MS");
         assert!(result.is_err());
     }
 }

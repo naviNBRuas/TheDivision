@@ -14,10 +14,10 @@ pub struct DivisiDirs {
 }
 
 impl DivisiDirs {
-    /// Resolves `~/.config/single` (or `$SINGLE_CONFIG_DIR` override, used by tests
+    /// Resolves `~/.config/single` (or `$DIVISI_CONFIG_DIR` override, used by tests
     /// and by anyone who wants an isolated instance).
     pub fn discover() -> Result<Self> {
-        if let Ok(dir) = std::env::var("SINGLE_CONFIG_DIR") {
+        if let Ok(dir) = std::env::var("DIVISI_CONFIG_DIR") {
             return Ok(Self { root: PathBuf::from(dir) });
         }
         let base = directories::BaseDirs::new()
@@ -252,7 +252,7 @@ pub fn project_config_path(project_root: &std::path::Path) -> PathBuf {
 /// to). Nothing else in SingleCLI should read or write through this path
 /// directly — see `agent_home`'s module doc for why.
 pub fn real_home_dir() -> Result<PathBuf> {
-    if let Ok(dir) = std::env::var("SINGLE_HOME_DIR") {
+    if let Ok(dir) = std::env::var("DIVISI_HOME_DIR") {
         return Ok(PathBuf::from(dir));
     }
     directories::BaseDirs::new()

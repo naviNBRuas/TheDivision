@@ -703,7 +703,7 @@ fn print_data(data: ResponseData) {
             reachable,
         } => {
             if !configured {
-                println!("Redis: not configured (set SINGLE_REDIS_URL to enable)");
+                println!("Redis: not configured (set DIVISI_REDIS_URL to enable)");
             } else {
                 println!(
                     "Redis: {} ({})",
@@ -730,7 +730,7 @@ fn print_data(data: ResponseData) {
             reachable,
         } => {
             if !configured {
-                println!("Qdrant: not configured (set SINGLE_QDRANT_URL to enable)");
+                println!("Qdrant: not configured (set DIVISI_QDRANT_URL to enable)");
             } else {
                 println!(
                     "Qdrant: {} ({})",

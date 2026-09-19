@@ -20,7 +20,7 @@ impl AcpProc {
     fn spawn() -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_divisi"))
             .arg("acp")
-            .env("SINGLE_ACP_LOG", "/dev/null")
+            .env("DIVISI_ACP_LOG", "/dev/null")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

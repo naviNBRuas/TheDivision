@@ -69,15 +69,15 @@ async fn lazy_spawn_reuse_and_idle_eviction_kill_a_real_process() {
     }
 
     let config_dir = tempfile::tempdir().unwrap();
-    std::env::set_var("SINGLE_CONFIG_DIR", config_dir.path());
+    std::env::set_var("DIVISI_CONFIG_DIR", config_dir.path());
     let dirs = divisi_core::DivisiDirs::discover().unwrap();
     divisi_core::mcp::save(&dirs.mcp_registry_file(), &divisi_core::mcp::default_servers()).unwrap();
 
     let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_divisi-gateway"));
     command
-        .env("SINGLE_CONFIG_DIR", config_dir.path())
-        .env("SINGLE_MCP_IDLE_TIMEOUT_SECS", "2")
-        .env("SINGLE_MCP_SWEEP_INTERVAL_SECS", "1");
+        .env("DIVISI_CONFIG_DIR", config_dir.path())
+        .env("DIVISI_MCP_IDLE_TIMEOUT_SECS", "2")
+        .env("DIVISI_MCP_SWEEP_INTERVAL_SECS", "1");
     let transport = TokioChildProcess::new(command.configure(|_| {})).expect("spawning divisi-gateway");
     let gateway_pid = transport.id().expect("divisi-gateway child has a pid");
     let session = ().serve(transport).await.expect("initializing divisi-gateway gateway");

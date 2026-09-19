@@ -8,7 +8,7 @@
 //! upserts every memory entry into the `single_memory` collection here,
 //! and `MemorySearchSemantic` embeds the query and searches it, falling
 //! back to substring search if either the embeddings key or
-//! `SINGLE_QDRANT_URL` isn't configured — see `handlers.rs`'s
+//! `DIVISI_QDRANT_URL` isn't configured — see `handlers.rs`'s
 //! `MemoryStore`/`MemorySearchSemantic` arms and `embeddings.rs`'s module
 //! docs. This module's own direct callers (`single memory vector
 //! upsert/search`) still take pre-computed vectors — the text→vector step
@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use divisi_protocol::VectorHit;
 
 pub fn resolve_url() -> Option<String> {
-    std::env::var("SINGLE_QDRANT_URL").ok()
+    std::env::var("DIVISI_QDRANT_URL").ok()
 }
 
 pub fn ping(url: &str) -> Result<()> {
@@ -147,9 +147,9 @@ mod tests {
 
     #[test]
     fn resolve_url_reads_env_var() {
-        std::env::set_var("SINGLE_QDRANT_URL", "http://example.invalid:6333");
+        std::env::set_var("DIVISI_QDRANT_URL", "http://example.invalid:6333");
         assert_eq!(resolve_url().as_deref(), Some("http://example.invalid:6333"));
-        std::env::remove_var("SINGLE_QDRANT_URL");
+        std::env::remove_var("DIVISI_QDRANT_URL");
         assert_eq!(resolve_url(), None);
     }
 

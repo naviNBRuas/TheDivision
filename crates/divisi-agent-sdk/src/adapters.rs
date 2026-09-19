@@ -1241,8 +1241,8 @@ impl AgentAdapter for DivisiAgentAdapter {
 
     /// `single-agent run --provider <P> --model <M> --prompt <prompt> --cwd <cwd>`
     ///
-    /// Provider and model are read from `SINGLE_AGENT_PROVIDER` and
-    /// `SINGLE_AGENT_MODEL` env vars (falling back to `opencode-zen` /
+    /// Provider and model are read from `DIVISI_AGENT_PROVIDER` and
+    /// `DIVISI_AGENT_MODEL` env vars (falling back to `opencode-zen` /
     /// `laguna-s-2.1-free`). The standard `run_prompt(cwd, prompt, ...)`
     /// signature has no field for provider/model selection, so env vars are
     /// the pragmatic escape hatch for v1 — lets callers override without a
@@ -1257,8 +1257,8 @@ impl AgentAdapter for DivisiAgentAdapter {
         timeout: Duration,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<RunOutcome> {
-        let provider = std::env::var("SINGLE_AGENT_PROVIDER").unwrap_or_else(|_| "opencode-zen".into());
-        let model = std::env::var("SINGLE_AGENT_MODEL").unwrap_or_else(|_| "laguna-s-2.1-free".into());
+        let provider = std::env::var("DIVISI_AGENT_PROVIDER").unwrap_or_else(|_| "opencode-zen".into());
+        let model = std::env::var("DIVISI_AGENT_MODEL").unwrap_or_else(|_| "laguna-s-2.1-free".into());
 
         run_command_live(
             "single-agent",

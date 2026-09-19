@@ -715,10 +715,10 @@ fn draw_memory(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::from(Span::styled("Redis working memory", Style::default().add_modifier(Modifier::BOLD))),
     ];
-    lines.push(status_line(app.cache_configured, app.cache_reachable, "SINGLE_REDIS_URL"));
+    lines.push(status_line(app.cache_configured, app.cache_reachable, "DIVISI_REDIS_URL"));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled("Qdrant vector store", Style::default().add_modifier(Modifier::BOLD))));
-    lines.push(status_line(app.vector_configured, app.vector_reachable, "SINGLE_QDRANT_URL"));
+    lines.push(status_line(app.vector_configured, app.vector_reachable, "DIVISI_QDRANT_URL"));
 
     let p = Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Memory "));
     frame.render_widget(p, area);

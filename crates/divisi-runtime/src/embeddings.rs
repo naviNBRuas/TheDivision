@@ -5,7 +5,7 @@
 //! aversion to fabricated capabilities (a hash-based pseudo-embedding
 //! pretending to be semantic would be exactly that).
 //!
-//! Configuration: `SINGLE_EMBEDDINGS_MODEL` (defaults to
+//! Configuration: `DIVISI_EMBEDDINGS_MODEL` (defaults to
 //! `text-embedding-3-small`), API key read from the secret store under
 //! `embeddings:api_key` — set it with `single secret set embeddings:api_key
 //! <key>`, the same keychain-backed mechanism provider API keys already
@@ -39,7 +39,7 @@ fn resolve_api_key() -> Result<Option<String>> {
 }
 
 fn model() -> String {
-    std::env::var("SINGLE_EMBEDDINGS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
+    std::env::var("DIVISI_EMBEDDINGS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
 }
 
 /// Embeds `text`. Errors (rather than silently returning an empty vector)
@@ -76,11 +76,11 @@ mod tests {
 
     #[test]
     fn model_defaults_when_env_var_unset() {
-        std::env::remove_var("SINGLE_EMBEDDINGS_MODEL");
+        std::env::remove_var("DIVISI_EMBEDDINGS_MODEL");
         assert_eq!(model(), DEFAULT_MODEL);
-        std::env::set_var("SINGLE_EMBEDDINGS_MODEL", "custom-model");
+        std::env::set_var("DIVISI_EMBEDDINGS_MODEL", "custom-model");
         assert_eq!(model(), "custom-model");
-        std::env::remove_var("SINGLE_EMBEDDINGS_MODEL");
+        std::env::remove_var("DIVISI_EMBEDDINGS_MODEL");
     }
 
     /// Only exercises a real API call when this machine already has a key

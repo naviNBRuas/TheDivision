@@ -359,7 +359,7 @@ fn dispatch(
                 },
             )?;
             // Best-effort: index for semantic search if both an embeddings
-            // key and SINGLE_QDRANT_URL are configured. Never fails the
+            // key and DIVISI_QDRANT_URL are configured. Never fails the
             // write itself — see embeddings.rs's module docs.
             if let Some(url) = crate::qdrant_backend::resolve_url() {
                 if let Ok(vector) = crate::embeddings::embed(&format!("{title}\n{content}")) {
@@ -393,7 +393,7 @@ fn dispatch(
             let conn = memory_db(ctx)?;
             let semantic: anyhow::Result<Vec<divisi_protocol::MemoryEntry>> = (|| {
                 let url =
-                    crate::qdrant_backend::resolve_url().context("SINGLE_QDRANT_URL is not set")?;
+                    crate::qdrant_backend::resolve_url().context("DIVISI_QDRANT_URL is not set")?;
                 let vector = crate::embeddings::embed(&query)?;
                 let hits = crate::qdrant_backend::search(&url, "single_memory", &vector, limit)?;
                 let mut entries = Vec::new();
@@ -1323,7 +1323,7 @@ fn dispatch(
             let mut synced = 0usize;
             for provider in divisi_core::free_pool::FREE_PROVIDERS {
                 let name = format!("single-{}", provider.id);
-                let env_var_name = format!("SINGLE_POOL_{}_API_KEY", provider.id.to_uppercase().replace('-', "_"));
+                let env_var_name = format!("DIVISI_POOL_{}_API_KEY", provider.id.to_uppercase().replace('-', "_"));
                 divisi_core::providers::add(
                     &providers_path,
                     divisi_protocol::ProviderSpec {
@@ -2453,14 +2453,14 @@ fn to_preference_info(p: divisi_core::preferences::Preference) -> divisi_protoco
 fn redis_url() -> anyhow::Result<String> {
     crate::redis_backend::resolve_url().ok_or_else(|| {
         anyhow::anyhow!(
-            "no Redis configured; set SINGLE_REDIS_URL to enable the working-memory cache"
+            "no Redis configured; set DIVISI_REDIS_URL to enable the working-memory cache"
         )
     })
 }
 
 fn qdrant_url() -> anyhow::Result<String> {
     crate::qdrant_backend::resolve_url().ok_or_else(|| {
-        anyhow::anyhow!("no Qdrant configured; set SINGLE_QDRANT_URL to enable the vector store")
+        anyhow::anyhow!("no Qdrant configured; set DIVISI_QDRANT_URL to enable the vector store")
     })
 }
 

@@ -289,7 +289,7 @@ fn parse_openai_response(text: &str, req: &PoolRequest, ttfb_ms: u64, latency_ms
 
 /// Wraps a dispatch call with the retry budget + hedge-abort machinery
 /// (spec §6.6). `attempt_fn` is called once immediately (attempt 0 always
-/// runs), then retried while `SINGLE_POOL_RETRY_BUDGET_MS` remains. No
+/// runs), then retried while `DIVISI_POOL_RETRY_BUDGET_MS` remains. No
 /// `tokio_util` dependency in the workspace, so the abort signal is a
 /// plain `Arc<AtomicBool>` a caller can flip from another thread; this
 /// blocking client can't truly cancel an in-flight `reqwest` call, so the
@@ -298,7 +298,7 @@ fn parse_openai_response(text: &str, req: &PoolRequest, ttfb_ms: u64, latency_ms
 /// (documented tradeoff, matching the plan's note that this is
 /// sufficient for a blocking client).
 pub fn retry_budget_ms() -> u64 {
-    std::env::var("SINGLE_POOL_RETRY_BUDGET_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(45_000)
+    std::env::var("DIVISI_POOL_RETRY_BUDGET_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(45_000)
 }
 
 pub fn dispatch_with_retry(

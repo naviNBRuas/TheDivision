@@ -38,16 +38,16 @@ impl Default for DegradeConfig {
 }
 
 impl DegradeConfig {
-    /// `SINGLE_POOL_DEGRADED_{HEALTHY_RATIO,MIN_PROVIDERS,ENTRY_GRACE_MS,EXIT_GRACE_MS}`
+    /// `DIVISI_POOL_DEGRADED_{HEALTHY_RATIO,MIN_PROVIDERS,ENTRY_GRACE_MS,EXIT_GRACE_MS}`
     /// overrides (spec §6.5); malformed/missing values fall back to the
     /// struct default for that field.
     pub fn from_env() -> Self {
         let base = Self::default();
         DegradeConfig {
-            healthy_ratio: env_f64("SINGLE_POOL_DEGRADED_HEALTHY_RATIO").unwrap_or(base.healthy_ratio),
-            min_providers: env_usize("SINGLE_POOL_DEGRADED_MIN_PROVIDERS").unwrap_or(base.min_providers),
-            entry_grace_ms: env_i64("SINGLE_POOL_DEGRADED_ENTRY_GRACE_MS").unwrap_or(base.entry_grace_ms),
-            exit_grace_ms: env_i64("SINGLE_POOL_DEGRADED_EXIT_GRACE_MS").unwrap_or(base.exit_grace_ms),
+            healthy_ratio: env_f64("DIVISI_POOL_DEGRADED_HEALTHY_RATIO").unwrap_or(base.healthy_ratio),
+            min_providers: env_usize("DIVISI_POOL_DEGRADED_MIN_PROVIDERS").unwrap_or(base.min_providers),
+            entry_grace_ms: env_i64("DIVISI_POOL_DEGRADED_ENTRY_GRACE_MS").unwrap_or(base.entry_grace_ms),
+            exit_grace_ms: env_i64("DIVISI_POOL_DEGRADED_EXIT_GRACE_MS").unwrap_or(base.exit_grace_ms),
         }
     }
 }

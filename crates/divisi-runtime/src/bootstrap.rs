@@ -83,7 +83,7 @@ mod tests {
     /// from an automated test.
     fn test_context() -> (tempfile::TempDir, Context) {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let dirs = DivisiDirs::from_root(dir.path().to_path_buf());
         dirs.ensure_created().unwrap();
         let resolved = divisi_core::ResolvedConfig::default();

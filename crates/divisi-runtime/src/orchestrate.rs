@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn run_rejects_empty_agent_list() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = Connection::open_in_memory().unwrap();
         task::ensure_schema(&conn).unwrap();
         crate::state::ensure_events_schema(&conn).unwrap();
@@ -294,7 +294,7 @@ mod tests {
     }
 
     fn test_ctx(dir: &std::path::Path) -> Context {
-        std::env::set_var("SINGLE_CONFIG_DIR", dir);
+        std::env::set_var("DIVISI_CONFIG_DIR", dir);
         let dirs = divisi_core::DivisiDirs::from_root(dir.to_path_buf());
         dirs.ensure_created().unwrap();
         Context { dirs, resolved: divisi_core::ResolvedConfig::default(), registry: divisi_core::builtin_registry() }
@@ -326,11 +326,11 @@ mod tests {
     /// `claude -p` calls, so unlike this project's other "skip if the
     /// agent isn't installed" tests, it's opt-in behind an env var rather
     /// than running by default on every `cargo test` — set
-    /// `SINGLE_TEST_REAL_AGENT=1` to actually run it.
+    /// `DIVISI_TEST_REAL_AGENT=1` to actually run it.
     #[test]
     fn run_parallel_runs_two_real_agents_concurrently_in_separate_worktrees() {
-        if std::env::var("SINGLE_TEST_REAL_AGENT").as_deref() != Ok("1") {
-            eprintln!("skipping: set SINGLE_TEST_REAL_AGENT=1 to run this real-agent test");
+        if std::env::var("DIVISI_TEST_REAL_AGENT").as_deref() != Ok("1") {
+            eprintln!("skipping: set DIVISI_TEST_REAL_AGENT=1 to run this real-agent test");
             return;
         }
         if !divisi_agent_sdk::adapters::for_agent("claude").unwrap().discover().detected {

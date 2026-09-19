@@ -597,7 +597,7 @@ mod tests {
     // `permission_gate` before ever reaching `self.send` — see that
     // method's doc comment for how this mirrors `divisi-gateway::gateway`'s
     // `check_permission`/`invoke_mcp`. `DivisiDirs::discover()` (used by
-    // `permission_gate`) reads the process-global `SINGLE_CONFIG_DIR` env
+    // `permission_gate`) reads the process-global `DIVISI_CONFIG_DIR` env
     // var fresh every call, same real constraint `gateway.rs`'s own test
     // module documents — this lock serializes just the tests that touch it.
     use crate::testutil::isolated_env;
@@ -655,7 +655,7 @@ mod tests {
         let server = DivisiServer::new().unwrap();
         let args: Map<String, Value> =
             json!({ "description": "say hi", "agent": "definitely-not-a-real-agent" }).as_object().unwrap().clone();
-        // No daemon is listening at this SINGLE_CONFIG_DIR, so self.send
+        // No daemon is listening at this DIVISI_CONFIG_DIR, so self.send
         // falls back to the in-process path (crate::client::send ->
         // divisi_runtime::handle), which rejects the unknown agent cleanly
         // (see divisi-runtime::task's run_fails_cleanly_for_unknown_agent) —

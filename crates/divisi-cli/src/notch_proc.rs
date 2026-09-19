@@ -62,7 +62,7 @@ pub fn spawn(dirs: &DivisiDirs) -> Result<()> {
 
     let path = binary_path()?;
     std::process::Command::new(&path)
-        .env("SINGLE_NOTCH_STUB", "1")
+        .env("DIVISI_NOTCH_STUB", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

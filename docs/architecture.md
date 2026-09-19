@@ -338,13 +338,13 @@ artifact, a real persisted record.
   automatic: `task::build_context_preamble` queries it for entities
   relevant to a task's description and injects them alongside memory and
   notes, the same shared-blackboard treatment those two already got.
-- **`divisi-runtime::redis_backend`** — optional (`SINGLE_REDIS_URL`)
+- **`divisi-runtime::redis_backend`** — optional (`DIVISI_REDIS_URL`)
   TTL-capable key/value working memory: genuinely useful as fast shared
   state *while several agent processes are concurrently running*, a role
   SQLite's request-scoped connections don't fill well. Built and tested
   against a real local Redis container; unit tests skip (not fail) when
   no Redis is reachable. `single memory cache ...`.
-- **`divisi-runtime::qdrant_backend`** — optional (`SINGLE_QDRANT_URL`)
+- **`divisi-runtime::qdrant_backend`** — optional (`DIVISI_QDRANT_URL`)
   vector store: upsert/search/delete over Qdrant's real REST API, whose
   shape was captured directly from a running local Qdrant instance during
   development (not assumed from documentation). This module itself stores
@@ -356,7 +356,7 @@ artifact, a real persisted record.
   auto-embed on write into a `single_memory` collection) and
   `MemorySearchSemantic` (`single memory search --semantic`, embeds the
   query and searches Qdrant, falling back to substring search if either
-  the key or `SINGLE_QDRANT_URL` isn't configured) — see `handlers.rs`.
+  the key or `DIVISI_QDRANT_URL` isn't configured) — see `handlers.rs`.
 
 ## Distribution: release workflow, installer, and the TUI rewrite
 
@@ -369,7 +369,7 @@ artifact, a real persisted record.
 - **`install.sh`** — a POSIX shell script (`curl -fsSL .../install.sh |
   sh`) that detects OS/arch, downloads the matching release tarball,
   installs both binaries to `~/.local/bin` (override with
-  `SINGLE_INSTALL_DIR`), and prints PATH guidance for bash/zsh/fish.
+  `DIVISI_INSTALL_DIR`), and prints PATH guidance for bash/zsh/fish.
   Unsupported platforms are told to build from source rather than
   silently failing.
 - **`divisi-tui`** was rewritten from a single read-only table into a

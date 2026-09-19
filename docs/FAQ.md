@@ -53,7 +53,7 @@ masked-entry flow in the TUI's Providers tab.
 ## Redis/Qdrant memory backends aren't configured — will tests fail?
 
 No — their tests skip cleanly rather than fail when
-`SINGLE_REDIS_URL`/`SINGLE_QDRANT_URL` aren't set. See the README's
+`DIVISI_REDIS_URL`/`DIVISI_QDRANT_URL` aren't set. See the README's
 "Development" section for how to run them locally against real instances
 if you want to exercise that code path.
 

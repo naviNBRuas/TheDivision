@@ -1,6 +1,6 @@
 //! `divisi-notch` binary entry point.
 //!
-//! `--stub` / `SINGLE_NOTCH_STUB=1` writes a pidfile and blocks until
+//! `--stub` / `DIVISI_NOTCH_STUB=1` writes a pidfile and blocks until
 //! SIGTERM, so `single notch enable|disable|status` (see
 //! `divisi-cli::notch_proc`) has a real companion process to spawn,
 //! detect, and stop even while the real UI is still being built.
@@ -48,7 +48,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let stub_flag = std::env::args().any(|arg| arg == "--stub");
-    let stub_env = std::env::var("SINGLE_NOTCH_STUB").as_deref() == Ok("1");
+    let stub_env = std::env::var("DIVISI_NOTCH_STUB").as_deref() == Ok("1");
     if stub_flag || stub_env {
         return run_stub();
     }

@@ -152,7 +152,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
         None => checks.push(DoctorCheck {
             name: "vector store (qdrant)".into(),
             status: CheckStatus::Skipped,
-            detail: "not configured — set SINGLE_QDRANT_URL to enable `single memory search --semantic`".into(),
+            detail: "not configured — set DIVISI_QDRANT_URL to enable `single memory search --semantic`".into(),
         }),
     }
     let embeddings_configured = crate::embeddings::is_configured();
@@ -170,7 +170,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
     // category most likely to want off on a shared box, so `doctor`
     // always states plainly whether it's currently enabled.
     let self_heal_cfg = crate::self_heal::SelfHealConfig::load(&ctx.dirs);
-    let env_disabled = std::env::var("SINGLE_SELF_HEAL_AGENT_INSTALL").is_ok_and(|v| v == "0");
+    let env_disabled = std::env::var("DIVISI_SELF_HEAL_AGENT_INSTALL").is_ok_and(|v| v == "0");
     let agent_category_on = self_heal_cfg.categories.agent && !env_disabled;
     checks.push(DoctorCheck {
         name: "self-heal: agent category".into(),
@@ -178,7 +178,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
         detail: if !self_heal_cfg.categories.agent {
             "disabled in self_heal.toml — no automatic agent installs/repairs".into()
         } else if env_disabled {
-            "disabled via SINGLE_SELF_HEAL_AGENT_INSTALL=0 — no automatic agent installs/repairs".into()
+            "disabled via DIVISI_SELF_HEAL_AGENT_INSTALL=0 — no automatic agent installs/repairs".into()
         } else {
             "enabled — missing routable agents may be auto-installed, stale pool keys auto-disabled".into()
         },

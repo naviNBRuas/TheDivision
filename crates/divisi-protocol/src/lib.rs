@@ -155,7 +155,7 @@ pub enum Request {
     /// stored memory entries — real semantic search, not `LIKE` matching
     /// (see `divisi-runtime::embeddings`/`qdrant_backend`). Falls back to
     /// `MemorySearch`'s substring matching when no embeddings key and/or
-    /// `SINGLE_QDRANT_URL` are configured, rather than erroring.
+    /// `DIVISI_QDRANT_URL` are configured, rather than erroring.
     MemorySearchSemantic {
         query: String,
         scope: Option<MemoryScope>,

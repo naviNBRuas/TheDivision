@@ -193,7 +193,7 @@ pub fn run_command_live(
 /// back out to `single internal claude-pretooluse-hook` — silently
 /// splitting its permission rules/preferences/pending-approvals into a
 /// second, invisible store nobody's `single approval list` or the TUI ever
-/// looks at. Pinning `SINGLE_CONFIG_DIR` to the resolving process's own
+/// looks at. Pinning `DIVISI_CONFIG_DIR` to the resolving process's own
 /// (real) config root keeps every nested `single` call pointed at the same
 /// central state regardless of what `$HOME` the child sees.
 /// Kills a timed-out or cancelled child and waits for it to actually exit.
@@ -257,7 +257,7 @@ fn spawn_failure_context(command: &str, cwd: &Path, backend: &ExecBackend) -> St
 
 fn pin_real_config_dir(cmd: &mut Command) {
     if let Ok(dirs) = divisi_core::paths::DivisiDirs::discover() {
-        cmd.env("SINGLE_CONFIG_DIR", dirs.root());
+        cmd.env("DIVISI_CONFIG_DIR", dirs.root());
     }
     share_toolchain_caches(cmd);
 }
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn overriding_home_also_pins_single_config_dir_for_the_child() {
         // Regression test: a child spawned with $HOME overridden (agent
-        // isolation) must still see the *real* SINGLE_CONFIG_DIR, or any
+        // isolation) must still see the *real* DIVISI_CONFIG_DIR, or any
         // nested `single` invocation it makes on its own (e.g. Claude
         // Code's PreToolUse hook shelling back into `single internal
         // claude-pretooluse-hook`) would resolve config/state under the
@@ -368,7 +368,7 @@ mod tests {
         let fake_home = tempfile::tempdir().unwrap();
         let outcome = run_command_with_home(
             "sh",
-            &["-c".into(), "echo \"$SINGLE_CONFIG_DIR\"".into()],
+            &["-c".into(), "echo \"$DIVISI_CONFIG_DIR\"".into()],
             dir.path(),
             Some(fake_home.path()),
             Duration::from_secs(5),

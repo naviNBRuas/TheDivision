@@ -63,12 +63,12 @@ type ChildSession = rmcp::service::RunningService<RoleClient, ()>;
 /// How long a spawned server may sit unused before the sweep evicts it.
 /// Generous enough that a task pausing between tool calls doesn't thrash
 /// respawns, short enough that an agent's whole session doesn't keep every
-/// server it ever touched resident. `SINGLE_MCP_IDLE_TIMEOUT_SECS`
+/// server it ever touched resident. `DIVISI_MCP_IDLE_TIMEOUT_SECS`
 /// overrides it — mainly so the lazy-spawn / reuse / eviction cycle can
 /// be exercised end-to-end without a ten-minute wait.
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600;
 /// How often the sweep checks for idle sessions.
-/// `SINGLE_MCP_SWEEP_INTERVAL_SECS` overrides it, same rationale.
+/// `DIVISI_MCP_SWEEP_INTERVAL_SECS` overrides it, same rationale.
 const DEFAULT_SWEEP_INTERVAL_SECS: u64 = 60;
 
 fn duration_from_env(var: &str, default_secs: u64) -> Duration {
@@ -77,11 +77,11 @@ fn duration_from_env(var: &str, default_secs: u64) -> Duration {
 }
 
 fn idle_timeout() -> Duration {
-    duration_from_env("SINGLE_MCP_IDLE_TIMEOUT_SECS", DEFAULT_IDLE_TIMEOUT_SECS)
+    duration_from_env("DIVISI_MCP_IDLE_TIMEOUT_SECS", DEFAULT_IDLE_TIMEOUT_SECS)
 }
 
 fn sweep_interval() -> Duration {
-    duration_from_env("SINGLE_MCP_SWEEP_INTERVAL_SECS", DEFAULT_SWEEP_INTERVAL_SECS)
+    duration_from_env("DIVISI_MCP_SWEEP_INTERVAL_SECS", DEFAULT_SWEEP_INTERVAL_SECS)
 }
 
 struct SessionEntry {
@@ -309,7 +309,7 @@ mod tests {
     use super::*;
 
     /// `DivisiDirs::discover()` (used by `registry()`, `notes_conn`,
-    /// `current_project`, `check_permission`) reads the `SINGLE_CONFIG_DIR`
+    /// `current_project`, `check_permission`) reads the `DIVISI_CONFIG_DIR`
     /// env var fresh on every call rather than taking an injected
     /// `DivisiDirs` — a real constraint shared with `check_permission`'s
     /// existing design, not something worth reworking just for tests. Rust
@@ -322,7 +322,7 @@ mod tests {
     fn registry_only_returns_enabled_servers() {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
         // default_servers() ships a mix of enabled (git, memory, fetch,
         // sequential-thinking) and disabled (filesystem, github, ...) —
@@ -354,7 +354,7 @@ mod tests {
     async fn notes_leave_then_notes_read_round_trips_through_the_gateway() {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let gateway = Gateway::new();
 
         let leave_args = json!({ "from_agent": "claude", "to_agent": "codex", "topic": "heads up", "content": "watch the flaky test" });
@@ -379,7 +379,7 @@ mod tests {
     async fn notes_leave_requires_from_agent_topic_and_content() {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let gateway = Gateway::new();
 
         let Value::Object(missing_from) = json!({ "topic": "t", "content": "c" }) else { unreachable!() };
@@ -390,7 +390,7 @@ mod tests {
     async fn notes_read_sees_broadcast_notes() {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("SINGLE_CONFIG_DIR", dir.path());
+        std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let gateway = Gateway::new();
 
         let Value::Object(leave_args) = json!({ "from_agent": "claude", "topic": "fyi", "content": "for everyone" }) else { unreachable!() };

@@ -2,7 +2,7 @@
 //! likely to want disabling on a shared box (installs shell package
 //! managers) — gated by both the `self_heal.toml` toggle (checked by
 //! `run_pass` before this module is even called) and
-//! `SINGLE_SELF_HEAL_AGENT_INSTALL=0`.
+//! `DIVISI_SELF_HEAL_AGENT_INSTALL=0`.
 
 use super::{run_step, Category, PassReport, SelfHealConfig};
 use crate::context::Context;
@@ -18,7 +18,7 @@ use std::sync::Mutex;
 static INSTALL_GATE: Mutex<()> = Mutex::new(());
 
 pub fn run(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig, report: &mut PassReport) -> Result<()> {
-    let install_enabled = std::env::var("SINGLE_SELF_HEAL_AGENT_INSTALL").map(|v| v != "0").unwrap_or(true);
+    let install_enabled = std::env::var("DIVISI_SELF_HEAL_AGENT_INSTALL").map(|v| v != "0").unwrap_or(true);
 
     run_step(conn, report, Category::Agent, "missing_agent_install", || {
         if install_enabled {
@@ -29,7 +29,7 @@ pub fn run(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig, report: &mut 
             // automated test would be both unsafe and non-deterministic.
             install_missing_agents(ctx, false)
         } else {
-            Ok("SINGLE_SELF_HEAL_AGENT_INSTALL=0 -- skipped".to_string())
+            Ok("DIVISI_SELF_HEAL_AGENT_INSTALL=0 -- skipped".to_string())
         }
     });
     run_step(conn, report, Category::Agent, "auth_repair", || auth_repair(ctx));
@@ -228,14 +228,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test_ctx(tmp.path());
         let conn = test_conn();
-        std::env::set_var("SINGLE_SELF_HEAL_AGENT_INSTALL", "0");
+        std::env::set_var("DIVISI_SELF_HEAL_AGENT_INSTALL", "0");
         let cfg = SelfHealConfig::default();
         let mut report = PassReport::default();
         run(&ctx, &conn, &cfg, &mut report).unwrap();
-        std::env::remove_var("SINGLE_SELF_HEAL_AGENT_INSTALL");
+        std::env::remove_var("DIVISI_SELF_HEAL_AGENT_INSTALL");
 
         let install_action = report.actions.iter().find(|a| a.action == "missing_agent_install").unwrap();
-        assert!(install_action.detail.contains("SINGLE_SELF_HEAL_AGENT_INSTALL=0"), "{install_action:?}");
+        assert!(install_action.detail.contains("DIVISI_SELF_HEAL_AGENT_INSTALL=0"), "{install_action:?}");
     }
 
     #[test]

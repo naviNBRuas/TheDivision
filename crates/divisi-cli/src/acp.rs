@@ -954,7 +954,7 @@ fn usage_line(v: &divisi_protocol::GoalView) -> String {
 }
 
 fn log(msg: &str) {
-    if let Ok(path) = std::env::var("SINGLE_ACP_LOG").or_else(|_| {
+    if let Ok(path) = std::env::var("DIVISI_ACP_LOG").or_else(|_| {
         std::env::var("HOME").map(|h| format!("{h}/.cache/single-acp.log"))
     }) {
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
