@@ -13,6 +13,7 @@ members = [
     "crates/single-web",
     "crates/single-native-agent",
     "crates/single-notch",
+    "crates/divisi-brand",
 ]
 
 [workspace.package]

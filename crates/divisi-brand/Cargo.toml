@@ -1,0 +1,8 @@
+[package]
+name = "divisi-brand"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "divisi mark geometry, motion spec and renderers"
