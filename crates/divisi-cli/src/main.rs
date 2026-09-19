@@ -2,6 +2,7 @@ mod acp;
 mod client;
 mod daemon;
 mod internal_lsp_manifest;
+mod logo;
 mod migrate_cmd;
 mod notch_proc;
 mod render;
@@ -30,6 +31,11 @@ struct Cli {
 enum Command {
     /// Show runtime status.
     Status,
+    /// Print the divisi mark (`--animate` plays one loop).
+    Logo {
+        #[arg(long)]
+        animate: bool,
+    },
     /// Move a pre-rename install onto divisi names: config dir, systemd unit, notch extension.
     Migrate {
         /// Apply the changes (default: print what would change).
@@ -1729,6 +1735,7 @@ fn main() -> anyhow::Result<()> {
                 println!("divisi-notch: hide sent");
             }
         },
+        Command::Logo { animate } => logo::print_logo(animate),
         Command::Migrate { apply } => migrate_cmd::run(apply)?,
         Command::Doctor { fix } => {
             let response = client::send(&socket_path, Request::Doctor { fix })?;

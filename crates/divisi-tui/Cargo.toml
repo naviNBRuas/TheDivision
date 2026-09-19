@@ -10,6 +10,7 @@ anyhow.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 serde_json.workspace = true
+divisi-brand = { path = "../divisi-brand" }
 divisi-core = { path = "../divisi-core" }
 divisi-protocol = { path = "../divisi-protocol" }
 age.workspace = true

@@ -23,6 +23,7 @@ rpassword = "7"
 age.workspace = true
 libc.workspace = true
 divisi-agent-sdk = { path = "../divisi-agent-sdk" }
+divisi-brand = { path = "../divisi-brand" }
 divisi-core = { path = "../divisi-core" }
 divisi-web = { path = "../divisi-web" }
 divisi-protocol = { path = "../divisi-protocol" }

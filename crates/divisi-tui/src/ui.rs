@@ -46,20 +46,40 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
+/// The header mark: "/" at rest, spinning into "÷" while work is running.
+/// `no_motion` (env `NO_MOTION`) shows a static "÷" while busy.
+pub fn mark_char(busy: bool, t_secs: f32, no_motion: bool) -> char {
+    if !busy {
+        return '/';
+    }
+    if no_motion {
+        return '÷';
+    }
+    divisi_brand::glyph::glyph(divisi_brand::motion::loop_at(t_secs).progress)
+}
+
+/// `mark_char` as text, or the plain-ASCII fallback (`/`, `-:-`) for `TERM=dumb`.
+pub fn mark_text(busy: bool, t_secs: f32, no_motion: bool, ascii: bool) -> String {
+    if ascii {
+        return divisi_brand::glyph::ascii(if busy { 1.0 } else { 0.0 }).to_string();
+    }
+    mark_char(busy, t_secs, no_motion).to_string()
+}
+
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let (text, style) = match (&app.status, app.loading) {
         (Some(s), _) => (
             format!(
-                "divisi  ·  profile: {}  ·  agents: {}/{} detected  ·  v{}",
-                s.active_profile, s.agents_detected, s.agents_known, s.version
+                "{}  divisi  ·  profile: {}  ·  agents: {}/{} detected  ·  v{}",
+                app.mark(), s.active_profile, s.agents_detected, s.agents_known, s.version
             ),
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         // Status hasn't arrived yet because the first refresh is still in
         // flight — not the same as the daemon actually being unreachable,
         // so this stays neutral instead of alarming red.
-        (None, true) => (format!("divisi  ·  {} connecting…", app.spinner_frame()), Style::default().fg(ACCENT)),
-        (None, false) => ("divisi  ·  runtime unreachable".to_string(), Style::default().fg(BAD)),
+        (None, true) => (format!("{}  divisi  ·  {} connecting…", app.mark(), app.spinner_frame()), Style::default().fg(ACCENT)),
+        (None, false) => (format!("{}  divisi  ·  runtime unreachable", app.mark()), Style::default().fg(BAD)),
     };
     let header = Paragraph::new(Line::from(Span::styled(text, style)))
         .alignment(Alignment::Center)
@@ -1162,4 +1182,35 @@ fn draw_install_modal(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(ACCENT));
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, modal_area);
+}
+
+#[cfg(test)]
+mod mark_tests {
+    use super::{mark_char, mark_text};
+
+    #[test]
+    fn idle_shows_the_slash() {
+        assert_eq!(mark_char(false, 1.0, false), '/');
+        assert_eq!(mark_char(false, 1.0, true), '/');
+    }
+
+    #[test]
+    fn busy_holds_the_obelus_and_spins_between() {
+        assert_eq!(mark_char(true, 2.0, false), '÷');
+        assert_eq!(mark_char(true, 0.2, false), '/');
+        assert_ne!(mark_char(true, 1.05, false), '÷');
+    }
+
+    #[test]
+    fn no_motion_skips_the_spin() {
+        assert_eq!(mark_char(true, 1.05, true), '÷');
+        assert_eq!(mark_char(true, 0.2, true), '÷');
+    }
+
+    #[test]
+    fn dumb_terminals_get_plain_ascii() {
+        assert_eq!(mark_text(false, 0.0, false, true), "/");
+        assert_eq!(mark_text(true, 2.0, false, true), "-:-");
+        assert_eq!(mark_text(true, 2.0, false, false), "÷");
+    }
 }

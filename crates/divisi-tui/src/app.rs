@@ -366,6 +366,14 @@ impl App {
         app
     }
 
+    /// Header mark: animated while a refresh is in flight or a goal is running or planning.
+    pub fn mark(&self) -> String {
+        let busy = self.loading
+            || self.goals.as_ref().is_some_and(|g| g.iter().any(|x| matches!(x.status.as_str(), "running" | "planning")));
+        let dumb = std::env::var("TERM").is_ok_and(|t| t == "dumb");
+        crate::ui::mark_text(busy, self.started_at.elapsed().as_secs_f32(), std::env::var_os("NO_MOTION").is_some(), dumb)
+    }
+
     /// A slowly-cycling braille spinner frame, derived from elapsed time
     /// rather than a counter `ui.rs` would need `&mut App` to advance.
     pub fn spinner_frame(&self) -> char {
