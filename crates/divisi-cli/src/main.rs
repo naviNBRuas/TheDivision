@@ -2,6 +2,7 @@ mod acp;
 mod client;
 mod daemon;
 mod internal_lsp_manifest;
+mod migrate_cmd;
 mod notch_proc;
 mod render;
 mod serve_openai;
@@ -29,6 +30,12 @@ struct Cli {
 enum Command {
     /// Show runtime status.
     Status,
+    /// Move a pre-rename install onto divisi names: config dir, systemd unit, notch extension.
+    Migrate {
+        /// Apply the changes (default: print what would change).
+        #[arg(long)]
+        apply: bool,
+    },
     /// Diagnose installed agent CLIs, config, and runtime health.
     Doctor {
         /// Also runs a self-heal pass (E28 spec §9) across every enabled
@@ -1722,6 +1729,7 @@ fn main() -> anyhow::Result<()> {
                 println!("divisi-notch: hide sent");
             }
         },
+        Command::Migrate { apply } => migrate_cmd::run(apply)?,
         Command::Doctor { fix } => {
             let response = client::send(&socket_path, Request::Doctor { fix })?;
             render::print(response, false);

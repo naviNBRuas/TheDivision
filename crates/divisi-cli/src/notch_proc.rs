@@ -185,3 +185,50 @@ pub fn gnome_disable() -> Result<()> {
     let _ = gnome_extensions(&["disable", GNOME_UUID])?;
     Ok(())
 }
+
+const LEGACY_GNOME_UUID: &str = "single-notch@nbr.company";
+
+/// `current` is the raw `gsettings get org.gnome.shell enabled-extensions` value.
+pub fn strip_uuid(current: &str, uuid: &str) -> String {
+    let inner = current.trim().trim_start_matches("@as ").trim_start_matches('[').trim_end_matches(']');
+    let kept: Vec<&str> = inner.split(',').map(str::trim).filter(|s| !s.is_empty() && s.trim_matches('\'') != uuid).collect();
+    format!("[{}]", kept.join(", "))
+}
+
+/// Disables and removes the pre-rename extension, then enables the new one if the old one was on.
+pub fn gnome_migrate_legacy(apply: bool) -> Result<Option<String>> {
+    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    let legacy = std::path::PathBuf::from(home).join(".local/share/gnome-shell/extensions").join(LEGACY_GNOME_UUID);
+    if !legacy.exists() {
+        return Ok(None);
+    }
+    if !apply {
+        return Ok(Some(format!("would disable and remove {LEGACY_GNOME_UUID}, then enable {GNOME_UUID}")));
+    }
+    let settings = std::process::Command::new("gsettings").args(["get", "org.gnome.shell", "enabled-extensions"]).output()?;
+    let current = String::from_utf8_lossy(&settings.stdout).into_owned();
+    let was_enabled = current.contains(LEGACY_GNOME_UUID);
+    let _ = gnome_extensions(&["disable", LEGACY_GNOME_UUID]);
+    std::fs::remove_dir_all(&legacy).with_context(|| format!("removing {}", legacy.display()))?;
+    if was_enabled {
+        let cleaned = strip_uuid(&current, LEGACY_GNOME_UUID);
+        let _ = std::process::Command::new("gsettings").args(["set", "org.gnome.shell", "enabled-extensions", &cleaned]).status();
+        gnome_enable()?;
+    }
+    Ok(Some(format!(
+        "removed {LEGACY_GNOME_UUID}{}; log out and back in for GNOME to load {GNOME_UUID}",
+        if was_enabled { ", enabled the new extension" } else { "" }
+    )))
+}
+
+#[cfg(test)]
+mod migrate_tests {
+    use super::*;
+
+    #[test]
+    fn strip_uuid_removes_only_that_entry() {
+        assert_eq!(strip_uuid("['a@b', 'single-notch@nbr.company']", "single-notch@nbr.company"), "['a@b']");
+        assert_eq!(strip_uuid("@as []", "single-notch@nbr.company"), "[]");
+        assert_eq!(strip_uuid("['x@y']", "single-notch@nbr.company"), "['x@y']");
+    }
+}
