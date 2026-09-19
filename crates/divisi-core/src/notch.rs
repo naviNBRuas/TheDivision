@@ -1,6 +1,6 @@
 //! Settings for the notch UI's background poller — how often it checks
 //! task/agent state to refresh what it shows. Stored at
-//! `~/.config/single/notch.toml`, same load/save shape as
+//! `~/.config/divisi/notch.toml`, same load/save shape as
 //! `docker.rs`/`task_hooks.rs`.
 //!
 //! `DIVISI_NOTCH_POLL_MS` overrides the on-disk `poll_ms` at load time

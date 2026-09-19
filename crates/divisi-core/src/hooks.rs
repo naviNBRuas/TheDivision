@@ -2,7 +2,7 @@
 //! process pausing mid-task to ask SingleCLI (and, when undecided, the
 //! user) before it uses a tool, as opposed to `divisi-gateway`'s gateway,
 //! which only gates tool calls SingleCLI itself routes. Stored at
-//! `~/.config/single/hooks.toml`, same shape as `docker.rs`'s settings.
+//! `~/.config/divisi/hooks.toml`, same shape as `docker.rs`'s settings.
 //!
 //! Only `claude` is actually wired up (Claude Code's `PreToolUse` hook —
 //! see `divisi_agent_sdk::formats::claude_settings`, whose real contract

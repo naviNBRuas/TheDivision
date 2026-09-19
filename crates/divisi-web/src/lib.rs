@@ -3,7 +3,7 @@
 //! so `single web patterns list|search` can browse it structurally instead
 //! of an agent having to grep the filesystem itself. Deliberately just a
 //! reader over plain files — the actual content lives at
-//! `~/.config/single/skills/web/premium-web/patterns/**/*.md` (synced
+//! `~/.config/divisi/skills/web/premium-web/patterns/**/*.md` (synced
 //! there from this repo's own `skills/` directory, a separate step not
 //! done by this crate) grouped by category (the immediate parent
 //! directory name), same shape as the spec's own

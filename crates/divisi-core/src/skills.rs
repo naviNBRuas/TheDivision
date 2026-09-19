@@ -1,5 +1,5 @@
 //! Skill registry (spec section 14): directories under
-//! `~/.config/single/skills/<name>/`. Phase 2 scope is local-only —
+//! `~/.config/divisi/skills/<name>/`. Phase 2 scope is local-only —
 //! `install` copies a local source directory in; there is no marketplace/
 //! network fetch yet (that would need the plugin system from spec section
 //! 29, which is later-phase work). A skill is just a directory; SingleCLI

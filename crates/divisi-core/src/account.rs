@@ -54,7 +54,7 @@
 //! contents — only profile names and timestamps.
 //!
 //! **No real-home fallback.** `is_authenticated` and `capture` read only
-//! SingleCLI's isolated `home` (`~/.config/single/homes/<agent>/`) — the
+//! SingleCLI's isolated `home` (`~/.config/divisi/homes/<agent>/`) — the
 //! real, ambient `$HOME` is never consulted for auth detection or
 //! snapshotting. A login done directly against the vendor CLI, outside
 //! `single agent login`, is invisible to SingleCLI until you log in again

@@ -1,4 +1,4 @@
-//! Labeled per-agent provider keys (`~/.config/single/provider_keys.toml`).
+//! Labeled per-agent provider keys (`~/.config/divisi/provider_keys.toml`).
 //!
 //! `divisi_core::providers` models one shared key per provider — fine for
 //! "sync my Anthropic key into every agent," but useless for real per-agent

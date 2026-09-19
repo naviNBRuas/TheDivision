@@ -187,7 +187,7 @@ pub fn run_command_live(
 
 /// When a child's `$HOME` is overridden for isolation, its own view of
 /// `directories::BaseDirs` (and therefore `DivisiDirs::discover()`) would
-/// otherwise resolve `~/.config/single` under the *isolated* home instead
+/// otherwise resolve `~/.config/divisi` under the *isolated* home instead
 /// of the real one. That breaks any nested `single` invocation the child
 /// makes on its own — notably Claude Code's `PreToolUse` hook, which shells
 /// back out to `single internal claude-pretooluse-hook` — silently

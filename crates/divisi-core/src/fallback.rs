@@ -1,5 +1,5 @@
 //! Ordered agent/account fallback chains, stored at
-//! `~/.config/single/fallback.toml`: what `task run --allow-fallback`
+//! `~/.config/divisi/fallback.toml`: what `task run --allow-fallback`
 //! (`divisi-runtime::task::execute`) tries next when a run hits a detected
 //! rate limit (`divisi_core::ratelimit`). Mirrors `providers.rs`'s
 //! load/save shape.

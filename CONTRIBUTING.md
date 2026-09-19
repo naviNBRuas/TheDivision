@@ -56,7 +56,7 @@ Bump `[workspace.package].version` in `Cargo.toml` and rebuild (so
 SingleCLI supports two paths for adding agent support:
 
 - **Declarative** (no Rust) — describe the CLI in
-  `~/.config/single/agents/<name>.toml` (command, install command, prompt
+  `~/.config/divisi/agents/<name>.toml` (command, install command, prompt
   mode, MCP format). Start here; see the README's "Phase 5" note.
 - **Built-in** (Rust) — for agents needing deeper integration (real login
   flow, native LSP/plugin sync). Look at an existing adapter in

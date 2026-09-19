@@ -1,6 +1,6 @@
 //! User-defined agent adapters (spec section 39: "adding a new agent
 //! becomes implementing one adapter, not rebuilding the ecosystem"),
-//! loaded from `~/.config/single/agents/*.toml` — no recompilation needed
+//! loaded from `~/.config/divisi/agents/*.toml` — no recompilation needed
 //! to add a new CLI agent to the registry.
 //!
 //! This is deliberately narrower than a real Rust `AgentAdapter` impl: it
@@ -115,7 +115,7 @@ pub fn to_agent_definition(def: &CustomAgentFile) -> crate::registry::AgentDefin
             non_interactive_run: true,
         },
         config_paths: def.mcp.as_ref().map(|m| vec![m.config_path.clone()]).unwrap_or_default(),
-        notes: Some("user-defined custom agent (~/.config/single/agents/*.toml) — not verified by SingleCLI itself".into()),
+        notes: Some("user-defined custom agent (~/.config/divisi/agents/*.toml) — not verified by SingleCLI itself".into()),
     }
 }
 

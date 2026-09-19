@@ -32,14 +32,14 @@ mechanism already proven in this repo's own dogfooding (see
 `crates/divisi-runtime/src/orchestrate_graph.rs`), not a parallel
 orchestrator.
 
-**Skills**: `~/.config/single/skills/web/premium-web/` — pure markdown,
+**Skills**: `~/.config/divisi/skills/web/premium-web/` — pure markdown,
 managed by the existing `single skill` command (`divisi_core::skills`).
 No code changes needed to consume these once written; any agent doing
 web work can load them today.
 
 **"Design MCP" / "Asset MCP"**: the honest interpretation is *register
 real existing MCP servers* into SingleCLI's already-real dynamic MCP
-registry (`divisi_core::mcp`, `~/.config/single/mcp.toml`,
+registry (`divisi_core::mcp`, `~/.config/divisi/mcp.toml`,
 `single mcp add`), not hand-write a design/asset protocol server from
 scratch overnight. Priority one: a Playwright MCP server for browser
 automation — the one section of the spec with a genuinely mature,

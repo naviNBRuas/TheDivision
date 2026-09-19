@@ -5,7 +5,7 @@
 //! behavior depended on — and could disturb — files it didn't own.
 //!
 //! Instead, each agent gets an isolated home under
-//! `~/.config/single/homes/<agent>/`. The **first** time that directory is
+//! `~/.config/divisi/homes/<agent>/`. The **first** time that directory is
 //! used, it's bootstrapped with a one-time copy of that agent's real,
 //! already-verified config/state paths (the same paths
 //! `divisi-agent-sdk::formats` and `divisi-core::account` read/write) —

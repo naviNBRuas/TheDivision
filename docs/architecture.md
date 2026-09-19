@@ -7,7 +7,7 @@ the project's original request for that).
 - **Phase 2** — shared-capability registries: MCP CRUD, an LSP registry, a tool metadata registry, an OS-keychain secrets abstraction, a local skills directory.
 - **Phase 3** — a SQLite-backed scoped memory subsystem and a git/project context resolver.
 - **Phase 4** — real single-agent task execution: a task record, git worktree isolation, and actually invoking each agent CLI's non-interactive mode.
-- **Phase 5** — declarative custom agent adapters (`~/.config/single/agents/*.toml`): a new CLI agent gets real detection, MCP sync, and task execution without recompiling SingleCLI.
+- **Phase 5** — declarative custom agent adapters (`~/.config/divisi/agents/*.toml`): a new CLI agent gets real detection, MCP sync, and task execution without recompiling SingleCLI.
 - **Phase 6 (partial)** — a provider registry (OpenAI, Anthropic, ...) syncing API keys into the two agents with a verified config slot for them.
 - **Auth** — multi-account credential switching (`single account ...`) so one agent CLI (e.g. Claude Code) can have several logged-in accounts, swapped safely.
 - **Memory upgrades** — a SQLite knowledge graph (entities/observations/relations), plus optional Redis (working memory) and Qdrant (vector store) backends.
@@ -15,7 +15,7 @@ the project's original request for that).
 - **Growth** — richer default MCP/LSP/tool registries seeded from this project's own verified real configuration, provider presets (OpenAI, Anthropic, OpenCode Zen, NVIDIA), automatic "learn from errors" memory on task failure, and a sequential multi-agent orchestration relay (`single orchestrate`).
 - **Self-update** — `single update` checks GitHub Releases and replaces its own binaries in place; a `stable` channel (tagged `vX.Y.Z` releases) and a rolling `nightly` channel that tracks every push to `main`.
 - **Growth Phase 2** — a plugin registry synced into every agent with a real plugin-install command (`claude`/`codex`/`opencode`/`agy`); LSP sync into OpenCode's real `opencode.jsonc` `lsp` key; skills synced into Claude Code's real skill directory; account profiles gained a human label and a manually-tracked usability status, plus isolated-`$HOME` materialization so multiple accounts of the same agent can run **concurrently**; MCP/LSP preset catalogs for growing the registries without a code change per entry; an expanded tool registry; and a TUI that covers the full config surface (MCP/LSP/Plugins/Tools tabs, in-app task creation).
-- **Isolation** — SingleCLI stopped reading/writing agents' real, ambient config (`~/.claude.json`, `~/.codex/`, `~/.config/opencode/`) on every run. Every agent now gets a SingleCLI-managed home under `~/.config/single/homes/<agent>/`, bootstrapped from the real one **once**; every subsequent `task run`, `install-integrations`, `plugin sync`, `provider sync`, and `account capture`/`use` operates only inside that isolated copy.
+- **Isolation** — SingleCLI stopped reading/writing agents' real, ambient config (`~/.claude.json`, `~/.codex/`, `~/.config/opencode/`) on every run. Every agent now gets a SingleCLI-managed home under `~/.config/divisi/homes/<agent>/`, bootstrapped from the real one **once**; every subsequent `task run`, `install-integrations`, `plugin sync`, `provider sync`, and `account capture`/`use` operates only inside that isolated copy.
 
 A parallel/live multi-agent task-graph (as opposed to the sequential relay
 that exists), full provider abstraction (model discovery, streaming, usage
@@ -55,7 +55,7 @@ single (CLI, no subcommand)          single <command>
 - **`divisi-core`** — configuration precedence (global → profile →
   project, see `config.rs`), the built-in agent registry (`registry.rs`),
   the unified MCP registry (`mcp.rs`), profile switching (`profile.rs`),
-  and the canonical `~/.config/single/` directory layout (`paths.rs`).
+  and the canonical `~/.config/divisi/` directory layout (`paths.rs`).
   Pure data/logic, no process spawning.
 - **`divisi-agent-sdk`** — real detection (`discover.rs`, shells out to
   `which`/`<cmd> --version`) and per-agent MCP config writers
@@ -132,7 +132,7 @@ investigation.
   on top of Phase 1's `load`/`save`, exposed as `single mcp
   add/remove/enable/disable/inspect`.
 - **`divisi-core::lsp`** — a registry mirroring `mcp.rs`'s shape
-  (`~/.config/single/lsp.toml`), exposed as `single lsp
+  (`~/.config/divisi/lsp.toml`), exposed as `single lsp
   list/add/remove/inspect`. **Agent sync exists for OpenCode**
   (`AgentAdapter::configure_lsp`/`remove_lsp`, wired into `single
   install-integrations`/`uninstall-integrations` alongside MCP): it writes
@@ -145,7 +145,7 @@ investigation.
   codex/agy/perplexity rather than guessing a translation. See "Growth
   Phase 2 additions" below for the preset catalog on top of this registry.
 - **`divisi-core::tools`** — a metadata catalog
-  (`~/.config/single/tools.toml`: name, description, risk level, enabled),
+  (`~/.config/divisi/tools.toml`: name, description, risk level, enabled),
   exposed as `single tool list/add/inspect/enable/disable`. Deliberately
   metadata-only: there is no execution engine yet to actually invoke a tool
   on an agent's behalf (that's the Phase 4 orchestrator), so this doesn't
@@ -158,7 +158,7 @@ investigation.
   Windows Credential Manager backends are unimplemented; `SecretStore` is
   the seam for them.
 - **`divisi-core::permissions`** — a `deny`/`ask`/`allow` rule model with
-  longest-prefix-match evaluation (`~/.config/single/permissions.toml`).
+  longest-prefix-match evaluation (`~/.config/divisi/permissions.toml`).
   **Not exposed via CLI or IPC** — nothing in SingleCLI executes a tool or
   agent action on the user's behalf yet, so a `single permission allow ...`
   command would have no enforcement behind it. This stays a library-only
@@ -166,7 +166,7 @@ investigation.
   caller; shipping the CLI surface first would be exactly the "fake
   integration" spec section 52 rules out.
 - **`divisi-core::skills`** — local directory-based skills under
-  `~/.config/single/skills/<name>/`, exposed as `single skill
+  `~/.config/divisi/skills/<name>/`, exposed as `single skill
   list/install/remove/inspect`. `install` copies a local source directory
   in; there's no network/marketplace fetch and SingleCLI doesn't interpret
   a skill's contents. **`single skill sync-claude <name>`** (added in
@@ -179,7 +179,7 @@ investigation.
 ## Phase 3 additions
 
 - **`divisi-runtime::memory`** — SQLite-backed structured memory
-  (`~/.config/single/state/divisi.db`, `memories` table), scoped
+  (`~/.config/divisi/state/divisi.db`, `memories` table), scoped
   (working/project/user/agent/task/long_term/knowledge) and provenance-
   tagged (`MemorySource`: user_instruction/agent_output/tool_output/
   project_content/external_content — spec sections 46-47's trust
@@ -218,7 +218,7 @@ investigation.
   `run()` that ties the above together: creates the task record,
   optionally isolates it in a fresh worktree, invokes the agent, captures
   stdout+stderr as an artifact file under
-  `~/.config/single/state/artifacts/`, and records the final status.
+  `~/.config/divisi/state/artifacts/`, and records the final status.
   Exposed as `single task run/list/inspect`. Every stage also writes to
   the existing generic `events` table (`task.created`/`task.started`/
   `task.completed`/`task.failed`) so a run is auditable per spec section 32,
@@ -245,7 +245,7 @@ artifact, a real persisted record.
 ## Phase 5 additions: declarative custom agents
 
 - **`divisi-core::custom_agents`** — a TOML schema
-  (`~/.config/single/agents/<name>.toml`: `command`, `[install]`,
+  (`~/.config/divisi/agents/<name>.toml`: `command`, `[install]`,
   `[run]` mode/value, `[mcp]` format/config_path/key_path) describing a
   new agent CLI without writing Rust.
 - **`divisi-agent-sdk::GenericAdapter`** — interprets that TOML as a real
@@ -533,7 +533,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
 ## Isolation: SingleCLI-managed homes
 
 - **`divisi-core::agent_home`** — every agent gets an isolated `$HOME`
-  under `~/.config/single/homes/<agent>/`. The first time it's needed,
+  under `~/.config/divisi/homes/<agent>/`. The first time it's needed,
   `ensure_bootstrapped` copies that agent's known real config/state paths
   (`~/.claude.json` + `~/.claude/` for claude, `~/.codex/` for codex,
   `~/.config/opencode/` for opencode — the same locations
@@ -554,7 +554,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   *bootstrap source*, never written to). Verified for real: ran `single
   install-integrations --yes` against a fake real home containing a
   `.claude.json` with `numStartups: 42`; afterward that file was
-  byte-for-byte unchanged, while `~/.config/single/homes/claude/.claude.json`
+  byte-for-byte unchanged, while `~/.config/divisi/homes/claude/.claude.json`
   held the newly-synced MCP config, with no credentials copied in.
 - **Relationship to account isolation.** `divisi-core::account`'s
   per-account isolated homes (`accounts_dir()/<agent>/<name>/home/`, for

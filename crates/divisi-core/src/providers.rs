@@ -1,5 +1,5 @@
 //! The provider registry (spec section 30): OpenAI, Anthropic, OpenCode
-//! Zen, or any other LLM API, stored at `~/.config/single/providers.toml`.
+//! Zen, or any other LLM API, stored at `~/.config/divisi/providers.toml`.
 //! The registry only holds *metadata* — which env var name an agent needs,
 //! and which secret-store entry holds the actual key
 //! (`divisi-core::secrets`). The key value itself never touches this file.

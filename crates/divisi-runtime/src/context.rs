@@ -19,7 +19,7 @@ impl Context {
         let resolved = divisi_core::resolve(&dirs, None)?;
         let mut registry = divisi_core::builtin_registry();
 
-        // User-defined agents (~/.config/single/agents/*.toml) join the
+        // User-defined agents (~/.config/divisi/agents/*.toml) join the
         // registry alongside the five built-in ones. A malformed custom
         // agent file is skipped here (surfaced properly via `doctor`,
         // which calls `custom_agents::load_all` directly to see the

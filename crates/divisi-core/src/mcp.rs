@@ -1,5 +1,5 @@
 //! The unified MCP registry (spec section 11): one list of MCP servers,
-//! stored at `~/.config/single/mcp.toml`, that every agent adapter's
+//! stored at `~/.config/divisi/mcp.toml`, that every agent adapter's
 //! `configure_mcp` call is given to sync into that agent's native format.
 //!
 //! Every default entry below is a package this project has directly

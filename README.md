@@ -40,7 +40,7 @@ writing one TOML file, no recompilation required.
 
 SingleCLI also doesn't touch your real, ambient `~/.claude`, `~/.codex`,
 etc. on every run. Each agent gets its own SingleCLI-managed home under
-`~/.config/single/homes/<agent>/`, bootstrapped from the real one exactly
+`~/.config/divisi/homes/<agent>/`, bootstrapped from the real one exactly
 once; every `task run`, `install-integrations`, `plugin sync`, `provider
 sync`, and `account capture`/`use` after that operates only inside that
 isolated copy — see `docs/architecture.md`'s "Isolation" section.
@@ -158,7 +158,7 @@ Every list/inspect command supports `--json` for scripting.
   exec`, `opencode run`, `agy -p`), optionally isolated in a real git
   worktree, captures the output as an artifact, and records the result.
 - **Phase 5** — declarative custom agents: describe a brand-new CLI agent
-  in `~/.config/single/agents/<name>.toml` (command, install command,
+  in `~/.config/divisi/agents/<name>.toml` (command, install command,
   prompt mode, MCP format) and it gets real detection, MCP sync, and task
   execution identically to the five built-in agents — no Rust required.
 - **Phase 6 (partial)** — a provider registry (OpenAI, Anthropic, OpenCode
@@ -232,7 +232,7 @@ Every list/inspect command supports `--json` for scripting.
   separate task row per agent per step, this is how you watch each agent
   in a multi-agent run individually.
 - **Isolated agent homes + `single agent login`** — every agent runs
-  against a SingleCLI-managed home under `~/.config/single/homes/<agent>/`
+  against a SingleCLI-managed home under `~/.config/divisi/homes/<agent>/`
   (bootstrapped from the real one exactly once), never the real, ambient
   `~/.claude`/`~/.codex`/etc. after that. `single agent login <name>` runs
   that agent's own real interactive login command (`claude auth login`,

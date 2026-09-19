@@ -84,7 +84,7 @@ enum Command {
         #[command(subcommand)]
         action: SecretCommand,
     },
-    /// Manage skills (local directories under ~/.config/single/skills).
+    /// Manage skills (local directories under ~/.config/divisi/skills).
     Skill {
         #[command(subcommand)]
         action: SkillCommand,
@@ -151,7 +151,7 @@ enum Command {
         #[command(subcommand)]
         action: TaskHookCommand,
     },
-    /// Browse the premium-web pattern library (`~/.config/single/skills/
+    /// Browse the premium-web pattern library (`~/.config/divisi/skills/
     /// web/premium-web/patterns/**/*.md`) — see the `divisi-web` crate
     /// and `docs/web-capability-pack-architecture.md`. Local-only, reads
     /// files directly, no daemon round trip needed.
@@ -1428,7 +1428,7 @@ fn print_patterns(patterns: &[divisi_web::PatternInfo], json: bool) {
         return;
     }
     if patterns.is_empty() {
-        println!("(no patterns found — see docs/web-capability-pack-architecture.md for where they're expected: ~/.config/single/skills/web/premium-web/patterns/)");
+        println!("(no patterns found — see docs/web-capability-pack-architecture.md for where they're expected: ~/.config/divisi/skills/web/premium-web/patterns/)");
         return;
     }
     for p in patterns {

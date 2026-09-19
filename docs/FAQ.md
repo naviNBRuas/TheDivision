@@ -3,7 +3,7 @@
 ## Does SingleCLI touch my real `~/.claude`, `~/.codex`, etc.?
 
 Not after the first run. Each agent gets its own SingleCLI-managed home
-under `~/.config/single/homes/<agent>/`, bootstrapped from the real one
+under `~/.config/divisi/homes/<agent>/`, bootstrapped from the real one
 exactly once. Every `task run`, `install-integrations`, `plugin sync`,
 `provider sync`, and `account capture`/`use` after that operates only
 inside that isolated copy. See `docs/architecture.md`'s "Isolation"

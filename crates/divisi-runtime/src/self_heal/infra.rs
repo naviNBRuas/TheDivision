@@ -92,7 +92,7 @@ fn stale_socket(ctx: &Context) -> Result<String> {
     Ok(format!("removed stale socket at {}", path.display()))
 }
 
-/// Every `*.toml` under `~/.config/single/` is parse-checked. A broken
+/// Every `*.toml` under `~/.config/divisi/` is parse-checked. A broken
 /// one is restored from its newest `*.bak-*` sibling; with no backup, the
 /// file is moved aside (so nothing is silently lost) and a fresh default
 /// is regenerated on the next read that owns that file (this substep

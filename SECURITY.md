@@ -16,7 +16,7 @@ Please include:
 - The affected version/commit and install channel (`stable` or `nightly`).
 - Whether the issue involves credential/secret handling (OS keychain,
   captured account profiles, provider API keys), the isolated-home model
-  (`~/.config/single/homes/<agent>/`), or the headless daemon's Unix
+  (`~/.config/divisi/homes/<agent>/`), or the headless daemon's Unix
   socket — these get priority given what they touch.
 - Steps to reproduce, or a PoC if one exists.
 
@@ -24,7 +24,7 @@ Please include:
 
 In scope: SingleCLI's own code — the CLI, TUI, headless daemon
 (`divisid`), agent adapters, and the registries/stores under
-`~/.config/single/`.
+`~/.config/divisi/`.
 
 Out of scope: vulnerabilities in a third-party agent CLI SingleCLI
 integrates with (Claude Code, Codex, OpenCode, etc.) — report those to the

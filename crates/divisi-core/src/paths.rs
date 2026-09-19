@@ -1,6 +1,6 @@
 //! Canonical SingleCLI directory layout, per spec section 7.
 //!
-//! `~/.config/single/` holds config, profiles, agent registry overrides, and
+//! `~/.config/divisi/` holds config, profiles, agent registry overrides, and
 //! runtime state. Only the subdirectories Phase 1 actually reads/writes are
 //! created eagerly; the rest of the documented layout (mcp/, lsp/, skills/,
 //! ...) is created on first use by later phases.
@@ -14,7 +14,7 @@ pub struct DivisiDirs {
 }
 
 impl DivisiDirs {
-    /// Resolves `~/.config/single` (or `$DIVISI_CONFIG_DIR` override, used by tests
+    /// Resolves `~/.config/divisi` (or `$DIVISI_CONFIG_DIR` override, used by tests
     /// and by anyone who wants an isolated instance).
     pub fn discover() -> Result<Self> {
         if let Ok(dir) = std::env::var("DIVISI_CONFIG_DIR") {
@@ -22,7 +22,7 @@ impl DivisiDirs {
         }
         let base = directories::BaseDirs::new()
             .context("could not determine home/config directory for this platform")?;
-        Ok(Self { root: base.config_dir().join("single") })
+        Ok(Self { root: base.config_dir().join("divisi") })
     }
 
     pub fn from_root(root: PathBuf) -> Self {

@@ -1,4 +1,4 @@
-//! routing table (`~/.config/single/routing.toml`, spec E27.02 §5.4) and
+//! routing table (`~/.config/divisi/routing.toml`, spec E27.02 §5.4) and
 //! `coordinator.toml` config.
 //!
 //! every `kind` — work kinds (`code`/`test`/`research`/`review`/`docs`/

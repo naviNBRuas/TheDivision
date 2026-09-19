@@ -2,7 +2,7 @@
 //! start, every `self_heal_interval_secs` (default 300), and on `single
 //! doctor --fix`. Every autonomous mutation writes a `self_heal_events`
 //! row and is gated by a per-category toggle in
-//! `~/.config/single/self_heal.toml` (all `true` by default).
+//! `~/.config/divisi/self_heal.toml` (all `true` by default).
 //!
 //! Three categories, each independently toggleable and each wrapped in
 //! `catch_unwind` per sub-step (spec: "one failure can't wedge the rest"):

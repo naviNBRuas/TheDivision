@@ -1,5 +1,5 @@
 //! Permission policy model (spec section 16): `deny`/`ask`/`allow` rules
-//! scoped by resource pattern, stored at `~/.config/single/permissions.toml`.
+//! scoped by resource pattern, stored at `~/.config/divisi/permissions.toml`.
 //!
 //! `evaluate`'s first real caller is the `divisi-gateway` gateway
 //! (`crates/divisi-gateway/src/gateway.rs`), via

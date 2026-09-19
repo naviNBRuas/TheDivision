@@ -2,7 +2,7 @@
 //! them agents/cli accounts"). Host-process isolation (`$HOME` swapping,
 //! `divisi_core::agent_home`/`account`) stays the default for every agent;
 //! this is a per-(agent, optional account) flag a user turns on
-//! explicitly. Stored at `~/.config/single/docker.toml`, same pattern as
+//! explicitly. Stored at `~/.config/divisi/docker.toml`, same pattern as
 //! `providers.rs`/`mcp.rs`.
 //!
 //! Doesn't itself talk to Docker — that's `divisi-runtime::docker`

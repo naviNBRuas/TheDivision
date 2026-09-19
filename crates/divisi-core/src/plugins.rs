@@ -1,5 +1,5 @@
 //! The unified plugin registry (spec section 29): one list of plugins,
-//! stored at `~/.config/single/plugins.toml`, synced out to every agent
+//! stored at `~/.config/divisi/plugins.toml`, synced out to every agent
 //! that has a real plugin-install command. Verified real commands per
 //! agent (`--help` output on the reference machine, not assumed):
 //! `claude plugin install <plugin[@marketplace]>`, `codex plugin add

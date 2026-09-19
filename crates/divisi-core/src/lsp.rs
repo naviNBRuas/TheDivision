@@ -1,5 +1,5 @@
 //! The unified LSP registry (spec section 12): mirrors `mcp.rs`'s shape.
-//! Stored at `~/.config/single/lsp.toml`.
+//! Stored at `~/.config/divisi/lsp.toml`.
 //!
 //! Only `opencode` has a directly observed native config surface for
 //! arbitrary LSP servers (`opencode.jsonc`'s `lsp` key, confirmed the same

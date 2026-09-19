@@ -2,7 +2,7 @@
 //! reaches a terminal status, so a caller (a script, a webhook, or
 //! another Claude Code session acting as coordinator) can react by
 //! subscription instead of polling `single task list` in a loop. Stored
-//! at `~/.config/single/task_hooks.toml`, same load/save shape as
+//! at `~/.config/divisi/task_hooks.toml`, same load/save shape as
 //! `fallback.rs`/`hooks.rs`.
 //!
 //! Deliberately distinct from `hooks.rs`, which is a completely different
