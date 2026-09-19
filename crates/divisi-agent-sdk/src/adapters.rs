@@ -164,8 +164,8 @@ impl AgentAdapter for CodexAdapter {
     /// reference machine. `--skip-git-repo-check` is also real (confirmed
     /// the same way): without it, `codex exec` refuses to run in a
     /// directory that isn't a trusted git repo, which would otherwise
-    /// break `single task run --agent codex` for any `cwd` that isn't
-    /// already a repo. This doesn't bypass a SingleCLI-level trust
+    /// break `divisi task run --agent codex` for any `cwd` that isn't
+    /// already a repo. This doesn't bypass a divisi-level trust
     /// decision — `cwd` here is already whatever directory the caller (a
     /// plain `task run`, or `orchestrate`'s shared worktree) deliberately
     /// chose; it just stops codex from re-litigating that choice with its
@@ -183,7 +183,7 @@ impl AgentAdapter for CodexAdapter {
     /// granting the full host access `danger-full-access` would.
     ///
     /// The `--` before `prompt` is load-bearing too, confirmed live:
-    /// `single task run`'s memory/notes preamble starts with a literal
+    /// `divisi task run`'s memory/notes preamble starts with a literal
     /// `"---"`, and codex's own parser rejected that as an unrecognized
     /// argument without it — its error message even suggests this exact
     /// fix ("tip: to pass ... as a value, use '-- ...'").
@@ -218,7 +218,7 @@ impl AgentAdapter for CodexAdapter {
     /// `codex plugin add <plugin[@marketplace]>` — confirmed real via
     /// `codex plugin add --help` on the reference machine. Requires the
     /// marketplace to already be configured (`codex plugin marketplace
-    /// add`) if `target` uses `@marketplace` — SingleCLI doesn't auto-add
+    /// add`) if `target` uses `@marketplace` — divisi doesn't auto-add
     /// marketplaces on the user's behalf, since that's a real trust
     /// decision (what code source to pull plugins from), not a config
     /// sync operation.
@@ -284,7 +284,7 @@ impl AgentAdapter for OpenCodeAdapter {
 
     /// `opencode run --auto -- "<prompt>" --dir <cwd>` — confirmed
     /// non-interactive mode and `--dir` flag via `opencode run --help` on
-    /// the reference machine. The `--` is load-bearing: `single task
+    /// the reference machine. The `--` is load-bearing: `divisi task
     /// run`'s memory/notes preamble starts with a literal `"---"`, and
     /// without a `--` separator `opencode run` misparsed that as a flag
     /// and dumped its own help instead of running — confirmed live.
@@ -361,7 +361,7 @@ impl AgentAdapter for AgyAdapter {
     /// positional, so a `--` separator doesn't help here the way it does
     /// for claude — confirmed live: `agy -p -- "---..."` still dumped
     /// help, while `agy --print="---..."` correctly ran the prompt.
-    /// (`single task run`'s memory/notes preamble literally starts with
+    /// (`divisi task run`'s memory/notes preamble literally starts with
     /// `"---"`, which is what surfaced this.)
     #[allow(clippy::too_many_arguments)]
     fn run_prompt(
@@ -450,7 +450,7 @@ impl AgentAdapter for CursorAdapter {
     /// codex's `--skip-git-repo-check` and copilot's `--allow-all-tools`.
     ///
     /// The `--` before `prompt` is load-bearing, confirmed by hitting the
-    /// failure live: `single task run` prepends a memory/notes preamble
+    /// failure live: `divisi task run` prepends a memory/notes preamble
     /// (`task::context_preamble`) that starts with a literal `"---"`, and
     /// `cursor-agent -p "<that text>"` rejects it as an unrecognized
     /// option rather than treating it as `-p`'s value — clap-style
@@ -544,7 +544,7 @@ impl AgentAdapter for GooseAdapter {
     /// non-interactive mode via `goose run --help` on the reference
     /// machine (`--no-session` skips creating a session file, `--quiet`
     /// prints only the model's response). `--text=value` (not a `--`
-    /// separator) is load-bearing: `single task run`'s memory/notes
+    /// separator) is load-bearing: `divisi task run`'s memory/notes
     /// preamble starts with a literal `"---"`, and `goose run --text
     /// "---..."` (as a separate argv token) rejected it as an unexpected
     /// argument even with `--` inserted before it — confirmed live that
@@ -642,7 +642,7 @@ impl AgentAdapter for CopilotAdapter {
     /// plugin install --help` on the reference machine; `source` accepts
     /// the same `plugin@marketplace` convention as claude/codex/agy
     /// (also `owner/repo`, `owner/repo:path`, or a git URL, but
-    /// SingleCLI's `PluginSpec::target` is passed through verbatim either
+    /// divisi's `PluginSpec::target` is passed through verbatim either
     /// way).
     fn install_plugin(&self, target: &str, home: &Path, timeout: Duration) -> Result<RunOutcome> {
         run_command_with_home("copilot", &["plugin".to_string(), "install".to_string(), target.to_string()], home, Some(home), timeout)
@@ -837,7 +837,7 @@ impl AgentAdapter for AmpAdapter {
     /// or as argument when using execute mode"` instead of a clean auth
     /// error. Fixed to `--execute=<prompt>` as one token — the `=` form
     /// binds the value to the flag directly, so a prompt starting with
-    /// `---` (from `single task run`'s memory/notes preamble) still can't
+    /// `---` (from `divisi task run`'s memory/notes preamble) still can't
     /// be misread as a separate flag, without losing the message the way
     /// `--` did.
     #[allow(clippy::too_many_arguments)]
@@ -880,7 +880,7 @@ impl AgentAdapter for DroidAdapter {
 
     /// `droid exec -- "<prompt>"` — confirmed non-interactive mode via
     /// `droid --help` ("Run non-interactively (for scripts/automation)").
-    /// The `--` is load-bearing: `single task run`'s memory/notes preamble
+    /// The `--` is load-bearing: `divisi task run`'s memory/notes preamble
     /// starts with a literal `"---"`, which `droid exec "---..."` (no
     /// `--`) rejected as an unknown option — confirmed live, including
     /// that the fixed form correctly reaches droid's own auth check
@@ -1005,7 +1005,7 @@ impl AgentAdapter for GrokAdapter {
     /// `danger-full-access` — it did not fix this, confirmed by the same
     /// live no-op repro; `--always-approve` ("Auto-approve all tool
     /// executions") does, confirmed by running it directly outside
-    /// SingleCLI. No narrower "edits only" flag was found for grok.
+    /// divisi. No narrower "edits only" flag was found for grok.
     #[allow(clippy::too_many_arguments)]
     fn run_prompt(
         &self,
@@ -1123,7 +1123,7 @@ impl AgentAdapter for CrushAdapter {
 
     /// `crush run -- "<prompt>"` — confirmed non-interactive mode via
     /// `crush --help` ("Run a single non-interactive prompt"). The `--` is
-    /// load-bearing: `single task run`'s memory/notes preamble starts
+    /// load-bearing: `divisi task run`'s memory/notes preamble starts
     /// with a literal `"---"`, which `crush run "---..."` (no `--`)
     /// rejected as bad flag syntax — confirmed live, including that the
     /// fixed form correctly reaches crush's own provider check instead
@@ -1183,7 +1183,7 @@ impl AgentAdapter for KiloCodeAdapter {
     /// `--model kilo/kilo-auto/free` avoids kilo's own paid default model
     /// ("Add credits to continue, or switch to a free model" — also
     /// confirmed live) routing every dispatch to a real free-tier model
-    /// instead. The `--` separator is kept so `single task run`'s
+    /// instead. The `--` separator is kept so `divisi task run`'s
     /// `---`-prefixed memory preamble isn't parsed as flags.
     #[allow(clippy::too_many_arguments)]
     fn run_prompt(
@@ -1230,13 +1230,13 @@ impl AgentAdapter for DivisiAgentAdapter {
     }
 
     /// single-agent has no on-disk MCP config surface — it talks directly
-    /// to SingleCLI's own provider registry and secret store.
+    /// to divisi's own provider registry and secret store.
     fn configure_mcp(&self, home: &Path, _servers: &[McpServerSpec], _dry_run: bool) -> Result<IntegrationWrite> {
-        Ok(unsupported_write("single-agent", home, "single-agent has no MCP config surface — it uses SingleCLI's own provider registry"))
+        Ok(unsupported_write("single-agent", home, "single-agent has no MCP config surface — it uses divisi's own provider registry"))
     }
 
     fn remove_mcp(&self, home: &Path, _names: &[String], _dry_run: bool) -> Result<IntegrationWrite> {
-        Ok(unsupported_write("single-agent", home, "single-agent has no MCP config surface — it uses SingleCLI's own provider registry"))
+        Ok(unsupported_write("single-agent", home, "single-agent has no MCP config surface — it uses divisi's own provider registry"))
     }
 
     /// `single-agent run --provider <P> --model <M> --prompt <prompt> --cwd <cwd>`
@@ -1281,7 +1281,7 @@ impl AgentAdapter for DivisiAgentAdapter {
         )
     }
 
-    // No `login`: single-agent reads API keys from SingleCLI's own secret
+    // No `login`: single-agent reads API keys from divisi's own secret
     // store, not from its own credentials file — there is nothing to attach
     // a terminal session to.
 }
@@ -1359,7 +1359,7 @@ impl AgentAdapter for PoolAdapter {
     // `which single-pool`, which never resolves to anything -- there is
     // no `single-pool` binary on $PATH (see this adapter's doc comment:
     // it dispatches over HTTP from inside divisid, nothing is
-    // ever shelled). That made `single doctor` report "single-pool: not
+    // ever shelled). That made `divisi doctor` report "single-pool: not
     // installed" even on a build where the E28 pool engine was fully
     // wired up and working end-to-end, which reads as "you're missing a
     // feature" rather than the truth: it's always available whenever
@@ -1541,8 +1541,8 @@ pub fn for_agent(name: &str) -> Option<Box<dyn AgentAdapter>> {
 /// `Unsupported` — for `builtin_registry()` entries that don't have a
 /// dedicated Rust adapter (e.g. the v0.1.18 agent-catalog additions). This
 /// is the seam that lets a new CLI agent be added without recompiling
-/// SingleCLI, and the reason registry entries without a real adapter still
-/// get detected by `doctor`/`single setup` instead of silently doing nothing.
+/// divisi, and the reason registry entries without a real adapter still
+/// get detected by `doctor`/`divisi setup` instead of silently doing nothing.
 pub fn for_agent_with_custom(name: &str, custom_agents_dir: &Path, registry: &[divisi_core::registry::AgentDefinition]) -> Option<Box<dyn AgentAdapter>> {
     if let Some(builtin) = for_agent(name) {
         return Some(builtin);

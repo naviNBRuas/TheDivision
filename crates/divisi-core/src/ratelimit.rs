@@ -49,9 +49,9 @@ pub fn looks_like_rate_limit(text: &str) -> bool {
 }
 
 // Live-verification finding: an agent whose CLI is on `$PATH` but not
-// actually authenticated (`claude` here — confirmed live: `single agent
+// actually authenticated (`claude` here — confirmed live: `divisi agent
 // login claude` reported success but didn't persist credentials into
-// SingleCLI's isolated home) gets endlessly re-selected for planning/
+// divisi's isolated home) gets endlessly re-selected for planning/
 // dispatch, since only a rate-limit signal excludes an agent from
 // `PoolHealth::usable()` or triggers `maybe_fail_over`'s hop to the next
 // candidate — an auth failure did neither, so a broken-auth agent could

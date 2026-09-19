@@ -1,7 +1,7 @@
 //! Task-lifecycle event hooks: fire an external command when a task
 //! reaches a terminal status, so a caller (a script, a webhook, or
 //! another Claude Code session acting as coordinator) can react by
-//! subscription instead of polling `single task list` in a loop. Stored
+//! subscription instead of polling `divisi task list` in a loop. Stored
 //! at `~/.config/divisi/task_hooks.toml`, same load/save shape as
 //! `fallback.rs`/`hooks.rs`.
 //!
@@ -10,7 +10,7 @@
 //! pausing an agent *during* a run to ask permission before a tool call).
 //! This module never pauses a run; it only reacts *after* a task's status
 //! is already final. Different name, different config file, different CLI
-//! path (`single task-hook`, not nested under `agent`) so the two are
+//! path (`divisi task-hook`, not nested under `agent`) so the two are
 //! never confused.
 //!
 //! Only fires on `completed`/`failed`/`cancelled` (`TaskStatus`'s
@@ -176,7 +176,7 @@ fn run_one(command: &str, stdin_body: &str) -> Result<()> {
 }
 
 /// Runs the configured hook whose `command` matches exactly, synchronously,
-/// against a synthetic payload — for `single task-hook test`, where the
+/// against a synthetic payload — for `divisi task-hook test`, where the
 /// user wants an immediate pass/fail, not a detached fire-and-forget (that's
 /// what `fire` is for). Errors if no hook has that exact command, or if the
 /// command itself fails/times out, so the CLI can report either clearly.
@@ -189,7 +189,7 @@ pub fn test(path: &Path, command: &str) -> Result<()> {
         agent: "test".to_string(),
         cwd: ".".to_string(),
         workspace_id: "test".to_string(),
-        summary: Some("single task-hook test".to_string()),
+        summary: Some("divisi task-hook test".to_string()),
     };
     let body = serde_json::to_string(&payload).context("serializing test payload")?;
     run_one(command, &body)

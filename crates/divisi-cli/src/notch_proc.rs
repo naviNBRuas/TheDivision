@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 /// SIGTERM".
 pub fn send_command(dirs: &DivisiDirs, cmd: &str) -> Result<()> {
     let mut stream = std::os::unix::net::UnixStream::connect(dirs.notch_socket_path())
-        .with_context(|| "connecting to the notch control socket (is it running? `single notch enable`)")?;
+        .with_context(|| "connecting to the notch control socket (is it running? `divisi notch enable`)")?;
     let payload = format!("{{\"cmd\":\"{cmd}\"}}\n");
     stream.write_all(payload.as_bytes())?;
     Ok(())
@@ -49,7 +49,7 @@ fn binary_path() -> Result<std::path::PathBuf> {
     if candidate.exists() {
         return Ok(candidate);
     }
-    // Fall back to $PATH lookup if not installed alongside `single` (e.g. `cargo run`).
+    // Fall back to $PATH lookup if not installed alongside `divisi` (e.g. `cargo run`).
     Ok(std::path::PathBuf::from("divisi-notch"))
 }
 

@@ -56,7 +56,7 @@ pub fn apply(path: &Path, servers: &[McpServerSpec]) -> Result<Value> {
 }
 
 /// Removes only the named servers from `mcpServers`, leaving anything else
-/// (including MCP servers SingleCLI doesn't manage) untouched.
+/// (including MCP servers divisi doesn't manage) untouched.
 pub fn remove(path: &Path, names: &[String]) -> Result<Option<Value>> {
     if !path.exists() {
         return Ok(None);

@@ -2,7 +2,7 @@
 //! (`list_available_mcp_tools`, `invoke_mcp`, `notes_leave`, `notes_read`)
 //! over stdio to whichever agent CLI has this binary registered as its one
 //! MCP server, and lazily proxies to the real MCP servers listed in
-//! SingleCLI's `mcp.toml` registry — spawned as child processes only on
+//! divisi's `mcp.toml` registry — spawned as child processes only on
 //! first use, then reused for the rest of this gateway process's lifetime
 //! (which is exactly the agent session's lifetime, since the agent's own
 //! MCP client keeps this stdio child alive for as long as it's talking to
@@ -41,8 +41,8 @@
 //! process-level IPC (see `orchestrate.rs`'s module doc for why that part
 //! stays out of scope). The gateway has no ambient identity for which
 //! agent is calling it (it's spawned by whatever CLI configured it, with
-//! no distinguishing env var SingleCLI controls), so `from_agent` is a
-//! required argument, same as the `single note leave --from` CLI command.
+//! no distinguishing env var divisi controls), so `from_agent` is a
+//! required argument, same as the `divisi note leave --from` CLI command.
 
 use anyhow::{Context, Result};
 use rmcp::model::{
@@ -101,10 +101,10 @@ impl Gateway {
     }
 
     /// Registry servers, honoring `enabled` the same way the rest of
-    /// SingleCLI does (`single mcp list` shows both, but only enabled
+    /// divisi does (`divisi mcp list` shows both, but only enabled
     /// servers are meant to be synced/used).
     fn registry() -> Result<Vec<divisi_protocol::McpServerSpec>> {
-        let dirs = divisi_core::DivisiDirs::discover().context("resolving SingleCLI config directory")?;
+        let dirs = divisi_core::DivisiDirs::discover().context("resolving divisi config directory")?;
         let servers = divisi_core::mcp::load(&dirs.mcp_registry_file())?;
         Ok(servers.into_iter().filter(|s| s.enabled).collect())
     }
@@ -117,7 +117,7 @@ impl Gateway {
         }
         let servers = Self::registry()?;
         let spec = servers.into_iter().find(|s| s.name == name).with_context(|| {
-            format!("no enabled mcp server named '{name}' (see `single mcp list`; disabled servers must be enabled first)")
+            format!("no enabled mcp server named '{name}' (see `divisi mcp list`; disabled servers must be enabled first)")
         })?;
 
         let mut command = tokio::process::Command::new(&spec.command);
@@ -127,12 +127,12 @@ impl Gateway {
         }
         // Secret-backed env vars are resolved here, at spawn time, and set
         // directly on the child's environment — never written to mcp.toml
-        // or any other file. This is the one path in SingleCLI that
+        // or any other file. This is the one path in divisi that
         // actually honors McpServerSpec::secret_env (see its doc comment).
         let secret_store = divisi_core::secrets::SecretTool;
         for (env_var, secret_key) in &spec.secret_env {
             let value = divisi_core::secrets::SecretStore::get(&secret_store, secret_key)?
-                .with_context(|| format!("mcp server '{name}' needs secret '{secret_key}' (set with `single secret set {secret_key} <value>`)"))?;
+                .with_context(|| format!("mcp server '{name}' needs secret '{secret_key}' (set with `divisi secret set {secret_key} <value>`)"))?;
             command.env(env_var, value);
         }
         let transport = TokioChildProcess::new(command.configure(|_| {})).with_context(|| format!("spawning mcp server '{name}'"))?;
@@ -185,7 +185,7 @@ impl Gateway {
                         return Ok(json!({
                             "server": server, "tool": tool_name, "pending_approval": id,
                             "message": format!(
-                                "this action needs your approval first — run `single approval resolve {id} --allow` (or --deny), then retry"
+                                "this action needs your approval first — run `divisi approval resolve {id} --allow` (or --deny), then retry"
                             )
                         }));
                     }
@@ -211,7 +211,7 @@ impl Gateway {
     /// this introduces: an agent's mid-session note write racing the
     /// daemon's own writes to the same file.
     fn notes_conn() -> Result<rusqlite::Connection> {
-        let dirs = divisi_core::DivisiDirs::discover().context("resolving SingleCLI config directory")?;
+        let dirs = divisi_core::DivisiDirs::discover().context("resolving divisi config directory")?;
         let db_path = dirs.db_path();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
@@ -288,7 +288,7 @@ fn spawn_idle_sweeper(sessions: Arc<Mutex<HashMap<String, SessionEntry>>>) {
 /// uses directly (see this file's module doc for why) rather than
 /// round-tripping through the socket.
 fn check_permission(resource: &str) -> Result<divisi_core::preferences::Verdict> {
-    let dirs = divisi_core::DivisiDirs::discover().context("resolving SingleCLI config directory")?;
+    let dirs = divisi_core::DivisiDirs::discover().context("resolving divisi config directory")?;
     let rules = divisi_core::permissions::load(&dirs.permissions_file())?;
     let db_path = dirs.db_path();
     if let Some(parent) = db_path.parent() {
@@ -407,7 +407,7 @@ impl ServerHandler for Gateway {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("divisi-gateway", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "Dynamic MCP gateway for SingleCLI. Call list_available_mcp_tools first to see \
+                "Dynamic MCP gateway for divisi. Call list_available_mcp_tools first to see \
                  registered servers, then invoke_mcp with {server, tool: null} to discover that \
                  server's real tools, then invoke_mcp with {server, tool, arguments} to call one. \
                  Also exposes notes_leave/notes_read for messaging other agents working on this \
@@ -420,7 +420,7 @@ impl ServerHandler for Gateway {
         Ok(ListToolsResult::with_all_items(vec![
             Tool::new(
                 "list_available_mcp_tools",
-                "Lists MCP servers SingleCLI has registered and enabled, without spawning any of them.",
+                "Lists MCP servers divisi has registered and enabled, without spawning any of them.",
                 schema(json!({ "type": "object", "properties": {}, "additionalProperties": false })),
             ),
             Tool::new(
@@ -442,7 +442,7 @@ impl ServerHandler for Gateway {
                 "notes_leave",
                 "Leaves a note for another agent (or, with to_agent omitted, a broadcast note for \
                  every agent) working on this project. Delivered immediately to notes_read, and \
-                 also to the recipient's next `single task run` prompt preamble.",
+                 also to the recipient's next `divisi task run` prompt preamble.",
                 schema(json!({
                     "type": "object",
                     "properties": {

@@ -34,10 +34,10 @@ pub struct Goal {
     /// `WaitingOnCapacity` — checked against `max_capacity_waits_per_goal`
     /// (or `capacity_budget_override`) before finally giving up to `Blocked`.
     pub capacity_waits: u32,
-    /// E28 spec §8: `single goal amend <id> capacity-budget=N` override of
+    /// E28 spec §8: `divisi goal amend <id> capacity-budget=N` override of
     /// `CoordinatorConfig::max_capacity_waits_per_goal` for this goal only.
     pub capacity_budget_override: Option<u32>,
-    /// `single goal amend <id> capacity-minutes=N` override of
+    /// `divisi goal amend <id> capacity-minutes=N` override of
     /// `CoordinatorConfig::max_capacity_wait_minutes` for this goal only.
     /// Live-verification finding: unlike `max_dispatches`/`max_minutes`,
     /// this wall-clock cap (measured from `created_at`, never reset) had
@@ -53,7 +53,7 @@ pub struct Goal {
     /// E28 spec §9.2: how many times self-heal's coordinator category has
     /// re-evaluated a `Blocked` goal — bounded by `max_auto_reevals_per_goal`.
     pub auto_reevals: u32,
-    /// opt-in only (`single goal amend <id> auto-merge=true`) — never set by
+    /// opt-in only (`divisi goal amend <id> auto-merge=true`) — never set by
     /// default. `docs/architecture.md`'s "branches are never auto-merged;
     /// that stays a human decision" still holds: this is the human's
     /// upfront decision to allow it for this goal, not a bypass of it. The
@@ -269,7 +269,7 @@ pub fn list_by_status(conn: &Connection, status: GoalStatus) -> Result<Vec<Goal>
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-/// E28 spec §10: a clean `single daemon stop` marks every currently
+/// E28 spec §10: a clean `divisi daemon stop` marks every currently
 /// active goal `Paused` (instead of leaving it `Running`, which
 /// `scheduler::reconcile`'s PID check would otherwise mistake for a
 /// crash) -- returns how many were touched.
@@ -293,7 +293,7 @@ pub fn resume_status(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Companion to `resume_status` for a manually-triggered `single goal
+/// Companion to `resume_status` for a manually-triggered `divisi goal
 /// resume`: a human overriding a `Blocked` goal wants its nodes retried
 /// now, not held to a stale capacity stamp from before the block. NOT
 /// called by the automatic `resume_interrupted` path, which deliberately
@@ -379,7 +379,7 @@ pub fn clear_waiting_on_capacity(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// E28 spec §8: `single goal amend <id> capacity-budget=N` — raises this
+/// E28 spec §8: `divisi goal amend <id> capacity-budget=N` — raises this
 /// goal's own `max_capacity_waits_per_goal` override (reuses the existing
 /// `budget=N` amend-text parsing precedent, extended to a second key).
 pub fn raise_capacity_budget(conn: &Connection, id: &str, new_budget: u32) -> Result<()> {
@@ -390,7 +390,7 @@ pub fn raise_capacity_budget(conn: &Connection, id: &str, new_budget: u32) -> Re
     Ok(())
 }
 
-/// `single goal amend <id> auto-merge=true|false` — the human's opt-in
+/// `divisi goal amend <id> auto-merge=true|false` — the human's opt-in
 /// switch (default off) for `scheduler::maybe_auto_merge`.
 pub fn set_auto_merge(conn: &Connection, id: &str, enabled: bool) -> Result<()> {
     conn.execute(
@@ -400,7 +400,7 @@ pub fn set_auto_merge(conn: &Connection, id: &str, enabled: bool) -> Result<()> 
     Ok(())
 }
 
-/// `single goal amend <id> capacity-minutes=N` — raises this goal's
+/// `divisi goal amend <id> capacity-minutes=N` — raises this goal's
 /// `max_capacity_wait_minutes` override and re-opens a goal blocked on
 /// having aged past the global default. Also clears `blocked_reason` and
 /// re-opens `Blocked` -> `Running` the same way `raise_dispatch_cap` does,
@@ -450,7 +450,7 @@ pub fn raise_dispatch_cap(conn: &Connection, id: &str, new_cap: u32) -> Result<(
     Ok(())
 }
 
-/// `single goal amend <id> minutes=N` — raises the per-goal wall-clock cap
+/// `divisi goal amend <id> minutes=N` — raises the per-goal wall-clock cap
 /// (`max_goal_minutes`, spec §4.5) and re-opens a goal blocked on it.
 /// `budget=N` alone can't recover this: a goal blocked on elapsed wall
 /// time re-blocks immediately on the next tick if only its dispatch cap
@@ -571,7 +571,7 @@ pub fn update_node(
 }
 
 /// Rewrites a node's prompt and clears its `task_id`. Used by `careful`
-/// mode (`single loop`) to feed each iteration the previous output.
+/// mode (`divisi loop`) to feed each iteration the previous output.
 pub fn set_node_desc(conn: &Connection, goal_id: &str, node_id: &str, desc: &str) -> Result<()> {
     conn.execute(
         "UPDATE graph_nodes SET desc = ?3, task_id = NULL WHERE goal_id = ?1 AND id = ?2",
@@ -656,7 +656,7 @@ mod tests {
             &conn,
             &s.id,
             &format!(
-                "Make SingleCLI self-healing as an ongoing standing concern, not a one-off audit: itself, single-pool (the free-provider dispatch engine), divisi-gateway, and divisi-lsp. Read the architecture doc's diagnostic sections first for already-diagnosed issues. Actually find the grok worktree-cwd spawn-failure root cause with real tracing, not guessing. Run the full test suite and clippy, fix real warnings you find. Verify divisi-gateway/divisi-lsp's lazy-spawn and idle-eviction work end to end against a real process. Audit the free-pool's ~44 providers for any more with the aihorde-class chat-prose problem. {shared_boilerplate}"
+                "Make divisi self-healing as an ongoing standing concern, not a one-off audit: itself, single-pool (the free-provider dispatch engine), divisi-gateway, and divisi-lsp. Read the architecture doc's diagnostic sections first for already-diagnosed issues. Actually find the grok worktree-cwd spawn-failure root cause with real tracing, not guessing. Run the full test suite and clippy, fix real warnings you find. Verify divisi-gateway/divisi-lsp's lazy-spawn and idle-eviction work end to end against a real process. Audit the free-pool's ~44 providers for any more with the aihorde-class chat-prose problem. {shared_boilerplate}"
             ),
             GoalMode::Auto,
             25,

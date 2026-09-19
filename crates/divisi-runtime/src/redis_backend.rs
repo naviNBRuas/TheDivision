@@ -7,7 +7,7 @@
 //!
 //! Entirely optional: only active when a Redis URL is configured (see
 //! `resolve_url`). No agent or command requires Redis to function —
-//! everything else in SingleCLI's memory subsystem works without it. This
+//! everything else in divisi's memory subsystem works without it. This
 //! module was built against, and its tests run against, a real local
 //! Redis instance (`docker run redis:7-alpine`) during development, not
 //! just written to the client library's API without verification — but
@@ -55,7 +55,7 @@ pub fn delete(url: &str, key: &str) -> Result<bool> {
 
 /// Uses `KEYS`, which is fine for the small local working-memory
 /// namespaces this is meant for — not appropriate at production Redis
-/// scale, but SingleCLI's usage here is a single-user local dev tool, not
+/// scale, but divisi's usage here is a single-user local dev tool, not
 /// a shared multi-tenant cache.
 pub fn list_keys(url: &str, pattern: &str) -> Result<Vec<String>> {
     let mut conn = connect(url)?;

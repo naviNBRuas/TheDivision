@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-SingleCLI is pre-1.0 (`0.x.x`); the latest release on the `stable` channel
+divisi is pre-1.0 (`0.x.x`); the latest release on the `stable` channel
 receives security fixes. There is no long-term-support branch yet.
 
 ## Reporting a Vulnerability
@@ -22,13 +22,13 @@ Please include:
 
 ## Scope
 
-In scope: SingleCLI's own code — the CLI, TUI, headless daemon
+In scope: divisi's own code — the CLI, TUI, headless daemon
 (`divisid`), agent adapters, and the registries/stores under
 `~/.config/divisi/`.
 
-Out of scope: vulnerabilities in a third-party agent CLI SingleCLI
+Out of scope: vulnerabilities in a third-party agent CLI divisi
 integrates with (Claude Code, Codex, OpenCode, etc.) — report those to the
-respective project. If SingleCLI's *integration* with one of them
+respective project. If divisi's *integration* with one of them
 introduces a vulnerability (e.g. leaking a secret into process argv, as
 fixed previously — see CHANGELOG), that is in scope.
 

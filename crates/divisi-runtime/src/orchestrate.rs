@@ -11,7 +11,7 @@
 //!   `(agent, description)` pair runs on its own OS thread, in its own
 //!   git worktree, with its own SQLite connection. No automatic goal
 //!   decomposition — the caller supplies each agent's own task
-//!   explicitly; SingleCLI runs them concurrently and reports what
+//!   explicitly; divisi runs them concurrently and reports what
 //!   happened, it doesn't invent the split or auto-merge the resulting
 //!   branches.
 //!
@@ -180,7 +180,7 @@ pub fn run_parallel(ctx: &Context, opts: ParallelOrchestrateOptions) -> Result<V
                 // project — parallel siblings run at the same time, so
                 // none of them can see this at the moment it happens
                 // (there's no live IPC — see this module's doc), but it's
-                // there waiting on their next `single task run`/orchestrate
+                // there waiting on their next `divisi task run`/orchestrate
                 // step via the same inbox `build_context_preamble` reads,
                 // or on-demand via the gateway's `notes_read`. Best-effort:
                 // a note-write failure must never fail the task it's

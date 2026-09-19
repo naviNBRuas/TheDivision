@@ -1,5 +1,5 @@
 //! `coordinator_events` (spec §3.5): an append-only progress log the
-//! messenger (`single acp`) tails. every scheduler decision and node
+//! messenger (`divisi acp`) tails. every scheduler decision and node
 //! transition writes one row here; `GoalStatus` / `SessionEvents` read
 //! them back. the session transcript is just this log filtered by session.
 
@@ -28,10 +28,10 @@ pub enum EventKind {
     /// node was re-dispatched.
     CapacityResumed,
     /// E28 spec §10 (Part F): `resume_interrupted` (daemon start) or
-    /// `single goal resume` (manual) picked this goal back up.
+    /// `divisi goal resume` (manual) picked this goal back up.
     SessionResumed,
     /// opt-in auto-merge (`goal.auto_merge`): a `review`-kind node came
-    /// back `Done` and a human then `single goal merge confirm`ed the
+    /// back `Done` and a human then `divisi goal merge confirm`ed the
     /// resulting `divisi_core::pending_merge` record, which called
     /// `divisi_core::worktree::merge`.
     Merged,
@@ -43,7 +43,7 @@ pub enum EventKind {
     /// back `Done` and `scheduler::maybe_auto_merge` recorded a
     /// `divisi_core::pending_merge` request for a dependency's worktree
     /// branch instead of merging it — never merges on its own; a human
-    /// must `single goal merge confirm` it first. See
+    /// must `divisi goal merge confirm` it first. See
     /// `docs/architecture.md`'s "branches are never auto-merged" invariant.
     MergeAwaitingConfirmation,
 }

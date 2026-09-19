@@ -7,7 +7,7 @@
 //!
 //! Configuration: `DIVISI_EMBEDDINGS_MODEL` (defaults to
 //! `text-embedding-3-small`), API key read from the secret store under
-//! `embeddings:api_key` — set it with `single secret set embeddings:api_key
+//! `embeddings:api_key` — set it with `divisi secret set embeddings:api_key
 //! <key>`, the same keychain-backed mechanism provider API keys already
 //! use (see `divisi-core::providers`). Both memory search's semantic path
 //! and the auto-embed-on-write step treat a missing key as "not
@@ -48,7 +48,7 @@ fn model() -> String {
 /// `MemorySearchSemantic`'s fallback do.
 pub fn embed(text: &str) -> Result<Vec<f32>> {
     let Some(key) = resolve_api_key()? else {
-        bail!("embeddings not configured: set an API key with `single secret set {SECRET_NAME} <key>`");
+        bail!("embeddings not configured: set an API key with `divisi secret set {SECRET_NAME} <key>`");
     };
     let client = reqwest::blocking::Client::new();
     let resp = client
@@ -84,7 +84,7 @@ mod tests {
     }
 
     /// Only exercises a real API call when this machine already has a key
-    /// configured (via `single secret set embeddings:api_key <key>`) —
+    /// configured (via `divisi secret set embeddings:api_key <key>`) —
     /// never writes/deletes a secret itself, to avoid touching the real
     /// OS keychain from a test run. Skips cleanly otherwise, same
     /// discipline as `qdrant_backend`/`redis_backend`'s live-service tests.

@@ -1,7 +1,7 @@
-//! Per-agent SingleCLI-managed `$HOME` (see `paths.rs::homes_dir` doc
-//! comment). SingleCLI used to run every agent CLI, sync its config, and
+//! Per-agent divisi-managed `$HOME` (see `paths.rs::homes_dir` doc
+//! comment). divisi used to run every agent CLI, sync its config, and
 //! capture/switch its credentials directly against the real, ambient
-//! `$HOME` (`~/.claude.json`, `~/.codex/`, ...). That meant SingleCLI's
+//! `$HOME` (`~/.claude.json`, `~/.codex/`, ...). That meant divisi's
 //! behavior depended on — and could disturb — files it didn't own.
 //!
 //! Instead, each agent gets an isolated home under
@@ -9,7 +9,7 @@
 //! used, it's bootstrapped with a one-time copy of that agent's real,
 //! already-verified config/state paths (the same paths
 //! `divisi-agent-sdk::formats` and `divisi-core::account` read/write) —
-//! this is the only time the real home is touched. Every SingleCLI-driven
+//! this is the only time the real home is touched. Every divisi-driven
 //! run after that (`task run`, `install-integrations`, `plugin sync`,
 //! `account capture/use`, ...) reads and writes only inside the isolated
 //! copy; the real `~/.claude`, `~/.codex`, etc. are left alone.
@@ -21,7 +21,7 @@
 //! `.claude/.credentials.json`, codex's `.codex/auth.json`). A brand-new
 //! isolated home always starts logged out, even on a machine where the
 //! real home already has a live login — see `divisi-core::account`'s
-//! module doc for why (`single account capture`/`is_authenticated` only
+//! module doc for why (`divisi account capture`/`is_authenticated` only
 //! ever look inside the isolated home too).
 
 use anyhow::{Context, Result};
@@ -36,7 +36,7 @@ pub fn home_dir(homes_root: &Path, agent: &str) -> PathBuf {
 /// project (`divisi-agent-sdk::formats::{claude,codex,opencode}`,
 /// `divisi-core::account`'s per-agent doc comments), not a guessed list.
 /// `agy` and any custom agent have no confirmed on-disk location, so
-/// bootstrap for them is a no-op empty directory — SingleCLI simply has
+/// bootstrap for them is a no-op empty directory — divisi simply has
 /// nothing to seed the isolated home with.
 fn real_paths_for(agent: &str) -> &'static [&'static str] {
     match agent {
@@ -120,7 +120,7 @@ pub fn ensure_bootstrapped(homes_root: &Path, real_home: &Path, agent: &str) -> 
     if dest.exists() {
         // The directory itself is never re-synced from `real_home` here,
         // but credential stripping always re-runs: isolated homes created
-        // by an older SingleCLI build (before a given agent had a
+        // by an older divisi build (before a given agent had a
         // `credential_paths_for`/`strip_embedded_credential_fields` entry)
         // can still be carrying real, possibly-stale copied credentials
         // that were never stripped. Re-stripping on every call is cheap

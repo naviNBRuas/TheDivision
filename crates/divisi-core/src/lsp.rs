@@ -64,8 +64,8 @@ pub fn default_servers() -> Vec<LspServerSpec> {
 /// user's registry. This is the growth mechanism for task "dynamic lsp":
 /// `default_servers()` above ships pre-populated (so a fresh install has
 /// something useful immediately); `presets()` is the larger catalog a user
-/// opts into one at a time via `single lsp add-preset <name>` without
-/// SingleCLI needing a code change for every language they touch. Every
+/// opts into one at a time via `divisi lsp add-preset <name>` without
+/// divisi needing a code change for every language they touch. Every
 /// entry's command/flags were confirmed for real on the reference machine
 /// (binary present, `--help` output showing the exact stdio flag) — same
 /// verification discipline as `default_servers()`, not a guessed list.

@@ -1,7 +1,7 @@
 use divisi_core::{registry::AgentDefinition, ResolvedConfig, DivisiDirs};
 
 /// Shared state for handling a request: resolved config, the agent
-/// registry, and where SingleCLI's directories live. Built once per
+/// registry, and where divisi's directories live. Built once per
 /// request in Phase 1 (cheap: local file reads) rather than kept as a long
 /// lived mutable daemon state — there is no in-memory state that outlives a
 /// single request yet, since orchestration/task state is Phase 4.
@@ -39,7 +39,7 @@ impl Context {
         // (`server.rs` builds a fresh `Context` per connection), which
         // compounds badly once a client fires a dozen requests on startup
         // (see `divisi-tui`'s `App::refresh`). New built-in presets only
-        // ship with a SingleCLI upgrade, which already needs `single daemon
+        // ship with a divisi upgrade, which already needs `divisi daemon
         // restart` to be picked up (same reasoning as `$PATH` in
         // `cached_discover`), so once-per-process loses nothing real.
         // Errors here (e.g. an unwritable config dir) are surfaced

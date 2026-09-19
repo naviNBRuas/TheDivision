@@ -10,7 +10,7 @@
 //! back to substring search if either the embeddings key or
 //! `DIVISI_QDRANT_URL` isn't configured — see `handlers.rs`'s
 //! `MemoryStore`/`MemorySearchSemantic` arms and `embeddings.rs`'s module
-//! docs. This module's own direct callers (`single memory vector
+//! docs. This module's own direct callers (`divisi memory vector
 //! upsert/search`) still take pre-computed vectors — the text→vector step
 //! only happens in the memory-entry path described above, not as a
 //! generic feature of this module.

@@ -1,4 +1,4 @@
-//! The agent registry: the list of AI CLIs SingleCLI knows how to detect,
+//! The agent registry: the list of AI CLIs divisi knows how to detect,
 //! install, and configure.
 //!
 //! Capability flags and config paths reflect what was directly observed on a
@@ -59,7 +59,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             // "Not logged in" when `claude` runs with `$HOME` pointed at
             // an isolated home — confirmed directly against the CLI
             // itself (`HOME=<isolated> claude -p ...`), not just through
-            // SingleCLI's wrapper. The same real environment with the
+            // divisi's wrapper. The same real environment with the
             // same files at its real `$HOME` works immediately. Whatever
             // claude actually validates against isn't fully captured by
             // a `$HOME`-scoped file copy on this version — the same
@@ -270,7 +270,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             config_paths: vec![".aider.conf.yml".into()],
             notes: Some(
                 "Authenticates via API-key flags/env vars (--api-key, --set-env, .env files), \
-                 not an interactive OAuth login — `single agent login aider` is unsupported \
+                 not an interactive OAuth login — `divisi agent login aider` is unsupported \
                  rather than guessing a flow that doesn't exist."
                     .into(),
             ),
@@ -408,7 +408,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
         // divisi-agent-sdk::adapters' v0.1.19 additions) — `unverified` is
         // flipped to `false` for those. openhands/plandex/mistral-vibe
         // failed to install on the reference machine (pip/curl script
-        // errors unrelated to SingleCLI) and stay unverified/adapter-less.
+        // errors unrelated to divisi) and stay unverified/adapter-less.
         AgentDefinition {
             name: "qwen-code".into(),
             adapter: "qwen-code".into(),
@@ -733,7 +733,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
                     .into(),
             ),
         },
-        // -- single-agent: SingleCLI's own in-process coding agent (not a
+        // -- single-agent: divisi's own in-process coding agent (not a
         // vendor CLI — built from this workspace's divisi-native-agent
         // crate).
         AgentDefinition {
@@ -752,7 +752,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             }),
             unverified: false,
             // single-agent has no auth state of its own — it reads API
-            // keys from SingleCLI's own secret store via
+            // keys from divisi's own secret store via
             // divisi_core::secrets::SecretStore, not from its own
             // config/credentials files, so it authenticates identically
             // under an isolated home or the real one.
@@ -769,7 +769,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             },
             config_paths: vec![],
             notes: Some(
-                "SingleCLI's own native in-process coding agent. Requires \
+                "divisi's own native in-process coding agent. Requires \
                  --provider and --model flags which aren't part of the \
                  standard prompt-only adapter interface; the adapter \
                  currently reads these from DIVISI_AGENT_PROVIDER and \
@@ -800,7 +800,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
                 source: "https://github.com/naviNBRuas/SingleCLI".into(),
             }),
             unverified: false,
-            // No filesystem-based auth at all -- keys live in SingleCLI's
+            // No filesystem-based auth at all -- keys live in divisi's
             // own encrypted store (divisi_core::pool_keys), resolved
             // identically regardless of $HOME. `Either` is the least
             // restrictive value; this field is moot for an agent that
@@ -818,9 +818,9 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             },
             config_paths: vec!["free-pool.toml".into()],
             notes: Some(
-                "The E28 free-provider pool agent: `single task run --agent single-pool` \
+                "The E28 free-provider pool agent: `divisi task run --agent single-pool` \
                  picks a (provider, model, key) via the adaptive bandit and dispatches \
-                 straight to the provider's HTTP API, no CLI shelled. Use `single provider \
+                 straight to the provider's HTTP API, no CLI shelled. Use `divisi provider \
                  list-free`/`add-free`/`sync-pool` to see and key the ~40-provider catalog."
                     .into(),
             ),
@@ -919,7 +919,7 @@ mod home_requirement_tests {
         // live-verification finding (E29 follow-up): a byte-identical
         // copy of `~/.claude.json` + `~/.claude/.credentials.json` into
         // an isolated home still fails "Not logged in", confirmed
-        // against the CLI directly, not just through SingleCLI.
+        // against the CLI directly, not just through divisi.
         assert_eq!(find("codex").home_requirement, HomeRequirement::RealRequired);
         assert_eq!(find("cursor").home_requirement, HomeRequirement::RealRequired);
         assert_eq!(find("claude").home_requirement, HomeRequirement::RealRequired);

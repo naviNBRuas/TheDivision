@@ -11,7 +11,7 @@
 //! endpoints are **assumed** from the catalog's `free_note`/`quirks`
 //! hints — `sail` is default-disabled (§17) so this is moot for it, and
 //! the other four should be spot-checked against their current docs
-//! before `single provider add-free` is used against them for real.
+//! before `divisi provider add-free` is used against them for real.
 
 use super::{extract_think, PoolError, PoolRequest, PoolResponse, PoolWire};
 use serde_json::{json, Value};

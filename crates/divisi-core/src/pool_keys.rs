@@ -72,7 +72,7 @@ pub fn add(conn: &Connection, platform: &str, key_id: &str) -> Result<()> {
 }
 
 /// Picks a fresh `key_id` for a new key on a platform that already has
-/// `existing` keys, so a second `single provider add-free` call for the
+/// `existing` keys, so a second `divisi provider add-free` call for the
 /// same platform (e.g. a key from a different account) adds real pool
 /// capacity instead of overwriting the first key — see the live-
 /// verification finding in `handlers.rs`'s `Request::ProviderAddFree`.
@@ -112,7 +112,7 @@ pub fn list(conn: &Connection, platform: Option<&str>) -> Result<Vec<PoolProvide
 }
 
 /// Records real evidence of whether a key works — either a real dispatch's
-/// `AuthFailed`/success, or an explicit `single provider validate` probe.
+/// `AuthFailed`/success, or an explicit `divisi provider validate` probe.
 /// Live-verification finding (2026-09-12): `valid = false` here used to be
 /// purely informational — `candidates_from_keys` only ever filtered on
 /// `disabled`, never `valid`, so a key already confirmed bad (e.g.
@@ -144,7 +144,7 @@ pub fn disable(conn: &Connection, platform: &str, key_id: &str) -> Result<()> {
 
 /// Re-enables a key `mark_validated`/`disable` turned off — e.g. after
 /// registering a fresh, working key value under the same `key_id`
-/// (`single provider add-free ... --key-id <existing>` for rotation), or
+/// (`divisi provider add-free ... --key-id <existing>` for rotation), or
 /// a human judging an old failure no longer applies. Does not touch
 /// `valid`/`last_validated_at` — the next real dispatch or `validate`
 /// probe updates those on their own.

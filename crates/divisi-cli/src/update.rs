@@ -1,5 +1,5 @@
 //! Self-update: check GitHub Releases for a newer build and replace the
-//! running `single`/`divisid` binaries in place — the same idea
+//! running `divisi`/`divisid` binaries in place — the same idea
 //! as `claude update`/`codex update` (verified real commands on both of
 //! those CLIs earlier in this project's own investigation), applied here.
 //!
@@ -8,7 +8,7 @@
 //!   `/releases/latest` endpoint (which already skips pre-releases).
 //! - **nightly** — a single rolling pre-release tagged `nightly` that
 //!   `.github/workflows/nightly.yml` overwrites on every push to `main`,
-//!   so `single update --channel nightly` tracks the repo's HEAD rather
+//!   so `divisi update --channel nightly` tracks the repo's HEAD rather
 //!   than a tagged version. There's no meaningful semver to compare for
 //!   this channel, so it's always offered as "available" — re-running it
 //!   when already current just re-downloads the same build, which is
@@ -70,7 +70,7 @@ pub fn check_latest(channel: &str) -> Result<ReleaseInfo> {
     let client = reqwest::blocking::Client::new();
     let release: GhRelease = client
         .get(&url)
-        .header("User-Agent", "SingleCLI-update")
+        .header("User-Agent", "divisi-update")
         .send()
         .context("querying GitHub releases")?
         .error_for_status()
@@ -119,7 +119,7 @@ fn parse_version_component(s: &str) -> Option<u64> {
     s.parse().ok()
 }
 
-/// Downloads the release asset and atomically replaces `single`/
+/// Downloads the release asset and atomically replaces `divisi`/
 /// `divisid` next to the currently running executable.
 pub fn apply(release: &ReleaseInfo) -> Result<PathBuf> {
     let current_exe = std::env::current_exe().context("resolving current executable")?;
@@ -128,7 +128,7 @@ pub fn apply(release: &ReleaseInfo) -> Result<PathBuf> {
     let client = reqwest::blocking::Client::new();
     let bytes = client
         .get(&release.asset_url)
-        .header("User-Agent", "SingleCLI-update")
+        .header("User-Agent", "divisi-update")
         .send()
         .context("downloading update")?
         .error_for_status()
@@ -154,7 +154,7 @@ pub fn apply(release: &ReleaseInfo) -> Result<PathBuf> {
     let target = detect_target()?;
     let extracted_dir = tmp_dir.path().join(format!("singlecli-{target}"));
     let mut replaced = Vec::new();
-    for binary in ["single", "divisid", "divisi-gateway"] {
+    for binary in ["divisi", "divisid", "divisi-gateway"] {
         let src = extracted_dir.join(binary);
         if !src.exists() {
             continue;

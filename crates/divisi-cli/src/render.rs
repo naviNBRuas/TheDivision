@@ -1,6 +1,6 @@
 use divisi_protocol::{CheckStatus, InstallMethod, Response, ResponseData};
 
-/// Prints a `Response`, either as pretty text or as JSON (`single ... --json`),
+/// Prints a `Response`, either as pretty text or as JSON (`divisi ... --json`),
 /// and exits non-zero on `Response::Error` so shell scripting behaves.
 pub fn print(response: Response, json: bool) {
     if json {
@@ -23,7 +23,7 @@ pub fn print(response: Response, json: bool) {
 fn print_data(data: ResponseData) {
     match data {
         ResponseData::Status(s) => {
-            println!("SingleCLI runtime v{}", s.version);
+            println!("divisi runtime v{}", s.version);
             println!("  profile:  {}", s.active_profile);
             println!(
                 "  agents:   {}/{} detected",
@@ -323,7 +323,7 @@ fn print_data(data: ResponseData) {
         }
         ResponseData::FallbackChains(chains) => {
             if chains.is_empty() {
-                println!("(no fallback chains configured — `single fallback set <agent[:account]>...`)");
+                println!("(no fallback chains configured — `divisi fallback set <agent[:account]>...`)");
             }
             for chain in chains {
                 let entries: Vec<String> = chain
@@ -338,7 +338,7 @@ fn print_data(data: ResponseData) {
         }
         ResponseData::TaskHooks(hooks) => {
             if hooks.is_empty() {
-                println!("(no task hooks configured — `single task-hook add --on completed --command '...'`)");
+                println!("(no task hooks configured — `divisi task-hook add --on completed --command '...'`)");
             }
             for h in hooks {
                 let scope = match (&h.agent, &h.workspace) {
@@ -376,7 +376,7 @@ fn print_data(data: ResponseData) {
             if let Some(last) = records.last() {
                 if last.status == divisi_protocol::TaskStatus::Failed {
                     eprintln!(
-                        "relay stopped early after a failed step; see `single task inspect {}`",
+                        "relay stopped early after a failed step; see `divisi task inspect {}`",
                         last.id
                     );
                     std::process::exit(1);
@@ -421,7 +421,7 @@ fn print_data(data: ResponseData) {
         ResponseData::DockerContainerList(infos) => {
             if infos.is_empty() {
                 println!(
-                    "(no agents/accounts configured for docker — see `single agent docker enable`)"
+                    "(no agents/accounts configured for docker — see `divisi agent docker enable`)"
                 );
             }
             for info in infos {
@@ -430,7 +430,7 @@ fn print_data(data: ResponseData) {
         }
         ResponseData::HooksStatus(statuses) => {
             if statuses.is_empty() {
-                println!("(no agents configured for mid-run permission interception — see `single agent hooks enable`)");
+                println!("(no agents configured for mid-run permission interception — see `divisi agent hooks enable`)");
             }
             for (agent, enabled) in statuses {
                 println!(
@@ -593,7 +593,7 @@ fn print_data(data: ResponseData) {
                     .unwrap_or("never refreshed")
             );
             if summary.provider_usage.is_empty() {
-                println!("  (no provider usage data — configure a billing admin key with `single provider set-billing-key`)");
+                println!("  (no provider usage data — configure a billing admin key with `divisi provider set-billing-key`)");
             }
             for r in &summary.provider_usage {
                 println!(
@@ -906,7 +906,7 @@ fn print_data(data: ResponseData) {
             }
         }
         ResponseData::Empty => {}
-        // No dedicated `single` subcommand exposes this directly -- it's
+        // No dedicated `divisi` subcommand exposes this directly -- it's
         // divisi-notch's own poller preference (E30 Phase 7). Plain debug
         // print is enough for the rare case someone hits it manually.
         ResponseData::NotchSnapshot(snapshot) => println!("{snapshot:#?}"),
@@ -1042,7 +1042,7 @@ fn print_account_profile(info: &divisi_protocol::AccountProfileInfo) {
 fn print_provider(p: &divisi_protocol::ProviderSpec) {
     println!("{}", p.name);
     println!("  env var:    {}", p.env_var_name);
-    println!("  secret:     {} (use `single secret get {}` to check, `single provider set-key` to change)", p.secret_name, p.secret_name);
+    println!("  secret:     {} (use `divisi secret get {}` to check, `divisi provider set-key` to change)", p.secret_name, p.secret_name);
     if let Some(url) = &p.base_url {
         println!("  base url:   {url}");
     }
@@ -1072,10 +1072,10 @@ fn install_summary(method: &InstallMethod) -> String {
     }
 }
 
-/// A task description can be a full multi-line agent prompt. `single task
+/// A task description can be a full multi-line agent prompt. `divisi task
 /// list` is a one-row-per-task table (and gets piped to `grep`), so it
 /// shows only the first line, clipped to `max_chars`, with a trailing `…`
-/// whenever anything was dropped. `single task inspect` still prints the
+/// whenever anything was dropped. `divisi task inspect` still prints the
 /// description in full.
 fn one_line_description(description: &str, max_chars: usize) -> String {
     let first_line = description.lines().next().unwrap_or("");

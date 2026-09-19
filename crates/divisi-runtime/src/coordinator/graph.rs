@@ -44,7 +44,7 @@ str_enum!(GoalStatus {
     // routable candidate is exhausted/benched, holding for a stamped
     // retry time rather than failing outright.
     WaitingOnCapacity => "waiting_on_capacity",
-    // E28 spec §10 (Part F): a clean `single daemon stop` marks its
+    // E28 spec §10 (Part F): a clean `divisi daemon stop` marks its
     // non-terminal goals `Paused` instead of leaving them `Running` --
     // distinguishes a clean stop (caught here, by `resume_interrupted`)
     // from a crash (leaves rows `Running`, caught by the existing

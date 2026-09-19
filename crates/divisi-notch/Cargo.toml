@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Opt-in top-center notch HUD for SingleCLI pool health (E30)"
+description = "Opt-in top-center notch HUD for divisi pool health (E30)"
 
 [[bin]]
 name = "divisi-notch"

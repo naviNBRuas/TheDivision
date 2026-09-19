@@ -1,10 +1,10 @@
-//! The `divisi-mcp` `ServerHandler`: exposes SingleCLI's own
+//! The `divisi-mcp` `ServerHandler`: exposes divisi's own
 //! task/orchestrate/agent/memory/provider commands as MCP tools, so an
 //! agent CLI that has this binary registered as an MCP server can delegate
-//! work to SingleCLI's other agents/models instead of doing it itself —
+//! work to divisi's other agents/models instead of doing it itself —
 //! see `docs/superpowers/specs/2026-08-24-claude-code-singlecli-integration-design.md`.
 //! Unlike `divisi-gateway`'s gateway (which proxies to *other* MCP servers),
-//! every tool here is a direct SingleCLI capability, reached via
+//! every tool here is a direct divisi capability, reached via
 //! `crate::client::send` — the same socket-or-in-process path `divisi-cli`
 //! itself uses.
 
@@ -125,7 +125,7 @@ impl DivisiServer {
             divisi_core::preferences::Verdict::PendingApproval(id) => Some(json!({
                 "tool": tool_name, "pending_approval": id,
                 "message": format!(
-                    "this action needs your approval first — run `single approval resolve {id} --allow` (or --deny), then retry"
+                    "this action needs your approval first — run `divisi approval resolve {id} --allow` (or --deny), then retry"
                 )
             })),
             divisi_core::preferences::Verdict::Allow => None,
@@ -315,7 +315,7 @@ impl ServerHandler for DivisiServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("divisi-mcp", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "Delegates work to SingleCLI's other agents/models instead of doing it yourself — \
+                "Delegates work to divisi's other agents/models instead of doing it yourself — \
                  use task_run for one prompt to one agent, orchestrate_run for a sequential relay \
                  across several agents, orchestrate_parallel_run / orchestrate_graph_run for \
                  independent or dependency-ordered parallel work. Check agent_list first to see \
@@ -412,7 +412,7 @@ impl ServerHandler for DivisiServer {
             ),
             Tool::new(
                 "agent_list",
-                "Lists every agent CLI SingleCLI knows about, with detection status — what's actually available to delegate to.",
+                "Lists every agent CLI divisi knows about, with detection status — what's actually available to delegate to.",
                 schema(json!({ "type": "object", "properties": {}, "additionalProperties": false })),
             ),
             Tool::new(
@@ -442,7 +442,7 @@ impl ServerHandler for DivisiServer {
             ),
             Tool::new(
                 "memory_store",
-                "Stores an entry in SingleCLI's shared memory store, visible to every agent's task preamble.",
+                "Stores an entry in divisi's shared memory store, visible to every agent's task preamble.",
                 schema(json!({
                     "type": "object",
                     "properties": {
@@ -460,7 +460,7 @@ impl ServerHandler for DivisiServer {
             ),
             Tool::new(
                 "memory_search",
-                "Substring-searches SingleCLI's shared memory store.",
+                "Substring-searches divisi's shared memory store.",
                 schema(json!({
                     "type": "object",
                     "properties": { "query": { "type": "string" }, "project": { "type": "string" } },

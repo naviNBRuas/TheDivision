@@ -87,7 +87,7 @@ pub fn sync_missing_presets(path: &Path) -> Result<usize> {
 
 /// A named starter config for a real plugin, not yet in the user's
 /// registry — same growth mechanism as `mcp::McpPreset`/`lsp::LspPreset`
-/// (`single plugin add-preset <name>`). Every entry below was pulled
+/// (`divisi plugin add-preset <name>`). Every entry below was pulled
 /// verbatim from Anthropic's own official plugin marketplace manifest
 /// (github.com/anthropics/claude-plugins-official,
 /// `.claude-plugin/marketplace.json`, fetched live) — real plugin names

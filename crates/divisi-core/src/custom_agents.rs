@@ -115,7 +115,7 @@ pub fn to_agent_definition(def: &CustomAgentFile) -> crate::registry::AgentDefin
             non_interactive_run: true,
         },
         config_paths: def.mcp.as_ref().map(|m| vec![m.config_path.clone()]).unwrap_or_default(),
-        notes: Some("user-defined custom agent (~/.config/divisi/agents/*.toml) — not verified by SingleCLI itself".into()),
+        notes: Some("user-defined custom agent (~/.config/divisi/agents/*.toml) — not verified by divisi itself".into()),
     }
 }
 

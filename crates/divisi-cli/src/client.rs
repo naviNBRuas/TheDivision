@@ -1,7 +1,7 @@
 //! Talks to the runtime over its Unix socket when one is already running;
 //! otherwise falls back to calling straight into `divisi-runtime` in the
-//! current process. This keeps one-shot CLI commands (`single doctor`,
-//! `single agent list`, ...) working on a fresh install where no daemon has
+//! current process. This keeps one-shot CLI commands (`divisi doctor`,
+//! `divisi agent list`, ...) working on a fresh install where no daemon has
 //! ever been started, without requiring the CLI to manage a background
 //! process lifecycle in Phase 1. The TUI, which genuinely wants a live
 //! socket connection, spawns the daemon explicitly instead (see
@@ -27,7 +27,7 @@ pub fn send(socket_path: &Path, request: Request) -> Result<Response> {
             // No daemon running (or socket stale) — nothing was sent, so
             // it's safe to run the request in-process instead. A
             // `background: true` run spawns its actual work on a detached
-            // thread, but *this* process is the one-shot `single` CLI
+            // thread, but *this* process is the one-shot `divisi` CLI
             // invocation itself — it exits right after printing the
             // response below, killing that thread with it before the
             // agent gets anywhere. Confirmed live: a background task

@@ -1,4 +1,4 @@
-# SingleCLI architecture — Phase 1 through 6 (partial) + auth + memory upgrades
+# divisi architecture — Phase 1 through 6 (partial) + auth + memory upgrades
 
 This describes what's actually built, not the full long-term vision (see
 the project's original request for that).
@@ -7,15 +7,15 @@ the project's original request for that).
 - **Phase 2** — shared-capability registries: MCP CRUD, an LSP registry, a tool metadata registry, an OS-keychain secrets abstraction, a local skills directory.
 - **Phase 3** — a SQLite-backed scoped memory subsystem and a git/project context resolver.
 - **Phase 4** — real single-agent task execution: a task record, git worktree isolation, and actually invoking each agent CLI's non-interactive mode.
-- **Phase 5** — declarative custom agent adapters (`~/.config/divisi/agents/*.toml`): a new CLI agent gets real detection, MCP sync, and task execution without recompiling SingleCLI.
+- **Phase 5** — declarative custom agent adapters (`~/.config/divisi/agents/*.toml`): a new CLI agent gets real detection, MCP sync, and task execution without recompiling divisi.
 - **Phase 6 (partial)** — a provider registry (OpenAI, Anthropic, ...) syncing API keys into the two agents with a verified config slot for them.
-- **Auth** — multi-account credential switching (`single account ...`) so one agent CLI (e.g. Claude Code) can have several logged-in accounts, swapped safely.
+- **Auth** — multi-account credential switching (`divisi account ...`) so one agent CLI (e.g. Claude Code) can have several logged-in accounts, swapped safely.
 - **Memory upgrades** — a SQLite knowledge graph (entities/observations/relations), plus optional Redis (working memory) and Qdrant (vector store) backends.
 - **Distribution** — a cross-platform release workflow (Linux/macOS × x86_64/arm64) and a `curl | sh` installer (`install.sh`), plus a tabbed TUI with in-app interactive agent-install and provider-add flows.
-- **Growth** — richer default MCP/LSP/tool registries seeded from this project's own verified real configuration, provider presets (OpenAI, Anthropic, OpenCode Zen, NVIDIA), automatic "learn from errors" memory on task failure, and a sequential multi-agent orchestration relay (`single orchestrate`).
-- **Self-update** — `single update` checks GitHub Releases and replaces its own binaries in place; a `stable` channel (tagged `vX.Y.Z` releases) and a rolling `nightly` channel that tracks every push to `main`.
+- **Growth** — richer default MCP/LSP/tool registries seeded from this project's own verified real configuration, provider presets (OpenAI, Anthropic, OpenCode Zen, NVIDIA), automatic "learn from errors" memory on task failure, and a sequential multi-agent orchestration relay (`divisi orchestrate`).
+- **Self-update** — `divisi update` checks GitHub Releases and replaces its own binaries in place; a `stable` channel (tagged `vX.Y.Z` releases) and a rolling `nightly` channel that tracks every push to `main`.
 - **Growth Phase 2** — a plugin registry synced into every agent with a real plugin-install command (`claude`/`codex`/`opencode`/`agy`); LSP sync into OpenCode's real `opencode.jsonc` `lsp` key; skills synced into Claude Code's real skill directory; account profiles gained a human label and a manually-tracked usability status, plus isolated-`$HOME` materialization so multiple accounts of the same agent can run **concurrently**; MCP/LSP preset catalogs for growing the registries without a code change per entry; an expanded tool registry; and a TUI that covers the full config surface (MCP/LSP/Plugins/Tools tabs, in-app task creation).
-- **Isolation** — SingleCLI stopped reading/writing agents' real, ambient config (`~/.claude.json`, `~/.codex/`, `~/.config/opencode/`) on every run. Every agent now gets a SingleCLI-managed home under `~/.config/divisi/homes/<agent>/`, bootstrapped from the real one **once**; every subsequent `task run`, `install-integrations`, `plugin sync`, `provider sync`, and `account capture`/`use` operates only inside that isolated copy.
+- **Isolation** — divisi stopped reading/writing agents' real, ambient config (`~/.claude.json`, `~/.codex/`, `~/.config/opencode/`) on every run. Every agent now gets a divisi-managed home under `~/.config/divisi/homes/<agent>/`, bootstrapped from the real one **once**; every subsequent `task run`, `install-integrations`, `plugin sync`, `provider sync`, and `account capture`/`use` operates only inside that isolated copy.
 
 A parallel/live multi-agent task-graph (as opposed to the sequential relay
 that exists), full provider abstraction (model discovery, streaming, usage
@@ -70,7 +70,7 @@ single (CLI, no subcommand)          single <command>
   CLI commands, `server.rs` is the actual Unix-socket accept loop
   (`bin/divisid.rs` is the binary entry point), `state.rs` is the
   SQLite event log.
-- **`divisi-cli`** (binary name `single`) — argument parsing (`clap`),
+- **`divisi-cli`** (binary name `divisi`) — argument parsing (`clap`),
   talks to the runtime via `client.rs` (socket first, in-process fallback
   if no daemon is running — see ADR 0001), spawns the daemon for the TUI
   path (`daemon.rs`), and renders responses as text or `--json`
@@ -107,7 +107,7 @@ investigation.
   parses JSONC by stripping `//`/`/* */` comments (outside string literals)
   before calling `serde_json`, then re-serializes as plain JSON. Any
   comments a user had in `opencode.jsonc` are lost on the first
-  `single install-integrations` run. A backup is always taken first
+  `divisi install-integrations` run. A backup is always taken first
   (`backup_before_write`), so nothing is unrecoverable, but this is
   explicitly a lossy emulation, not a native capability — a
   format-preserving JSONC editor is the fix if this becomes a problem in
@@ -115,7 +115,7 @@ investigation.
 - **Codex's TOML writer reformats the whole file.** Same tradeoff as
   above: `toml::Table` round-trips values but not comments/formatting.
 - **No persistent multi-connection daemon lifecycle commands.** There's no
-  `single daemon start/stop/status` yet. `divisid` is started
+  `divisi daemon start/stop/status` yet. `divisid` is started
   on-demand by the TUI (`daemon.rs::ensure_running`) and otherwise callers
   either connect to an already-running one or fall back to an in-process
   call. This is a deliberate Phase 1 scope cut, not an oversight — see ADR
@@ -129,10 +129,10 @@ investigation.
 ## Phase 2 additions
 
 - **`divisi-core::mcp`** gained CRUD (`add`/`remove`/`set_enabled`/`find`)
-  on top of Phase 1's `load`/`save`, exposed as `single mcp
+  on top of Phase 1's `load`/`save`, exposed as `divisi mcp
   add/remove/enable/disable/inspect`.
 - **`divisi-core::lsp`** — a registry mirroring `mcp.rs`'s shape
-  (`~/.config/divisi/lsp.toml`), exposed as `single lsp
+  (`~/.config/divisi/lsp.toml`), exposed as `divisi lsp
   list/add/remove/inspect`. **Agent sync exists for OpenCode**
   (`AgentAdapter::configure_lsp`/`remove_lsp`, wired into `single
   install-integrations`/`uninstall-integrations` alongside MCP): it writes
@@ -146,30 +146,30 @@ investigation.
   Phase 2 additions" below for the preset catalog on top of this registry.
 - **`divisi-core::tools`** — a metadata catalog
   (`~/.config/divisi/tools.toml`: name, description, risk level, enabled),
-  exposed as `single tool list/add/inspect/enable/disable`. Deliberately
+  exposed as `divisi tool list/add/inspect/enable/disable`. Deliberately
   metadata-only: there is no execution engine yet to actually invoke a tool
   on an agent's behalf (that's the Phase 4 orchestrator), so this doesn't
   pretend tools are wired into any agent today.
 - **`divisi-core::secrets`** — an OS-keychain-backed secret store
   (`SecretStore` trait, `SecretTool` impl using `secret-tool`/libsecret on
   Linux — the same mechanism this machine's own existing MCP configs
-  already rely on), exposed as `single secret list/set/get/delete`. Values
+  already rely on), exposed as `divisi secret list/set/get/delete`. Values
   never pass through `divisi-runtime`'s SQLite event log. macOS Keychain /
   Windows Credential Manager backends are unimplemented; `SecretStore` is
   the seam for them.
 - **`divisi-core::permissions`** — a `deny`/`ask`/`allow` rule model with
   longest-prefix-match evaluation (`~/.config/divisi/permissions.toml`).
-  **Not exposed via CLI or IPC** — nothing in SingleCLI executes a tool or
-  agent action on the user's behalf yet, so a `single permission allow ...`
+  **Not exposed via CLI or IPC** — nothing in divisi executes a tool or
+  agent action on the user's behalf yet, so a `divisi permission allow ...`
   command would have no enforcement behind it. This stays a library-only
   seam (with its own unit tests) until the Phase 4 orchestrator is a real
   caller; shipping the CLI surface first would be exactly the "fake
   integration" spec section 52 rules out.
 - **`divisi-core::skills`** — local directory-based skills under
-  `~/.config/divisi/skills/<name>/`, exposed as `single skill
+  `~/.config/divisi/skills/<name>/`, exposed as `divisi skill
   list/install/remove/inspect`. `install` copies a local source directory
-  in; there's no network/marketplace fetch and SingleCLI doesn't interpret
-  a skill's contents. **`single skill sync-claude <name>`** (added in
+  in; there's no network/marketplace fetch and divisi doesn't interpret
+  a skill's contents. **`divisi skill sync-claude <name>`** (added in
   Growth Phase 2, `divisi_core::skills::sync_to_claude`) copies a skill
   into Claude Code's real skill directory (`~/.claude/skills/<name>/`,
   confirmed via `claude plugin init --help`'s own scaffold-path output),
@@ -183,7 +183,7 @@ investigation.
   (working/project/user/agent/task/long_term/knowledge) and provenance-
   tagged (`MemorySource`: user_instruction/agent_output/tool_output/
   project_content/external_content — spec sections 46-47's trust
-  classification). Exposed as `single memory store/search/get/delete/list`.
+  classification). Exposed as `divisi memory store/search/get/delete/list`.
   `search` is SQLite `LIKE` substring matching, **not semantic/embedding
   search** — that needs a configurable embedding provider, which doesn't
   exist until Phase 6's provider abstraction. Nothing auto-promotes agent
@@ -193,7 +193,7 @@ investigation.
 - **`divisi-core::project_context`** — resolves git state (repo root,
   branch, changed files via real `git` subprocess calls) and finds project
   documentation files (README/CLAUDE.md/AGENTS.md/CONTRIBUTING.md) for a
-  given directory. Exposed as `single context [cwd]`. This is an *ambient
+  given directory. Exposed as `divisi context [cwd]`. This is an *ambient
   snapshot*, not the full spec section 10 picture: "relevant source
   files," "relevant memory," and "previous agent actions" require
   relevance-ranking against an actual task, which needs the Phase 4
@@ -219,7 +219,7 @@ investigation.
   optionally isolates it in a fresh worktree, invokes the agent, captures
   stdout+stderr as an artifact file under
   `~/.config/divisi/state/artifacts/`, and records the final status.
-  Exposed as `single task run/list/inspect`. Every stage also writes to
+  Exposed as `divisi task run/list/inspect`. Every stage also writes to
   the existing generic `events` table (`task.created`/`task.started`/
   `task.completed`/`task.failed`) so a run is auditable per spec section 32,
   even without a live event *stream*.
@@ -234,11 +234,11 @@ investigation.
 
 **What Phase 4 is honestly not**: there is no task *graph* (DAG), no
 automatic agent selection, no parallel multi-agent coordination, and no
-background/cancellable execution — `single task run` blocks the calling
+background/cancellable execution — `divisi task run` blocks the calling
 request until the agent finishes or its timeout fires. Those need the
 runtime to hold live process state across multiple requests (deferred
 since ADR 0001) or a reasoning step to pick agents (spec section 20) that
-SingleCLI itself doesn't perform. What's built is real for the one-task,
+divisi itself doesn't perform. What's built is real for the one-task,
 one-agent case: a real subprocess, real git isolation, a real captured
 artifact, a real persisted record.
 
@@ -303,12 +303,12 @@ artifact, a real persisted record.
   - **Growth Phase 2**: profiles gained an optional human `label` (`single
     account capture ... --label you@email.com`) and a manually-set
     `AccountStatus` (`available`/`rate_limited`/`needs_topup`/`unknown`
-    via `single account set-status`) — never auto-detected, since no
-    agent exposes a verified quota/rate-limit API; SingleCLI just
+    via `divisi account set-status`) — never auto-detected, since no
+    agent exposes a verified quota/rate-limit API; divisi just
     remembers what it's told. `divisi_core::account::ensure_isolated_home`
     materializes a per-account `$HOME` (copies the real home's
     non-credential config once, then overlays that account's captured
-    credentials), so `single task run --account <name>` can run **multiple
+    credentials), so `divisi task run --account <name>` can run **multiple
     accounts of the same agent concurrently** (e.g. two `claude`, three
     `codex`) without any of them clobbering another's live login state —
     the `AgentAdapter::run_prompt`/`divisi-agent-sdk::run::run_command`
@@ -318,8 +318,8 @@ artifact, a real persisted record.
     "authenticated" (falling back and syncing it into the isolated home on
     capture) — a login done via the vendor CLI directly, outside `single
     agent login`, would silently count. That fallback is gone:
-    `is_authenticated` and `capture` now read only SingleCLI's isolated
-    home; a real-home-only login is invisible until you `single agent
+    `is_authenticated` and `capture` now read only divisi's isolated
+    home; a real-home-only login is invisible until you `divisi agent
     login <agent>` again inside the isolated home. `agent_home`'s
     one-time bootstrap copy (below) was narrowed to match — it no longer
     seeds credential files.
@@ -332,7 +332,7 @@ artifact, a real persisted record.
   `@modelcontextprotocol/server-memory`, a proven convention already
   configured in this project's own real MCP setup, rather than inventing
   a new graph schema. Cascading deletes, idempotent entity creation,
-  substring query, full-graph dump. `single memory graph ...`. Writing
+  substring query, full-graph dump. `divisi memory graph ...`. Writing
   stays manual (no auto-promotion of task output into entities, to avoid
   guessing at entity-naming heuristics), but as of v0.1.17 reading is
   automatic: `task::build_context_preamble` queries it for entities
@@ -343,25 +343,25 @@ artifact, a real persisted record.
   state *while several agent processes are concurrently running*, a role
   SQLite's request-scoped connections don't fill well. Built and tested
   against a real local Redis container; unit tests skip (not fail) when
-  no Redis is reachable. `single memory cache ...`.
+  no Redis is reachable. `divisi memory cache ...`.
 - **`divisi-runtime::qdrant_backend`** — optional (`DIVISI_QDRANT_URL`)
   vector store: upsert/search/delete over Qdrant's real REST API, whose
   shape was captured directly from a running local Qdrant instance during
   development (not assumed from documentation). This module itself stores
-  and searches *pre-computed* vectors — `single memory vector
+  and searches *pre-computed* vectors — `divisi memory vector
   upsert/search` still take one directly. `divisi-runtime::embeddings`
   closes the text→vector gap for the memory-entry path specifically: a
-  real call to OpenAI's `/v1/embeddings` (API key via `single secret set
+  real call to OpenAI's `/v1/embeddings` (API key via `divisi secret set
   embeddings:api_key <key>`), wired into `MemoryStore` (best-effort
   auto-embed on write into a `single_memory` collection) and
-  `MemorySearchSemantic` (`single memory search --semantic`, embeds the
+  `MemorySearchSemantic` (`divisi memory search --semantic`, embeds the
   query and searches Qdrant, falling back to substring search if either
   the key or `DIVISI_QDRANT_URL` isn't configured) — see `handlers.rs`.
 
 ## Distribution: release workflow, installer, and the TUI rewrite
 
 - **`.github/workflows/release.yml`** — on a `v*` tag push, builds
-  `single`+`divisid` for linux-x86_64, linux-arm64 (native
+  `divisi`+`divisid` for linux-x86_64, linux-arm64 (native
   `ubuntu-24.04-arm` runner, no cross-compilation toolchain needed),
   macos-arm64, and macos-x86_64, packages each as a tar.gz, and publishes
   them to a GitHub Release. Verified for real: tagged `v0.1.0`, pushed,
@@ -384,7 +384,7 @@ artifact, a real persisted record.
   showing the *exact* real bootstrap command and its source — never
   installs silently. Confirming (`y`) runs the real install
   (`divisi-runtime::bootstrap::run_one`, extracted from the existing
-  `single setup` logic so both paths share one implementation) on a
+  `divisi setup` logic so both paths share one implementation) on a
   background OS thread via an `mpsc` channel, so the UI keeps redrawing
   a live elapsed-time spinner instead of freezing for however long the
   network install script takes, then shows a real success/failure result
@@ -411,15 +411,15 @@ artifact, a real persisted record.
   build.nvidia.com's own OpenAI-compatible endpoint documentation;
   OpenCode Zen: `https://opencode.ai/zen/v1` / `OPENCODE_API_KEY`, per
   opencode.ai/docs/providers). Configurable from the TUI (Providers tab,
-  `[a]`) or `single provider add-preset <name>`.
+  `[a]`) or `divisi provider add-preset <name>`.
 - **Learn from errors.** Every task failure path in `task.rs` (worktree
   setup failure, agent run failure, non-zero exit/timeout) now also
   writes a project-scoped, `tool_output`-sourced memory entry via
-  `remember_failure`, so `single memory search`/`list` surface past
+  `remember_failure`, so `divisi memory search`/`list` surface past
   failures to whoever looks next — human or a future agent run. It's
   best-effort: a memory-write failure never masks the real task failure.
 - **`divisi-runtime::orchestrate`** — multi-agent task execution: run
-  several agents in sequence on one goal via `single orchestrate "<goal>"
+  several agents in sequence on one goal via `divisi orchestrate "<goal>"
   --agents a,b,c [--worktree]`. Every step is a real `task::run` call
   (identical worktree isolation, artifact capture, and error-learning to
   a standalone task), so this is additive, not a parallel implementation.
@@ -440,7 +440,7 @@ artifact, a real persisted record.
   non-interactive safety/approval policies, since neither `task::run` nor
   `orchestrate` auto-injects an agent's own permission-bypass flags (e.g.
   Claude's `--dangerously-skip-permissions`, Codex's approval-policy
-  flags). SingleCLI treats that as the agent's decision to make, not one
+  flags). divisi treats that as the agent's decision to make, not one
   to silently override — a user who wants that needs to configure it
   through the agent's own trust mechanism.
 
@@ -452,7 +452,7 @@ artifact, a real persisted record.
 
 ## Self-update
 
-`crates/divisi-cli/src/update.rs` — `single update [--channel
+`crates/divisi-cli/src/update.rs` — `divisi update [--channel
 stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
 `codex update` commands this project already investigated:
 
@@ -468,13 +468,13 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   update is available" rather than silently claiming it's current.
 - Applying an update downloads the same `singlecli-<target>.tar.gz` asset
   shape `install.sh`/`release.yml` already use, extracts it, and
-  atomically replaces `single`/`divisid` next to whichever binary
+  atomically replaces `divisi`/`divisid` next to whichever binary
   is currently running (`std::env::current_exe()`'s directory) — not a
   fixed path, so it works whether the CLI was installed via `install.sh`,
   built from source, or copied somewhere custom.
-- Verified for real, twice: `single update --check` against the actual
+- Verified for real, twice: `divisi update --check` against the actual
   published `v0.1.1` release correctly reported "already up to date";
-  and, with a deliberately older test build, `single update --yes`
+  and, with a deliberately older test build, `divisi update --yes`
   downloaded the real release asset and replaced the binary in place —
   confirmed by the file's hash changing and the updated binary still
   running correctly afterward.
@@ -485,19 +485,19 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   `target` — the `plugin[@marketplace]` selector used verbatim by
   claude/codex/agy — and an optional `opencode_module`, since OpenCode's
   real `opencode plugin <module>` command addresses plugins by plain npm
-  module name, a genuinely different scheme). `single plugin
-  add/remove/list/inspect` manage the registry; `single plugin sync <name>
+  module name, a genuinely different scheme). `divisi plugin
+  add/remove/list/inspect` manage the registry; `divisi plugin sync <name>
   --agents ... [--yes]` actually installs it via each agent's own real
   command (`AgentAdapter::install_plugin`: `claude plugin install`, `codex
   plugin add`, `opencode plugin <module>`, `agy plugin install` — each
   confirmed against that CLI's own `--help`). This is plugin
-  *installation*, not a marketplace browser — SingleCLI doesn't discover
+  *installation*, not a marketplace browser — divisi doesn't discover
   or search available plugins, it installs a target you already know
   by name.
 - **MCP/LSP preset catalogs** — `divisi-core::mcp::presets()` and
   `divisi-core::lsp::presets()` mirror the provider-presets pattern: a
   named starter config not yet in the user's registry, opted into one at a
-  time (`single mcp/lsp add-preset <name>`) instead of needing a code
+  time (`divisi mcp/lsp add-preset <name>`) instead of needing a code
   change per entry. Every LSP preset's command/flags were confirmed via
   that binary's own `--help` on the reference machine (`clangd`,
   `bash-language-server`, `yaml-language-server`, `terraform-ls`,
@@ -519,7 +519,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   render their registries live with selection highlighting. A generic
   "quick add" flow (`[a]`, one pipe-separated line parsed per registry
   type — deliberately a power-user shortcut, not a five-screen wizard, for
-  cases needing finer control like MCP env vars the full `single ...
+  cases needing finer control like MCP env vars the full `divisi ...
   add` CLI still exists) covers MCP/LSP/Plugins/Tools; `[d]` removes,
   `[e]` toggles enabled/disabled where the registry supports it, `[s]`
   syncs the selected plugin into every registered agent.
@@ -530,7 +530,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   plus-`mpsc`-channel shape as the existing install/provider-add flows so
   the UI keeps redrawing while the request is in flight.
 
-## Isolation: SingleCLI-managed homes
+## Isolation: divisi-managed homes
 
 - **`divisi-core::agent_home`** — every agent gets an isolated `$HOME`
   under `~/.config/divisi/homes/<agent>/`. The first time it's needed,
@@ -546,9 +546,9 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   on a different day, a different process — finds the isolated home
   already there and leaves it alone; changes never flow back from the real
   home once bootstrapped.
-- **What changed.** `single task run`, `single install-integrations`/
-  `uninstall-integrations`, `single plugin sync`, `single provider sync`,
-  and `single account capture`/`use` used to operate directly against the
+- **What changed.** `divisi task run`, `divisi install-integrations`/
+  `uninstall-integrations`, `divisi plugin sync`, `divisi provider sync`,
+  and `divisi account capture`/`use` used to operate directly against the
   real, ambient `$HOME`. They now all resolve an isolated home first
   (`integrations::home_dir()` — the real one — is only ever passed as the
   *bootstrap source*, never written to). Verified for real: ran `single
@@ -560,7 +560,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   per-account isolated homes (`accounts_dir()/<agent>/<name>/home/`, for
   running several accounts of one agent concurrently — see the Auth
   section above) and `agent_home`'s per-agent default isolated home
-  (`homes_dir()/<agent>/`, for "don't touch anything outside SingleCLI")
+  (`homes_dir()/<agent>/`, for "don't touch anything outside divisi")
   are two instances of the same idea at different granularity: `single
   task run --agent codex` with no `--account` uses the default per-agent
   home; adding `--account work` swaps in that named account's own
@@ -568,9 +568,9 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   `$HOME` after its own first bootstrap.
 - **Custom agents and `agy`** have no confirmed real config
   path (`agent_home::real_paths_for` returns an empty list for them), so
-  their isolated home simply starts empty — SingleCLI has nothing to seed
+  their isolated home simply starts empty — divisi has nothing to seed
   it with, and says so rather than guessing a location.
-- **`single agent login <name>`** — since agents now run against isolated
+- **`divisi agent login <name>`** — since agents now run against isolated
   homes rather than the real one, there needs to be a way to actually log
   in *to* that isolated home. This runs the agent's own real interactive
   login command (`claude auth login`, `codex login`, `opencode auth
@@ -580,11 +580,11 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   captured/bounded `run_command` every other adapter method uses), with
   `$HOME` overridden to the agent's isolated home so the resulting
   credentials land there. Runs entirely in `divisi-cli`, bypassing the
-  daemon socket (same reasoning as `single update`): the daemon may have
+  daemon socket (same reasoning as `divisi update`): the daemon may have
   no TTY at all, and login needs the real one. `agy` has no confirmed
   login subcommand, so `AgentAdapter::login` stays the trait's default
   "unsupported" for it rather than guessing one. Verified for real:
-  `single agent login claude` correctly bootstrapped the isolated home
+  `divisi agent login claude` correctly bootstrapped the isolated home
   from the reference machine's real `~/.claude` and spawned `claude auth
   login` attached to the terminal (observed via a bounded-timeout run
   with stdin closed, to confirm the command launches without completing
@@ -601,7 +601,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
     `~/.cursor/mcp.json`'s real `mcpServers` map (`formats::cursor`, same
     shape as Claude's but with **no** `"type"` field, since no real entry
     on the reference machine has one), `cursor-agent -p` for
-    non-interactive runs, `cursor-agent login` for `single agent login`.
+    non-interactive runs, `cursor-agent login` for `divisi agent login`.
     No plugin install — `cursor-agent plugin` only exposes marketplace
     management (add/list/remove/update a git-hosted marketplace), no
     "install a named plugin" command to wire up.
@@ -620,9 +620,9 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   - All three get the same isolated-home treatment as the original five
     (`agent_home::real_paths_for` now also bootstraps `.cursor`,
     `.config/goose`, and `.aider.conf.yml`) — verified end-to-end:
-    `single doctor` detected all three, `single install-integrations`
+    `divisi doctor` detected all three, `divisi install-integrations`
     wrote real MCP config into cursor's and goose's isolated homes
-    (correctly shaped JSON/YAML), and `single agent login aider`
+    (correctly shaped JSON/YAML), and `divisi agent login aider`
     correctly reported "unsupported" instead of guessing a flow.
 
 ## Growth Phase 4: Copilot, Kiro, Cody — and why Windsurf isn't here
@@ -633,7 +633,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   what it wrote, since no config file existed there beforehand to read
   off directly), `copilot -p ... --allow-all-tools` for non-interactive
   runs (the flag is documented as *required* for `-p` to work at all, not
-  an optional permission bypass), `copilot login` for `single agent
+  an optional permission bypass), `copilot login` for `divisi agent
   login copilot`, and `copilot plugin install <source>` (same
   `plugin@marketplace` convention as claude/codex/agy/cursor).
 - **Kiro CLI** (`kiro-cli`) also turned out to be installed on the
@@ -700,9 +700,9 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
 ## Growth Phase 6: `--real-home` for system-configuration tasks
 
 The isolated-home architecture (Growth Phase 2/Isolation section above)
-means every task now runs against a SingleCLI-managed sandbox `$HOME` by
+means every task now runs against a divisi-managed sandbox `$HOME` by
 default — exactly the point, for agent config/credentials. But it created
-a real gap for a legitimate use case: asking an agent, via `single task
+a real gap for a legitimate use case: asking an agent, via `divisi task
 run`, to actually configure the real machine (dotfiles, installed
 packages, desktop config) — those edits would land in the fake isolated
 home instead of the real system, silently.
@@ -713,14 +713,14 @@ home instead of the real system, silently.
   `$HOME` override to `run_prompt` — the agent subprocess then inherits
   the daemon's own real environment, i.e. the actual logged-in user's
   real `$HOME`, same as before the isolation pivot.
-- **Exposed as `single task run --real-home` / `single orchestrate
+- **Exposed as `divisi task run --real-home` / `divisi orchestrate
   --real-home`**, and as a `[g]` toggle in the TUI's task-creation flow
   (Tasks tab, `[n]`, agent-picking step). Off by default — this is a
   deliberate, visible opt-in (the CLI prints a warning when used) since
   it gives the agent full access to real credentials and files, which is
   exactly what the isolated-home default exists to prevent in the
   ordinary case.
-- Verified for real: `single task run 'echo HOME=$HOME' --agent
+- Verified for real: `divisi task run 'echo HOME=$HOME' --agent
   <custom-agent>` printed the isolated home path by default and the real
   `$HOME` with `--real-home`, confirming the override actually reaches
   the subprocess and nothing else changed.
@@ -732,7 +732,7 @@ existed (the sequential `orchestrate` relay, and memory/notes context
 already auto-injected into every task prompt):
 
 - **Real parallel execution.** `divisi-runtime::orchestrate::run_parallel`
-  (`single orchestrate-parallel --task <agent>:<description> ...`) runs
+  (`divisi orchestrate-parallel --task <agent>:<description> ...`) runs
   each agent on its own OS thread, its own git worktree, and its own
   SQLite connection to the shared state db — safe because `state::open`
   now sets `PRAGMA journal_mode=WAL` and a busy timeout (previously
@@ -770,7 +770,7 @@ already auto-injected into every task prompt):
 A preset catalog (`mcp::presets()`, `lsp::presets()`, `plugins::presets()`,
 `providers::presets()`) only ever mattered once something explicitly ran
 `add-preset` — nothing surfaced the other ~230 entries anywhere a user
-would actually see them (`list` commands, the TUI, `single status`), so in
+would actually see them (`list` commands, the TUI, `divisi status`), so in
 practice the v0.1.16 catalog expansion was invisible after install. Four
 fixes/expansions:
 
@@ -834,9 +834,9 @@ fixes/expansions:
 
 `crates/divisi-runtime/src/pool/` (bandit, ledger, cooldown, backoff,
 degrade, handoff, client — ~2,500 lines) plus `divisi_core::free_pool`
-(the vendored ~90-provider catalog, `single provider list-free`) and
+(the vendored ~90-provider catalog, `divisi provider list-free`) and
 `divisi_core::pool_keys` (per-provider labeled key storage) implement a
-real, working alternative to shelling an agent CLI: `single task run
+real, working alternative to shelling an agent CLI: `divisi task run
 --agent single-pool "<prompt>"` picks a `(platform, model, key_id)` via a
 Thompson-sampling bandit (spec §6.4 — a decay-weighted Beta posterior over
 each candidate's 7-day outcome history, half-life 2 days), dispatches
@@ -847,7 +847,7 @@ special-cases `agent == "single-pool"` before ever reaching adapter
 dispatch), and on a rate limit/5xx/auth failure benches that candidate and
 retries the next one before the caller ever sees a failure.
 
-- `single provider list-free` / `add-free` / `key-status` / `sync-pool`
+- `divisi provider list-free` / `add-free` / `key-status` / `sync-pool`
   manage the catalog and its keys. `add-free` best-effort validates a key
   at registration time; a key's `valid`/`last_validated_at` fields are
   now *also* updated from real task outcomes (a successful dispatch marks
@@ -866,7 +866,7 @@ retries the next one before the caller ever sees a failure.
   non-goal this iteration), and a completed pool task doesn't record
   which `(platform, model, key_id)` actually served it on the task record
   itself (only in the `pool_outcomes` ledger, queryable but not surfaced
-  by `single task inspect`).
+  by `divisi task inspect`).
 - **"Stuck for 61.8h waiting for capacity" — investigated 2026-09-11/12,
   turned out to be working as designed, not a scheduler bug.**
   `scheduler::handle_capacity_exhaustion` blocks a goal once
@@ -877,14 +877,14 @@ retries the next one before the caller ever sees a failure.
   closed to a human decision, never guess forever" pattern this codebase
   uses everywhere else (approvals, db corruption restore, etc.). Several
   goals sat blocked for 51-61+ hours simply because nothing resumed them
-  — not because the pool was actually unhealthy (`single pool status`
+  — not because the pool was actually unhealthy (`divisi pool status`
   showed only `degraded`, healthy_ratio being a `usable_keys /
   enabled_providers` display snapshot never consulted by the dispatch
   path, ruled out as a cause) or because of a broken threshold. The
   actual gap: `elapsed_minutes` in `handle_capacity_exhaustion` is
   measured from `goal.created_at`, not from the goal's last resume, so
-  `single goal resume` on a days-old blocked goal re-trips the exact same
-  wall-clock check on the very next tick unless `single goal amend <id>
+  `divisi goal resume` on a days-old blocked goal re-trips the exact same
+  wall-clock check on the very next tick unless `divisi goal amend <id>
   capacity-minutes=<N>` (a separate field from `amend ... minutes=<N>`,
   which raises the goal's overall budget, not this one) is used first —
   confirmed live: `goal_dlb44zyx7u7x_0005` re-blocked instantly on resume
@@ -898,7 +898,7 @@ retries the next one before the caller ever sees a failure.
   Also found live tonight while testing the brain-role retry fix above:
   a coordinator-dispatched integrator task to `grok` failed 3/3 attempts
   with `spawning grok: No such file or directory (os error 2)` (task
-  #1661), even though `single doctor` shows `grok` detected and
+  #1661), even though `divisi doctor` shows `grok` detected and
   authenticated on this same machine. Ruled out after a live restart to
   v0.17.1 (to pick up the brain-retry fix) did not fix it: the daemon's
   own `$PATH` (checked via `/proc/<pid>/environ`) does include
@@ -942,17 +942,17 @@ retries the next one before the caller ever sees a failure.
   exact goal (`goal_dlaftumiqf9l_0002`, "tried 5 supervisor fixes on this
   goal; need a decision").
 
-  Relatedly, `single acp`'s doc comment says every prompt
+  Relatedly, `divisi acp`'s doc comment says every prompt
   becomes a coordinator goal with no fast path for read-only status
   questions, so a quick "how's it going?" through Zed queues behind this
   same gate — a fast path that answers status questions from existing
   goal/coordinator/pool state without submitting a new goal is worth
   building alongside the capacity-wait fix, not separately.
 
-## ACP bridge (`single acp`)
+## ACP bridge (`divisi acp`)
 
 `crates/divisi-cli/src/acp.rs` implements a newline-delimited JSON-RPC 2.0
-stdio server that wraps the SingleCLI coordinator as an
+stdio server that wraps the divisi coordinator as an
 [Agent Client Protocol](https://agentclientprotocol.com) endpoint — the
 integration surface Zed (and any other ACP-capable host) uses.
 
@@ -985,8 +985,8 @@ There is no background goroutine or daemon-side push that emits
 
 `Acp` keeps a `sessions: Mutex<HashMap<String, AcpSession>>` keyed by the
 coordinator's own `sess_…` id (the ACP session id **is** the coordinator
-session id, by design, so a restarted `single acp` process can resume a
-thread on `session/load`). Multiple sessions on one `single acp` process
+session id, by design, so a restarted `divisi acp` process can resume a
+thread on `session/load`). Multiple sessions on one `divisi acp` process
 are therefore supported:
 
 - Each `session/prompt` call spawns its own OS thread to run `stream_goal`,
@@ -1000,14 +1000,14 @@ are therefore supported:
   scoped to its own goal, and the shared `last_event_id` is only updated as
   a high-water mark so a subsequent `session/load` re-attach can skip
   already-replayed history.
-- There is no routing across **separate `single acp` processes**: `sessions`
+- There is no routing across **separate `divisi acp` processes**: `sessions`
   is an in-process `HashMap`, not a daemon-side table. Two concurrent
-  `single acp` invocations have disjoint session maps.
+  `divisi acp` invocations have disjoint session maps.
 
 ### Proactive update — what's real
 
 The one proactive (unsolicited) notification path that exists is the
-**restart re-attach** in `session_load`: if the daemon or the `single acp`
+**restart re-attach** in `session_load`: if the daemon or the `divisi acp`
 process restarts mid-goal and the given session id resolves to a goal that
 is still `running`/`waiting_on_capacity`, `session_load` spawns a new
 `stream_goal` thread to re-attach its event stream. The reconnecting Zed
@@ -1045,7 +1045,7 @@ verification finding: this fabricated a plausible-but-fictional cargo
 test/clippy run when asked to actually run one. `agent` now defaults to
 `None`, letting the coordinator's normal per-node-kind routing
 (`routing.toml`) pick a real tool-capable agent per step — the same path
-every goal submitted via `single goal submit` already takes.
+every goal submitted via `divisi goal submit` already takes.
 `/agent <name>` still works exactly as before for a session that
 deliberately wants one agent pinned for everything.
 

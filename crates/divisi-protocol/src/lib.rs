@@ -1,4 +1,4 @@
-//! Wire types for the SingleCLI runtime IPC protocol.
+//! Wire types for the divisi runtime IPC protocol.
 //!
 //! The CLI and TUI talk to the runtime daemon over a Unix domain socket using
 //! newline-delimited JSON: one [`Request`] per line in, one [`Response`] per
@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
     Status,
-    /// `fix: true` (`single doctor --fix`) also runs a self-heal pass
+    /// `fix: true` (`divisi doctor --fix`) also runs a self-heal pass
     /// (E28 spec §9) across every enabled category before returning the
     /// report, instead of only reporting findings.
     Doctor {
@@ -52,7 +52,7 @@ pub enum Request {
         name: String,
     },
     /// Toggles gateway mode (see `divisi_core::mcp::gateway_mode`) — takes
-    /// effect on the next `single install-integrations --yes`, not
+    /// effect on the next `divisi install-integrations --yes`, not
     /// retroactively.
     McpGatewaySetEnabled {
         enabled: bool,
@@ -129,7 +129,7 @@ pub enum Request {
     SkillSyncClaude {
         name: String,
     },
-    /// Lists the curated starter skills bundled with SingleCLI itself —
+    /// Lists the curated starter skills bundled with divisi itself —
     /// see `divisi_core::skills::starter_set`.
     SkillStarterList,
     SkillInstallStarter {
@@ -216,7 +216,7 @@ pub enum Request {
         cwd: String,
         use_worktree: bool,
         account: Option<String>,
-        /// Skips the usual SingleCLI-managed isolated $HOME
+        /// Skips the usual divisi-managed isolated $HOME
         /// (`divisi_core::agent_home`) and runs the agent against the
         /// real, ambient $HOME instead — for tasks that need to actually
         /// touch the real system (dotfiles, installed packages, desktop
@@ -236,7 +236,7 @@ pub enum Request {
         /// (`Running`) record instead of blocking the connection until
         /// the agent finishes — poll `TaskInspect`/`TaskList` for
         /// progress, `TaskCancel` to stop it early. Off by default so
-        /// existing one-shot `single task run` callers keep today's
+        /// existing one-shot `divisi task run` callers keep today's
         /// blocking behavior unchanged.
         background: bool,
         /// Opt-in (default off): when this run fails or times out in a way
@@ -284,7 +284,7 @@ pub enum Request {
         force: bool,
     },
     /// Removes a finished (`Completed`/`Failed`/`Cancelled`) task's git
-    /// worktree and any leftover live-output file — SingleCLI never does
+    /// worktree and any leftover live-output file — divisi never does
     /// this automatically, since a worktree might still be worth
     /// inspecting after the fact. Errors if the task is still `Running`.
     TaskCleanup {
@@ -319,7 +319,7 @@ pub enum Request {
     /// sequential relay: each `ParallelTaskSpec` runs on its own thread, in
     /// its own git worktree, with its own SQLite connection. There's no
     /// automatic goal decomposition here — the caller supplies each
-    /// agent's own description explicitly (SingleCLI runs them, it doesn't
+    /// agent's own description explicitly (divisi runs them, it doesn't
     /// invent the split).
     OrchestrateParallel {
         tasks: Vec<ParallelTaskSpec>,
@@ -378,7 +378,7 @@ pub enum Request {
     },
     /// Opt-in Docker execution backend (see `divisi_core::docker`) —
     /// `account: None` means the agent-wide setting, `Some` overrides it
-    /// for one captured account. Takes effect on the next `single task
+    /// for one captured account. Takes effect on the next `divisi task
     /// run`/orchestrate step for that agent/account, not retroactively.
     DockerEnable {
         agent: String,
@@ -529,7 +529,7 @@ pub enum Request {
     ProviderValidateKeys {
         platform: Option<String>,
     },
-    /// `single pool status` — every currently-benched `(platform, model,
+    /// `divisi pool status` — every currently-benched `(platform, model,
     /// key_id)` plus a healthy-ratio snapshot (spec §6.5). The snapshot
     /// is stateless (no persisted entry/exit-grace hysteresis this
     /// iteration — see `PoolStatusInfo`'s doc comment).
@@ -693,7 +693,7 @@ pub enum Request {
         #[serde(default)]
         max_minutes: Option<u32>,
         /// Pin every node to this agent instead of routing. `careful`
-        /// (`single loop`) uses it for the single iterating node; `auto`
+        /// (`divisi loop`) uses it for the single iterating node; `auto`
         /// applies it to every planned node after decomposition.
         #[serde(default)]
         agent: Option<String>,
@@ -707,7 +707,7 @@ pub enum Request {
     },
     /// Adds context / raises the budget (`budget=N`) / opts into merge
     /// confirmation (`auto-merge=true|false` — see
-    /// `divisi_core::pending_merge`, `single goal merge`) / answers a
+    /// `divisi_core::pending_merge`, `divisi goal merge`) / answers a
     /// blocked question, then re-ticks.
     GoalAmend {
         goal_id: String,
@@ -1041,7 +1041,7 @@ pub struct AgentInfo {
     /// entry doesn't fit the coding-agent model cleanly (see `perplexity`).
     pub notes: Option<String>,
     /// Auto-detected presence of *some* live login for this agent, checked
-    /// across both SingleCLI's isolated home and the real ambient home. See
+    /// across both divisi's isolated home and the real ambient home. See
     /// `AuthState` docs for how this differs from `AccountProfileInfo::status`.
     #[serde(default)]
     pub authenticated: AuthState,
@@ -1067,7 +1067,7 @@ pub enum AuthState {
 }
 
 /// Describes how an agent CLI is (or would be) installed. Distinct from
-/// `BootstrapInstall`, which is the exact command `single setup` runs when
+/// `BootstrapInstall`, which is the exact command `divisi setup` runs when
 /// the agent is missing — this is just descriptive, for `doctor` output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1078,7 +1078,7 @@ pub enum InstallMethod {
     Unsupported { reason: String },
 }
 
-/// The real, vendor-verified install command `single setup` runs when this
+/// The real, vendor-verified install command `divisi setup` runs when this
 /// agent isn't detected. `source` is the documentation URL it was verified
 /// against — kept alongside the command so the registry stays auditable
 /// instead of hiding a bare `curl | sh` in code. `None` means no verified
@@ -1185,7 +1185,7 @@ pub struct Envelope<T> {
 
 pub type Metadata = BTreeMap<String, String>;
 
-/// A format-agnostic MCP server entry from SingleCLI's unified registry.
+/// A format-agnostic MCP server entry from divisi's unified registry.
 /// Lives here (rather than in `divisi-agent-sdk`, which consumes it) so
 /// both `divisi-core`'s config/registry loading and `divisi-agent-sdk`'s
 /// per-format writers can share one definition without a circular
@@ -1206,7 +1206,7 @@ pub struct McpServerSpec {
     /// as a real env var on the child process it spawns, so the value
     /// never touches disk anywhere. This resolution currently only
     /// happens in the gateway path — direct native-config sync
-    /// (`single install-integrations` without gateway mode) still writes
+    /// (`divisi install-integrations` without gateway mode) still writes
     /// whatever's in `env` verbatim into each agent's own config file,
     /// same as it always has (matching `provider_sync.rs`'s existing
     /// precedent for provider API keys); a secret-backed server synced
@@ -1269,7 +1269,7 @@ pub enum MemoryScope {
 }
 
 /// Provenance classification (spec sections 46-47): the *claimed* source of
-/// a memory entry, as given by the caller — SingleCLI does not itself
+/// a memory entry, as given by the caller — divisi does not itself
 /// verify or upgrade this classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1391,7 +1391,7 @@ pub enum TaskStatus {
     Running,
     Completed,
     Failed,
-    /// Either killed by an explicit `single task cancel` before it finished,
+    /// Either killed by an explicit `divisi task cancel` before it finished,
     /// or deliberately skipped by a graph `run_if` condition. The latter
     /// always says so in its summary; `Failed` means an agent actually ran
     /// unsuccessfully (or errored/timed out).
@@ -1521,7 +1521,7 @@ pub struct RunOutcome {
     pub stderr: String,
     pub exit_code: Option<i32>,
     pub timed_out: bool,
-    /// Killed by an explicit `single task cancel`/`TaskCancel` request
+    /// Killed by an explicit `divisi task cancel`/`TaskCancel` request
     /// rather than running past its timeout — distinct from `timed_out`
     /// so callers can tell "we gave up on it" from "you told it to stop".
     pub cancelled: bool,
@@ -1545,7 +1545,7 @@ pub struct AccountProfileInfo {
     pub name: String,
     /// Human-readable identity (email or display name) for this captured
     /// login, so multiple accounts per agent are distinguishable at a
-    /// glance. Set at capture time; SingleCLI has no way to read it back
+    /// glance. Set at capture time; divisi has no way to read it back
     /// out of the agent's own credential files, so it's user-supplied.
     pub label: Option<String>,
     pub captured_at: String,
@@ -1553,7 +1553,7 @@ pub struct AccountProfileInfo {
     /// Manually-set usability of this account. There is no verified,
     /// stable API across claude/codex/agy for querying live quota/rate-
     /// limit state, so this is never auto-detected — the user (or a task
-    /// failure surfaced elsewhere) sets it, and SingleCLI just remembers
+    /// failure surfaced elsewhere) sets it, and divisi just remembers
     /// and displays it. See `AuthState` (on `AgentInfo`) for the auto-
     /// detected "is anything logged in" question this does NOT answer.
     #[serde(default)]
@@ -1750,11 +1750,11 @@ pub struct ProviderSpec {
 
 /// One labeled API key for a provider, distinct from `ProviderSpec`'s
 /// single shared key (`providers.toml`) — lets the same provider have
-/// several real keys, one per agent, so `single usage show` can attribute
+/// several real keys, one per agent, so `divisi usage show` can attribute
 /// billing-API spend to a specific agent instead of one undifferentiated
 /// provider total. `secret_name` is always `"provider-key:{provider}:{label}"`.
 /// `label` defaults to `"default"` for the common single-key case, keeping
-/// `single provider set-key`'s existing behavior unchanged.
+/// `divisi provider set-key`'s existing behavior unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProviderKeySpec {
     pub provider: String,
@@ -1763,7 +1763,7 @@ pub struct ProviderKeySpec {
     pub secret_name: String,
 }
 
-/// One row of `single provider list-free` — a read-only view over
+/// One row of `divisi provider list-free` — a read-only view over
 /// `divisi_core::free_pool::FreeProvider`, flattened to plain
 /// serializable fields for the wire (the source struct holds `Duration`/
 /// enums that don't need to cross the CLI<->daemon boundary as-is).
@@ -1782,7 +1782,7 @@ pub struct FreeProviderInfo {
     pub disabled_reason: Option<String>,
 }
 
-/// One row of `single provider key-status`.
+/// One row of `divisi provider key-status`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PoolKeyStatusInfo {
     pub platform: String,
@@ -1838,7 +1838,7 @@ pub struct PoolKeyStatusInfo {
     pub tpd_limit: Option<u64>,
 }
 
-/// `single pool status`. `degraded`/`healthy_ratio` are a **stateless
+/// `divisi pool status`. `degraded`/`healthy_ratio` are a **stateless
 /// snapshot** — spec §6.5's entry/exit-grace hysteresis needs a
 /// `DegradeState` persisted across ticks, which this iteration doesn't
 /// wire into the daemon yet (documented follow-up); this reports the
@@ -1920,7 +1920,7 @@ pub struct BillingProviderInfo {
 }
 
 /// One line item from a provider's real usage/billing API — the `$`
-/// SingleCLI didn't compute itself, just relayed. `key_label` is `Some`
+/// divisi didn't compute itself, just relayed. `key_label` is `Some`
 /// only where that provider's API exposes a per-key breakdown *and* the
 /// key matches a locally-registered `ProviderKeySpec::label`; otherwise
 /// it's `None` and the amount is an undifferentiated provider total.
@@ -2053,7 +2053,7 @@ mod tests {
     /// `agent_list`/`agent_inspect` response predates `home_requirement`
     /// and `max_concurrency` — since there's no daemon/CLI version
     /// negotiation in this project (the daemon is only replaced on an
-    /// explicit `single restart`), a freshly-built CLI must still be able
+    /// explicit `divisi restart`), a freshly-built CLI must still be able
     /// to deserialize that older JSON rather than failing with a confusing
     /// parse error. Fails without `#[serde(default)]` on both fields.
     #[test]
@@ -2153,7 +2153,7 @@ mod tests {
     }
 
     /// Same guard as `orchestrate_parallel_request_round_trips_all_fields`
-    /// for `single orchestrate-graph`, whose equivalent regression printed
+    /// for `divisi orchestrate-graph`, whose equivalent regression printed
     /// `Graph (0 node(s)):` after a version-skewed daemon dropped `nodes`.
     #[test]
     fn orchestrate_graph_request_round_trips_all_fields() {

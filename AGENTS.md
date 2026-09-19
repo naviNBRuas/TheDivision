@@ -1,4 +1,4 @@
-# Agent instructions for SingleCLI
+# Agent instructions for divisi
 
 These rules apply to every agent — human-directed or autonomous — that commits code in this repository, regardless of which CLI or model is doing the work.
 

@@ -1,6 +1,6 @@
-//! `single install-integrations` / `single uninstall-integrations`: syncs
-//! SingleCLI's unified MCP/LSP registries into every enabled agent's
-//! **SingleCLI-managed home** (`divisi_core::agent_home` — bootstrapped
+//! `divisi install-integrations` / `divisi uninstall-integrations`: syncs
+//! divisi's unified MCP/LSP registries into every enabled agent's
+//! **divisi-managed home** (`divisi_core::agent_home` — bootstrapped
 //! from the real `$HOME` once, never written into again after that; see
 //! that module's doc comment for why).
 
@@ -29,7 +29,7 @@ pub fn install_all(ctx: &Context, dry_run: bool, real_home: bool) -> Result<Inte
     } else {
         (registry_servers, vec![gateway_spec.name])
     };
-    // divisi-mcp is SingleCLI's own always-on delegation surface, not
+    // divisi-mcp is divisi's own always-on delegation surface, not
     // one of the registry servers gateway mode toggles between — it's
     // appended unconditionally to whichever list the branch above chose.
     mcp_servers.push(divisi_core::mcp::divisi_mcp_server_spec());

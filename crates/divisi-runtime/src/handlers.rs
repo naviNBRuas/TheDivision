@@ -161,7 +161,7 @@ fn dispatch(
         }
         Request::McpAddPreset { name } => {
             let preset = divisi_core::mcp::preset(&name).ok_or_else(|| {
-                anyhow::anyhow!("no such preset: {name} (see `single mcp presets`)")
+                anyhow::anyhow!("no such preset: {name} (see `divisi mcp presets`)")
             })?;
             divisi_core::mcp::add(&ctx.dirs.mcp_registry_file(), preset.to_spec())?;
             Ok(ResponseData::Empty)
@@ -217,7 +217,7 @@ fn dispatch(
         }
         Request::LspAddPreset { name } => {
             let preset = divisi_core::lsp::preset(&name).ok_or_else(|| {
-                anyhow::anyhow!("no such preset: {name} (see `single lsp presets`)")
+                anyhow::anyhow!("no such preset: {name} (see `divisi lsp presets`)")
             })?;
             divisi_core::lsp::add(&ctx.dirs.lsp_registry_file(), preset.to_spec())?;
             Ok(ResponseData::Empty)
@@ -837,7 +837,7 @@ fn dispatch(
             Ok(ResponseData::OrchestrateGraphResult(records))
         }
         Request::AccountCapture { agent, name, label } => {
-            // Captures only from this agent's SingleCLI-managed home,
+            // Captures only from this agent's divisi-managed home,
             // bootstrapped here if this is the first account operation for
             // this agent. The real ~/.claude etc. is never read for the
             // capture itself — only used to seed a brand-new isolated home's
@@ -1048,7 +1048,7 @@ fn dispatch(
         }
         Request::ProviderAddPreset { name } => {
             let preset = divisi_core::providers::preset(&name).ok_or_else(|| {
-                anyhow::anyhow!("no such preset: {name} (see `single provider presets`)")
+                anyhow::anyhow!("no such preset: {name} (see `divisi provider presets`)")
             })?;
             divisi_core::providers::add(&ctx.dirs.providers_registry_file(), preset.to_spec())?;
             Ok(ResponseData::Empty)
@@ -1091,7 +1091,7 @@ fn dispatch(
                 divisi_core::providers::find(&ctx.dirs.providers_registry_file(), &name)?
                     .ok_or_else(|| {
                         anyhow::anyhow!(
-                            "no such provider: {name} (add it first with `single provider add`)"
+                            "no such provider: {name} (add it first with `divisi provider add`)"
                         )
                     })?;
             let store = divisi_core::secrets::SecretTool;
@@ -1109,7 +1109,7 @@ fn dispatch(
                     .ok_or_else(|| anyhow::anyhow!("no such provider: {name}"))?;
             let store = divisi_core::secrets::SecretTool;
             let value = divisi_core::secrets::SecretStore::get(&store, &provider.secret_name)?
-                .ok_or_else(|| anyhow::anyhow!("no key stored for provider '{name}'; run `single provider set-key {name} <value>` first"))?;
+                .ok_or_else(|| anyhow::anyhow!("no key stored for provider '{name}'; run `divisi provider set-key {name} <value>` first"))?;
             let home_root = integrations::home_dir()?;
             let target_agents: Vec<String> = if agents.is_empty() {
                 ctx.registry.iter().map(|a| a.name.clone()).collect()
@@ -1198,7 +1198,7 @@ fn dispatch(
             )?
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "no such key: {provider}:{label} (add it first with `single provider add-key`)"
+                    "no such key: {provider}:{label} (add it first with `divisi provider add-key`)"
                 )
             })?;
             let store = divisi_core::secrets::SecretTool;
@@ -1271,7 +1271,7 @@ fn dispatch(
         }
         Request::ProviderAddFree { id, key, key_id } => {
             let provider = divisi_core::free_pool::by_id(&id).ok_or_else(|| {
-                anyhow::anyhow!("no such free provider: {id} (see `single provider list-free`)")
+                anyhow::anyhow!("no such free provider: {id} (see `divisi provider list-free`)")
             })?;
             divisi_core::free_pool::validate_key_shape(provider, &key).map_err(|e| anyhow::anyhow!(e))?;
             let conn = crate::state::open(&ctx.dirs.db_path())?;
@@ -1509,7 +1509,7 @@ fn dispatch(
         }
         Request::PluginAddPreset { name } => {
             let preset = divisi_core::plugins::preset(&name).ok_or_else(|| {
-                anyhow::anyhow!("no such preset: {name} (see `single plugin presets`)")
+                anyhow::anyhow!("no such preset: {name} (see `divisi plugin presets`)")
             })?;
             divisi_core::plugins::add(&ctx.dirs.plugins_registry_file(), preset.to_spec())?;
             Ok(ResponseData::Empty)
@@ -2070,7 +2070,7 @@ fn memory_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
 /// billing endpoint being briefly unreachable shouldn't hide every other
 /// provider's real numbers) plus local-only run stats for every agent
 /// that has no billing data at all. `provider_filter` narrows to one
-/// provider's keys when set (used by `single usage show --provider`).
+/// provider's keys when set (used by `divisi usage show --provider`).
 fn usage_summary(ctx: &Context, provider_filter: Option<String>) -> anyhow::Result<ResponseData> {
     let store = divisi_core::secrets::SecretTool;
     let mut provider_usage = Vec::new();
@@ -2256,7 +2256,7 @@ fn to_document_info(doc: crate::documents::DocumentInfo) -> divisi_protocol::Doc
     }
 }
 
-/// The `single` binary's absolute path, so the hook command written into
+/// The `divisi` binary's absolute path, so the hook command written into
 /// an isolated home's settings.json works regardless of what `PATH` looks
 /// like when Claude Code spawns the hook process — falls back to the bare
 /// command name (relying on `PATH`) if `which` can't find it, same

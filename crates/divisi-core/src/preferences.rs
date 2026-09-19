@@ -16,7 +16,7 @@
 //! the same SQLite table directly, without needing IPC for every
 //! permission check.
 //!
-//! **Scope, stated plainly**: this gates tool calls SingleCLI itself
+//! **Scope, stated plainly**: this gates tool calls divisi itself
 //! controls — right now, only `divisi-gateway`'s `invoke_mcp`. It does *not*
 //! intercept an agent CLI's own mid-run permission prompts (e.g. Claude
 //! Code asking to edit a file) — that would need per-agent research into

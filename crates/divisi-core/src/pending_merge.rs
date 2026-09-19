@@ -10,7 +10,7 @@
 //! confirmation once review passes", not "skip human review". The
 //! coordinator requests a confirmation here (see
 //! `coordinator::scheduler::maybe_auto_merge`) instead of merging
-//! directly; `single goal merge list/show/confirm/reject` is the human's
+//! directly; `divisi goal merge list/show/confirm/reject` is the human's
 //! side of it, and only `confirm` ever calls `worktree::merge`.
 
 use anyhow::Result;

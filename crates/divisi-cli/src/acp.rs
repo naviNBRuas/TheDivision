@@ -1,5 +1,5 @@
-//! Native `single acp` — an Agent Client Protocol (ACP) stdio server that
-//! fronts the SingleCLI coordinator (spec E27.02 §7). Newline-delimited
+//! Native `divisi acp` — an Agent Client Protocol (ACP) stdio server that
+//! fronts the divisi coordinator (spec E27.02 §7). Newline-delimited
 //! JSON-RPC 2.0 over stdin/stdout, protocol version 1.
 //!
 //! This is a **bridge, not an agent**: it consumes no development agent
@@ -52,7 +52,7 @@ pub struct Acp {
     srv_seq: AtomicU64,
 }
 
-/// Entry point for `single acp`. Blocks reading stdin until it closes.
+/// Entry point for `divisi acp`. Blocks reading stdin until it closes.
 pub fn run(socket_path: PathBuf) -> Result<()> {
     let acp = Arc::new(Acp {
         socket_path,
@@ -62,7 +62,7 @@ pub fn run(socket_path: PathBuf) -> Result<()> {
         seq: AtomicU64::new(0),
         srv_seq: AtomicU64::new(0),
     });
-    log("=== single acp start ===");
+    log("=== divisi acp start ===");
 
     let stdin = std::io::stdin();
     for line in stdin.lock().lines() {
@@ -179,7 +179,7 @@ impl Acp {
             }
         };
         // The ACP session id IS the coordinator session id — so a fresh
-        // `single acp` process can resume a thread on `session/load`
+        // `divisi acp` process can resume a thread on `session/load`
         // (E27.03). Zed persists this string.
         let acp_sid = coord_id.clone();
         self.sessions.lock().unwrap().insert(
@@ -236,7 +236,7 @@ impl Acp {
 
         // E28 spec §10 (Part F): if this session has a goal still
         // `running`/`waiting_on_capacity` (etc.) — e.g. the daemon or this
-        // `single acp` process restarted mid-goal — re-attach its event
+        // `divisi acp` process restarted mid-goal — re-attach its event
         // long-poll so a restarted Zed panel keeps streaming without the
         // user having to send a new prompt. No JSON-RPC response is owed
         // for this background stream (unlike `run_turn`'s prompt-driven
@@ -310,7 +310,7 @@ impl Acp {
         // everything; absent that, leave `agent` as `None` so the
         // coordinator's normal per-node-kind routing (routing.toml)
         // picks a real tool-capable agent per step, same as every
-        // goal submitted directly via `single goal submit` already does.
+        // goal submitted directly via `divisi goal submit` already does.
         let goal_id = match self.socket(Request::GoalSubmit {
             session_id: coord_id.clone(),
             text: text.to_string(),
@@ -369,7 +369,7 @@ impl Acp {
                 return "cancelled";
             }
             if Instant::now() > deadline {
-                self.chunk(acp_sid, "[single acp] stopped tailing after 1h\n", "agent_message_chunk");
+                self.chunk(acp_sid, "[divisi acp] stopped tailing after 1h\n", "agent_message_chunk");
                 return "max_turn_requests";
             }
 
@@ -435,7 +435,7 @@ impl Acp {
             "capacity_wait" => self.chunk(acp_sid, &format!("all providers rate-limited; holding — {body}\n"), "agent_thought_chunk"),
             "capacity_resumed" => self.chunk(acp_sid, &format!("capacity freed, resuming — {body}\n"), "agent_thought_chunk"),
             // E28 spec §10: the goal survived a daemon restart or a
-            // manual `single goal resume` — a live signal instead of a
+            // manual `divisi goal resume` — a live signal instead of a
             // silent gap in the Zed panel's history.
             "session_resumed" => self.chunk(acp_sid, &format!("[resumed] {body}\n"), "agent_thought_chunk"),
             "integrated" => {} // the summary is emitted from the terminal GoalStatus
@@ -552,7 +552,7 @@ impl Acp {
                 };
                 self.chunk(
                     acp_sid,
-                    &format!("\n**Goal blocked:** {reason}\nRun `single goal amend {goal_id} {hint}` to raise the cap.\n"),
+                    &format!("\n**Goal blocked:** {reason}\nRun `divisi goal amend {goal_id} {hint}` to raise the cap.\n"),
                     "agent_message_chunk",
                 );
                 "end_turn"
@@ -612,7 +612,7 @@ impl Acp {
             "mcp" => shell_out(&["mcp", "list"]),
             "lsp" => shell_out(&["lsp", "list"]),
             "providers" => shell_out(&["provider", "list"]),
-            "dashboard" => "Open the SingleCLI control panel: run `single` in a terminal, or the Zed task \"SingleCLI: control panel\".".into(),
+            "dashboard" => "Open the divisi control panel: run `divisi` in a terminal, or the Zed task \"divisi: control panel\".".into(),
             "agent" => {
                 if arg.is_empty() {
                     let current = self
@@ -643,7 +643,7 @@ impl Acp {
                     "(no active goal to cancel)".into()
                 }
             }
-            _ => "single acp — bridge to the SingleCLI coordinator.\n\
+            _ => "divisi acp — bridge to the divisi coordinator.\n\
                   Commands: /status /goals /agents /usage /mcp /lsp /providers /dashboard /agent /cancel\n\
                   Modes: auto · plan · careful · dry\n\
                   Any other prompt becomes a coordinator goal; progress streams back here."
@@ -822,19 +822,19 @@ fn commands() -> Value {
     json!([
         { "name": "status", "description": "coordinator: running/queued/blocked goals + pool + provider auth/exhaustion" },
         { "name": "goals", "description": "active goals + recent failures (add 'all' for the full unfiltered history)" },
-        { "name": "agents", "description": "detected agents / auth (single doctor)" },
+        { "name": "agents", "description": "detected agents / auth (divisi doctor)" },
         { "name": "usage", "description": "per-agent run counts / latency" },
         { "name": "mcp", "description": "MCP servers in divisi-gateway" },
         { "name": "lsp", "description": "LSP servers divisi-lsp can route to" },
         { "name": "providers", "description": "configured LLM providers" },
-        { "name": "dashboard", "description": "how to open the SingleCLI control panel" },
+        { "name": "dashboard", "description": "how to open the divisi control panel" },
         { "name": "agent", "description": "set or clear this session's pinned agent (default: single-pool)" },
         { "name": "cancel", "description": "cancel this session's active goal" }
     ])
 }
 
 fn shell_out(args: &[&str]) -> String {
-    match std::process::Command::new("single").args(args).output() {
+    match std::process::Command::new("divisi").args(args).output() {
         Ok(o) => {
             let mut s = String::from_utf8_lossy(&o.stdout).into_owned();
             if !o.stderr.is_empty() {
@@ -846,7 +846,7 @@ fn shell_out(args: &[&str]) -> String {
                 s
             }
         }
-        Err(e) => format!("[could not run `single {}`: {e}]", args.join(" ")),
+        Err(e) => format!("[could not run `divisi {}`: {e}]", args.join(" ")),
     }
 }
 

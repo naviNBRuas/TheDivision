@@ -1,7 +1,7 @@
 //! Document ingestion: extracts text from a PDF/image/plain-text file and
 //! stores the extracted text as an ordinary `memory` entry (scope
 //! `Knowledge`, source `ExternalContent`) — so it's immediately searchable
-//! through `single memory search`/`single memory search --semantic`
+//! through `divisi memory search`/`divisi memory search --semantic`
 //! rather than a parallel search surface of its own. This module's own
 //! `documents` table only tracks the original file plus OCR provenance,
 //! referencing that memory entry by id.
@@ -10,7 +10,7 @@
 //! text (a scanned PDF with no text layer), falls back to rasterizing each
 //! page with `pdftoppm` and OCR'ing each page image with `tesseract`.
 //! Images go straight to `tesseract`. None of these three binaries are a
-//! hard dependency of SingleCLI itself — ingestion just errors clearly if
+//! hard dependency of divisi itself — ingestion just errors clearly if
 //! the one it needs isn't installed (see `doctor`'s soft check for them).
 
 use anyhow::{bail, Context, Result};

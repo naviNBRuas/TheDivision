@@ -40,7 +40,7 @@ enum Command {
         model: String,
 
         /// The user prompt. `allow_hyphen_values` is load-bearing: callers
-        /// (notably `single task run`'s memory/notes context preamble)
+        /// (notably `divisi task run`'s memory/notes context preamble)
         /// routinely prepend text starting with `---`, which clap would
         /// otherwise reject as an unexpected argument rather than accept
         /// as this flag's value.
@@ -397,7 +397,7 @@ fn tool_definitions() -> Vec<ToolDef> {
             tool_type: "function".into(),
             function: FunctionDef {
                 name: "call_mcp".into(),
-                description: "Call an MCP tool via SingleCLI's MCP gateway (divisi-gateway). \
+                description: "Call an MCP tool via divisi's MCP gateway (divisi-gateway). \
                     Use server + tool: null to list a server's available tools, \
                     or server + tool + arguments to call a specific tool."
                     .into(),
@@ -406,7 +406,7 @@ fn tool_definitions() -> Vec<ToolDef> {
                     "properties": {
                         "server": {
                             "type": "string",
-                            "description": "Registered MCP server name (from single mcp list)"
+                            "description": "Registered MCP server name (from divisi mcp list)"
                         },
                         "tool": {
                             "type": "string",
@@ -577,8 +577,8 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    // Resolve the provider via the SingleCLI registry
-    let dirs = DivisiDirs::discover().context("resolving SingleCLI config directory")?;
+    // Resolve the provider via the divisi registry
+    let dirs = DivisiDirs::discover().context("resolving divisi config directory")?;
     let provider_spec = divisi_core::providers::find(&dirs.providers_registry_file(), &provider)
         .context("reading providers registry")?
         .unwrap_or_else(|| {
@@ -592,7 +592,7 @@ fn main() -> Result<()> {
         .context("accessing secret store")?
         .unwrap_or_else(|| {
             eprintln!(
-                "error: no API key stored for provider '{provider}' (secret name: {}). Run `single provider set-key` first.",
+                "error: no API key stored for provider '{provider}' (secret name: {}). Run `divisi provider set-key` first.",
                 provider_spec.secret_name
             );
             std::process::exit(1);

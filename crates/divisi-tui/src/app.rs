@@ -149,7 +149,7 @@ pub enum TaskAddFlow {
 /// input is parsed. Deliberately one compact form (`field|field|...`)
 /// instead of a per-type multi-step wizard — this is a power-user quick
 /// add for the TUI; anything needing finer control (env vars on an MCP
-/// server, etc.) still has the full `single ... add` CLI.
+/// server, etc.) still has the full `divisi ... add` CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuickAddKind {
     Mcp,
@@ -228,7 +228,7 @@ pub struct App {
     pub mcp_servers: Vec<McpServerInfo>,
     /// Whether `divisi-gateway`'s dynamic gateway is on — see
     /// `Request::McpGatewayStatus`'s doc comment. Fetched every `refresh()`
-    /// so the Mcp tab's title reflects a toggle made from another `single`
+    /// so the Mcp tab's title reflects a toggle made from another `divisi`
     /// invocation, not just this one.
     pub mcp_gateway_enabled: bool,
     pub lsp_servers: Vec<LspServerSpec>,
@@ -910,7 +910,7 @@ impl App {
     }
 
     /// Toggles whether this task runs against the real, ambient $HOME
-    /// instead of SingleCLI's isolated one — for tasks that need to
+    /// instead of divisi's isolated one — for tasks that need to
     /// actually modify the real system (see `Request::TaskRun::real_home`
     /// docs). Off by default.
     pub fn task_toggle_real_home(&mut self) {
@@ -1071,8 +1071,8 @@ impl App {
     }
 
     /// Flips `divisi-gateway`'s dynamic gateway on/off (Mcp tab). Only changes
-    /// the stored setting — like the CLI's `single mcp gateway enable`, it
-    /// takes effect on the next `single install-integrations`, not
+    /// the stored setting — like the CLI's `divisi mcp gateway enable`, it
+    /// takes effect on the next `divisi install-integrations`, not
     /// retroactively, so this doesn't touch any agent's synced config.
     pub fn toggle_mcp_gateway(&mut self) {
         if self.tab != Tab::Mcp {
@@ -1251,7 +1251,7 @@ impl App {
             // actually restoring files and re-inserting keychain secrets
             // is a real, hard-to-fully-undo action, and this flow has no
             // in-TUI equivalent of the CLI's explicit `--yes` gate yet.
-            // The Done screen tells the user to run `single backup
+            // The Done screen tells the user to run `divisi backup
             // import <path> --yes` to actually apply it — an honest v1
             // scope limit, not an oversight.
             let result = divisi_core::backup::import(&dirs, std::path::Path::new(&path), &age::secrecy::SecretString::from(passphrase), true)

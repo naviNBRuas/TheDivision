@@ -19,7 +19,7 @@ pub enum ExecBackend<'a> {
     /// `divisi_core::provider_keys::resolve_env_for_agent`), applied on
     /// top of the child's inherited environment — this is how an agent
     /// that authenticates via a plain env var (not OAuth) actually sees
-    /// the key SingleCLI has stored for it. `None` for call sites that
+    /// the key divisi has stored for it. `None` for call sites that
     /// don't need this (installs, logins, tests).
     Host { home: Option<&'a Path>, extra_env: Option<&'a BTreeMap<String, String>> },
     /// Runs via `docker exec -w <workdir> <container> <command> <args...>`

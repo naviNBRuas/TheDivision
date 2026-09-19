@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for considering a contribution to SingleCLI.
+Thanks for considering a contribution to divisi.
 
 ## Workflow
 
@@ -22,10 +22,10 @@ cargo build --workspace   # all seven crates
 cargo test --workspace
 ```
 
-No API keys are required to build, test, or run `single doctor`/`single
+No API keys are required to build, test, or run `divisi doctor`/`single
 agent list`. Commands that touch real files or run real installers
-(`single setup --yes`, `single install-integrations --yes`, `single
-account use`, `single provider sync --yes`) are the exception — see the
+(`divisi setup --yes`, `divisi install-integrations --yes`, `single
+account use`, `divisi provider sync --yes`) are the exception — see the
 README's "Development" section. The optional Redis/Qdrant memory-backend
 tests skip cleanly when no such service is reachable locally.
 
@@ -53,7 +53,7 @@ Bump `[workspace.package].version` in `Cargo.toml` and rebuild (so
 
 ## Adding a new agent integration
 
-SingleCLI supports two paths for adding agent support:
+divisi supports two paths for adding agent support:
 
 - **Declarative** (no Rust) — describe the CLI in
   `~/.config/divisi/agents/<name>.toml` (command, install command, prompt
@@ -69,4 +69,4 @@ SingleCLI supports two paths for adding agent support:
 ## Reporting security issues
 
 See [SECURITY.md](SECURITY.md) — do NOT open a public issue for a
-vulnerability in SingleCLI itself.
+vulnerability in divisi itself.

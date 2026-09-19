@@ -1,5 +1,5 @@
 //! Dependency-graph orchestration: explicit ordering without pretending that
-//! SingleCLI can safely infer a team's work breakdown. Ready nodes retain the
+//! divisi can safely infer a team's work breakdown. Ready nodes retain the
 //! parallel runner's one-thread/one-worktree/one-SQLite-connection isolation.
 
 use crate::context::Context;

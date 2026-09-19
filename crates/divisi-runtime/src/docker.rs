@@ -11,7 +11,7 @@
 //!
 //! **Known limitation**: the project-directory bind mount is fixed at
 //! container *creation* time. Running a task against a different project
-//! through the same persistent container needs `single agent docker stop`
+//! through the same persistent container needs `divisi agent docker stop`
 //! first (so the next run recreates it with the new mount) — there's no
 //! way to add a bind mount to an already-created container without
 //! recreating it.

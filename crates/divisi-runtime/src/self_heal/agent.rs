@@ -68,7 +68,7 @@ fn missing_routable_agents(ctx: &Context) -> Vec<String> {
 /// in `ps` by the time it's noticed (the hang was in Rust-land waiting on
 /// the child, not necessarily still executing). That's exactly why
 /// `Categories::default()`'s `agent` field defaults to `false` — until
-/// `bootstrap::run_one` gets a real timeout wrapper (a `single setup`
+/// `bootstrap::run_one` gets a real timeout wrapper (a `divisi setup`
 /// concern too, not just this call site), enabling this category is a
 /// deliberate opt-in risk, not a safe default.
 fn install_missing_agents(ctx: &Context, dry_run: bool) -> Result<String> {
@@ -111,12 +111,12 @@ fn auth_repair(ctx: &Context) -> Result<String> {
     }
     Ok(format!(
         "needs login (not auto-attempted, headless): {}",
-        needs_login.iter().map(|a| format!("agent {a} needs `single agent login {a}`")).collect::<Vec<_>>().join("; ")
+        needs_login.iter().map(|a| format!("agent {a} needs `divisi agent login {a}`")).collect::<Vec<_>>().join("; ")
     ))
 }
 
 /// A pool provider key that's failed validation for longer than
-/// `provider_key_grace_hours` is auto-disabled — `single provider
+/// `provider_key_grace_hours` is auto-disabled — `divisi provider
 /// key-status` then flags it for re-keying instead of the pool silently
 /// wasting admission attempts on a key that's never going to work.
 fn stale_pool_key_disable(conn: &Connection, cfg: &SelfHealConfig) -> Result<String> {

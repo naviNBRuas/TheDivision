@@ -6,7 +6,7 @@
 //! billing API can only report "this key spent $X," not which agent's
 //! calls it was. This module adds a second, independent layer: any number
 //! of *labeled* keys per provider, each optionally tagged with the one
-//! agent it's for. `single provider set-key`/`sync` are untouched — they
+//! agent it's for. `divisi provider set-key`/`sync` are untouched — they
 //! keep working against the single-key registry exactly as before; this
 //! is purely additive.
 //!
@@ -81,13 +81,13 @@ pub fn list_for_provider(path: &Path, provider: &str) -> Result<Vec<ProviderKeyS
 
 /// Resolves which provider API keys `agent` should see as environment
 /// variables for a real run — the missing link between "a key is stored
-/// in SingleCLI" and "the agent process that authenticates via a plain
+/// in divisi" and "the agent process that authenticates via a plain
 /// env var, not OAuth, actually has it." Consumed by
 /// `divisi-agent-sdk::backend::ExecBackend`'s `extra_env`.
 ///
 /// Two sources, in this order:
 /// 1. Labeled per-agent keys (`ProviderKeySpec::agent == Some(agent)`) —
-///    the precise mechanism: `single provider add-key <provider> --label
+///    the precise mechanism: `divisi provider add-key <provider> --label
 ///    <label> --agent <agent> <value>`.
 /// 2. A shared single-key provider (`providers.toml`/`set-key`) whose
 ///    *name* exactly matches `agent` — covers the common case of a

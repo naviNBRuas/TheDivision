@@ -1,6 +1,6 @@
 # Verified install methods for agent CLIs
 
-This records exactly how `single setup` installs each agent CLI, and where
+This records exactly how `divisi setup` installs each agent CLI, and where
 each command was verified. Per the project's own rule ("do not fabricate
 APIs, flags, configuration formats, or capabilities"), every command below
 was fetched directly from the vendor's own current documentation or GitHub
@@ -33,10 +33,10 @@ interactive coding agent — it's the kind of tool a coding agent *calls*,
 not one itself.
 
 The registry still installs it (the user explicitly asked for every agent
-to be installable through SingleCLI, and `pplx` is the closest real
+to be installable through divisi, and `pplx` is the closest real
 product), but `AgentDefinition.notes` on the `perplexity` entry flags this
-plainly, `capabilities.sessions` is `false`, and `single doctor` /
-`single agent inspect perplexity` surface the caveat rather than presenting
+plainly, `capabilities.sessions` is `false`, and `divisi doctor` /
+`divisi agent inspect perplexity` surface the caveat rather than presenting
 it as equivalent to the other four. If Perplexity ships an actual coding
 agent in the future, this entry should be revisited.
 
@@ -60,7 +60,7 @@ each agent:
 - **Kiro CLI**: a standalone binary at `~/.local/bin/kiro-cli`.
 
 None of these nine were installed via a shared/generic package manager
-(no npm-global entries for any of them) — this is why `single setup` runs
+(no npm-global entries for any of them) — this is why `divisi setup` runs
 each vendor's own install script rather than assuming `npm install -g`
 works universally.
 

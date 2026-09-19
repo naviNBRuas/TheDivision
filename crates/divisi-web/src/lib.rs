@@ -1,6 +1,6 @@
 //! Reads the premium-web skill/pattern library (markdown under a
 //! `patterns/` directory, see `docs/web-capability-pack-architecture.md`)
-//! so `single web patterns list|search` can browse it structurally instead
+//! so `divisi web patterns list|search` can browse it structurally instead
 //! of an agent having to grep the filesystem itself. Deliberately just a
 //! reader over plain files — the actual content lives at
 //! `~/.config/divisi/skills/web/premium-web/patterns/**/*.md` (synced

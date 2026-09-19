@@ -16,9 +16,9 @@ use std::collections::BTreeMap;
 
 #[derive(Parser)]
 #[command(
-    name = "single",
+    name = "divisi",
     version,
-    about = "SingleCLI — unified control plane for AI coding agents"
+    about = "divisi — unified control plane for AI coding agents"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -37,7 +37,7 @@ enum Command {
         #[arg(long)]
         fix: bool,
     },
-    /// Install missing agent CLIs and sync SingleCLI's config into all of them.
+    /// Install missing agent CLIs and sync divisi's config into all of them.
     Setup {
         /// Actually run install commands and write config. Without this, only shows the plan.
         #[arg(long)]
@@ -111,7 +111,7 @@ enum Command {
         #[command(subcommand)]
         action: ApprovalCommand,
     },
-    /// Learned decisions — what SingleCLI has auto-approved/denied before
+    /// Learned decisions — what divisi has auto-approved/denied before
     /// without asking, and why (see `divisi_core::preferences`).
     Preference {
         #[command(subcommand)]
@@ -144,8 +144,8 @@ enum Command {
         action: FallbackCommand,
     },
     /// Task-lifecycle event hooks: fire a command when a task reaches a
-    /// terminal status, instead of polling `single task list` for it —
-    /// see `divisi_core::task_hooks`. Not the same thing as `single agent
+    /// terminal status, instead of polling `divisi task list` for it —
+    /// see `divisi_core::task_hooks`. Not the same thing as `divisi agent
     /// hooks` (that's Claude Code's mid-run permission interception).
     TaskHook {
         #[command(subcommand)]
@@ -171,7 +171,7 @@ enum Command {
         cwd: Option<String>,
         #[arg(long)]
         worktree: bool,
-        /// See `single task run --help`'s --real-home — applies to every step.
+        /// See `divisi task run --help`'s --real-home — applies to every step.
         #[arg(long)]
         real_home: bool,
         #[arg(long, default_value = "300")]
@@ -181,7 +181,7 @@ enum Command {
     /// (e.g. `--task claude:"backend API" --task codex:"frontend UI"`),
     /// each in its own git worktree. Real parallel execution, unlike
     /// `orchestrate`'s sequential relay. No automatic goal splitting: you
-    /// decide each agent's task, SingleCLI just runs them at the same time
+    /// decide each agent's task, divisi just runs them at the same time
     /// and reports what happened — branches are never auto-merged.
     OrchestrateParallel {
         /// Repeatable: <agent>:<description>, e.g. claude:"implement the API"
@@ -196,7 +196,7 @@ enum Command {
         candidate_agents: Vec<String>,
         #[arg(long)]
         cwd: Option<String>,
-        /// See `single task run --help`'s --real-home — applies to every task.
+        /// See `divisi task run --help`'s --real-home — applies to every task.
         #[arg(long)]
         real_home: bool,
         #[arg(long, default_value = "300")]
@@ -257,7 +257,7 @@ enum Command {
         #[command(subcommand)]
         action: AccountingCommand,
     },
-    /// Export/import your entire SingleCLI setup — config, agent
+    /// Export/import your entire divisi setup — config, agent
     /// credentials, keychain secrets, task history — as one
     /// password-encrypted archive, to move to another machine. Runs
     /// entirely locally: the passphrase never touches the daemon socket.
@@ -276,7 +276,7 @@ enum Command {
         #[command(subcommand)]
         action: ProfileCommand,
     },
-    /// Check for or apply a newer SingleCLI build from GitHub Releases.
+    /// Check for or apply a newer divisi build from GitHub Releases.
     Update {
         #[arg(long, default_value = "stable")]
         channel: String,
@@ -286,20 +286,20 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Sync SingleCLI's MCP registry into every agent's native config.
+    /// Sync divisi's MCP registry into every agent's native config.
     InstallIntegrations {
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         json: bool,
-        /// Write into the real, ambient $HOME instead of the SingleCLI-managed
+        /// Write into the real, ambient $HOME instead of the divisi-managed
         /// isolated home — the only way this ever reaches an agent you run
-        /// normally, outside SingleCLI. Off by default: same posture as
-        /// `single task run --real-home`.
+        /// normally, outside divisi. Off by default: same posture as
+        /// `divisi task run --real-home`.
         #[arg(long)]
         real_home: bool,
     },
-    /// Remove SingleCLI-managed entries from every agent's native config.
+    /// Remove divisi-managed entries from every agent's native config.
     UninstallIntegrations {
         #[arg(long)]
         yes: bool,
@@ -327,7 +327,7 @@ enum Command {
         action: PoolCommand,
     },
     /// Keep one agent iterating on a goal until it reports done. Sugar
-    /// over `single goal submit --mode careful`: the coordinator
+    /// over `divisi goal submit --mode careful`: the coordinator
     /// re-dispatches the agent with its previous output appended until it
     /// replies with a line containing only DONE, or `--max-iters` is hit.
     Loop {
@@ -352,7 +352,7 @@ enum Command {
     /// it runs until stdin closes.
     Acp,
     /// Run a local HTTP server that speaks the OpenAI chat-completions API
-    /// over the SingleCLI pool — point Zed's `language_models.openai_compatible`
+    /// over the divisi pool — point Zed's `language_models.openai_compatible`
     /// at `http://<addr>/v1`. Runs until interrupted.
     Serve {
         /// The only supported mode today; required.
@@ -374,7 +374,7 @@ enum Command {
         #[arg(long)]
         allow_remote: bool,
     },
-    /// Undocumented: internal helpers other SingleCLI-owned tooling shells out to.
+    /// Undocumented: internal helpers other divisi-owned tooling shells out to.
     #[command(hide = true, subcommand)]
     Internal(InternalCommand),
 }
@@ -432,7 +432,7 @@ enum GoalCommand {
     /// Add context, `budget=N` to raise the dispatch cap, `minutes=N` to
     /// raise the wall-clock cap, `capacity-minutes=N` to raise the
     /// capacity-wait wall-clock cap, or `auto-merge=true|false` to opt into
-    /// merge confirmation (`single goal merge`), and re-tick.
+    /// merge confirmation (`divisi goal merge`), and re-tick.
     Amend {
         goal_id: String,
         text: Vec<String>,
@@ -511,16 +511,16 @@ enum InternalCommand {
     /// divisi_core::registry::builtin_registry() at build time, instead
     /// of a separately maintained install list going stale.
     PrintBootstrapScript,
-    /// Claude Code's PreToolUse hook (see `single agent hooks enable
+    /// Claude Code's PreToolUse hook (see `divisi agent hooks enable
     /// claude`): reads the hook's JSON on stdin, evaluates the tool call
     /// against permissions.toml + learned preferences, and — for the
-    /// undecided case — blocks polling for a real `single approval
+    /// undecided case — blocks polling for a real `divisi approval
     /// resolve` before answering. Prints the exact
     /// hookSpecificOutput/permissionDecision JSON Claude Code expects.
     #[command(name = "claude-pretooluse-hook")]
     ClaudePreToolUseHook,
     /// Regenerates the divisi-lsp Claude Code plugin's marketplace manifest
-    /// from the current LSP registry — re-run after `single lsp add`/
+    /// from the current LSP registry — re-run after `divisi lsp add`/
     /// `enable`/`disable` so the plugin's extensionToLanguage map stays in
     /// sync with what divisi-lsp itself actually routes.
     GenerateLspPluginManifest {
@@ -547,7 +547,7 @@ enum AgentCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Interactively log in to this agent's SingleCLI-managed home (never
+    /// Interactively log in to this agent's divisi-managed home (never
     /// the real, ambient one — see `docs/architecture.md`'s "Isolation"
     /// section). Runs the agent's own real login command attached to
     /// your terminal (browser OAuth or a prompt, whichever that agent
@@ -562,7 +562,7 @@ enum AgentCommand {
         action: AgentDockerCommand,
     },
     /// Opt-in mid-run permission interception: the agent's own process
-    /// pauses before using a tool and asks (see `single approval`). Only
+    /// pauses before using a tool and asks (see `divisi approval`). Only
     /// `claude` is wired up right now (its PreToolUse hook).
     Hooks {
         #[command(subcommand)]
@@ -610,9 +610,9 @@ enum McpCommand {
         command: String,
         /// A secret-backed env var this server needs, e.g.
         /// `--secret CLOUDFLARE_API_TOKEN=abc123`. Repeatable. Stored in
-        /// the OS keychain (see `single secret`), never written to
+        /// the OS keychain (see `divisi secret`), never written to
         /// mcp.toml in plain text — only resolved at spawn time by the
-        /// divisi-gateway gateway (see `single mcp gateway enable`).
+        /// divisi-gateway gateway (see `divisi mcp gateway enable`).
         #[arg(long = "secret", value_parser = parse_key_val)]
         secrets: Vec<(String, String)>,
         /// Extra arguments passed to `command`, in order (may start with `-`, e.g. `-y`).
@@ -630,7 +630,7 @@ enum McpCommand {
     },
     /// Enables every currently-disabled registered server that doesn't need a secret it
     /// doesn't already have — i.e. `secret_env` is empty, or every key in it already
-    /// resolves to a stored secret (`single secret set`). Safe to re-run any time you add
+    /// resolves to a stored secret (`divisi secret set`). Safe to re-run any time you add
     /// more presets or set a new secret; already-enabled/already-skipped servers are untouched.
     EnableAll {
         /// Print what would be enabled without changing anything.
@@ -648,7 +648,7 @@ enum McpCommand {
     AddPreset {
         name: String,
     },
-    /// Dynamic MCP gateway (crates/divisi-gateway): when enabled, `single install-integrations`
+    /// Dynamic MCP gateway (crates/divisi-gateway): when enabled, `divisi install-integrations`
     /// syncs only divisi-gateway into agents' native config instead of every enabled server —
     /// divisi-gateway then proxies to them lazily. Takes effect on the next install-integrations.
     Gateway {
@@ -791,9 +791,9 @@ enum SkillCommand {
     SyncClaude {
         name: String,
     },
-    /// List the curated starter skills bundled with SingleCLI.
+    /// List the curated starter skills bundled with divisi.
     Starters,
-    /// Install a bundled starter skill by name (see `single skill starters`).
+    /// Install a bundled starter skill by name (see `divisi skill starters`).
     InstallStarter {
         name: String,
     },
@@ -866,8 +866,8 @@ enum MemoryCommand {
     },
     /// Vector store for RAG (Qdrant-backed). Requires DIVISI_QDRANT_URL.
     /// Stores/searches pre-computed vectors directly — for text, use
-    /// `single memory search --semantic` instead, which embeds the query
-    /// for you (needs an embeddings key too, see `single secret set
+    /// `divisi memory search --semantic` instead, which embeds the query
+    /// for you (needs an embeddings key too, see `divisi secret set
     /// embeddings:api_key`).
     Vector {
         #[command(subcommand)]
@@ -1118,9 +1118,9 @@ enum ProviderCommand {
         agents: Vec<String>,
         #[arg(long)]
         yes: bool,
-        /// Write into the real, ambient $HOME instead of the SingleCLI-managed
+        /// Write into the real, ambient $HOME instead of the divisi-managed
         /// isolated home. Off by default: same posture as
-        /// `single task run --real-home`.
+        /// `divisi task run --real-home`.
         #[arg(long)]
         real_home: bool,
     },
@@ -1256,7 +1256,7 @@ enum AccountingCommand {
 
 #[derive(Subcommand)]
 enum BackupCommand {
-    /// Export SingleCLI's entire setup (config, agent credentials, keychain secrets, task history) into one encrypted archive.
+    /// Export divisi's entire setup (config, agent credentials, keychain secrets, task history) into one encrypted archive.
     Export { path: String },
     /// Restore from an encrypted archive produced by `export`. Dry-run by default; pass --yes to actually write.
     Import {
@@ -1305,9 +1305,9 @@ enum PluginCommand {
         agents: Vec<String>,
         #[arg(long)]
         yes: bool,
-        /// Write into the real, ambient $HOME instead of the SingleCLI-managed
+        /// Write into the real, ambient $HOME instead of the divisi-managed
         /// isolated home. Off by default: same posture as
-        /// `single task run --real-home`.
+        /// `divisi task run --real-home`.
         #[arg(long)]
         real_home: bool,
     },
@@ -1343,7 +1343,7 @@ enum AccountCommand {
     },
     /// Manually record whether an account is usable, rate-limited, or
     /// needs a top-up. Never auto-detected (no verified quota API across
-    /// agents) — you or a failed task tell SingleCLI, and it remembers.
+    /// agents) — you or a failed task tell divisi, and it remembers.
     SetStatus {
         agent: String,
         name: String,
@@ -1364,7 +1364,7 @@ enum WorkspaceCommand {
 #[derive(Subcommand)]
 enum FallbackCommand {
     /// Saves one ordered chain — each entry is `agent` or `agent:account`,
-    /// e.g. `single fallback set claude:work claude:personal codex`.
+    /// e.g. `divisi fallback set claude:work claude:personal codex`.
     /// Replaces any existing chain starting with the same first entry.
     Set {
         #[arg(required = true, num_args = 2..)]
@@ -1380,7 +1380,7 @@ enum FallbackCommand {
 
 #[derive(Subcommand)]
 enum TaskHookCommand {
-    /// Adds one hook: `single task-hook add --on completed --on failed --command '...'`.
+    /// Adds one hook: `divisi task-hook add --on completed --on failed --command '...'`.
     /// `--command` receives the task's JSON payload on stdin.
     Add {
         /// Repeatable; one of: all, completed, failed, cancelled.
@@ -1458,11 +1458,11 @@ enum TaskCommand {
         /// Isolate the run in a new git worktree + branch (requires `cwd` to be inside a git repo).
         #[arg(long)]
         worktree: bool,
-        /// Run as this captured account (isolated $HOME — see `single account capture`)
+        /// Run as this captured account (isolated $HOME — see `divisi account capture`)
         /// instead of the real one, so multiple accounts of the same agent can run concurrently.
         #[arg(long)]
         account: Option<String>,
-        /// Skip SingleCLI's isolated $HOME and run against your real, ambient one instead —
+        /// Skip divisi's isolated $HOME and run against your real, ambient one instead —
         /// for tasks that need to actually touch your real system (dotfiles, packages, desktop
         /// config), not a sandboxed copy. The agent gets full access to your real credentials
         /// and files; only use this when that's exactly what you want.
@@ -1481,7 +1481,7 @@ enum TaskCommand {
         background: bool,
         /// When this run fails or times out in a way that looks like a
         /// rate limit and a fallback chain is configured for this
-        /// agent/account (see `single fallback set`), automatically mark
+        /// agent/account (see `divisi fallback set`), automatically mark
         /// the account rate-limited and start a linked follow-up task
         /// against the chain's next entry. Off by default.
         #[arg(long)]
@@ -1583,7 +1583,7 @@ fn main() -> anyhow::Result<()> {
     }
     // Runs synchronously inside Claude Code's own hook lifecycle, blocking
     // it — must not depend on a daemon being reachable, so this talks to
-    // SingleCLI's state database directly, same as divisi-gateway's gateway.
+    // divisi's state database directly, same as divisi-gateway's gateway.
     if let Command::Internal(InternalCommand::ClaudePreToolUseHook) = command {
         return run_claude_pretooluse_hook();
     }
@@ -1603,7 +1603,7 @@ fn main() -> anyhow::Result<()> {
     // Likewise the OpenAI proxy — a long-running HTTP server.
     if let Command::Serve { openai, addr, agent, timeout_secs, api_key, allow_remote } = command {
         if !openai {
-            anyhow::bail!("`single serve` currently supports only --openai");
+            anyhow::bail!("`divisi serve` currently supports only --openai");
         }
         return serve_openai::run(serve_openai::Config {
             socket_path,
@@ -1887,7 +1887,7 @@ fn main() -> anyhow::Result<()> {
                 println!("{verb} {} mcp server(s): {}", enabled.len(), enabled.join(", "));
                 if !skipped_needs_auth.is_empty() {
                     println!(
-                        "left {} disabled (missing a required secret — see `single secret set`): {}",
+                        "left {} disabled (missing a required secret — see `divisi secret set`): {}",
                         skipped_needs_auth.len(),
                         skipped_needs_auth.join(", ")
                     );
@@ -1912,7 +1912,7 @@ fn main() -> anyhow::Result<()> {
                         Request::McpGatewaySetEnabled { enabled: true },
                     )?;
                     render::print(response, false);
-                    eprintln!("run `single install-integrations --yes` to apply this to agents' native config.");
+                    eprintln!("run `divisi install-integrations --yes` to apply this to agents' native config.");
                 }
                 McpGatewayCommand::Disable => {
                     let response = client::send(
@@ -1920,7 +1920,7 @@ fn main() -> anyhow::Result<()> {
                         Request::McpGatewaySetEnabled { enabled: false },
                     )?;
                     render::print(response, false);
-                    eprintln!("run `single install-integrations --yes` to apply this to agents' native config.");
+                    eprintln!("run `divisi install-integrations --yes` to apply this to agents' native config.");
                 }
                 McpGatewayCommand::Status => {
                     let response = client::send(&socket_path, Request::McpGatewayStatus)?;
@@ -2577,7 +2577,7 @@ fn main() -> anyhow::Result<()> {
                 // own thread) — printing `Relay (0 step(s)):` there reads
                 // like nothing ran, so say what actually happened.
                 println!(
-                    "dispatched {dispatched} sub-task(s) in the background — poll `single task list` / `single task inspect <id>`"
+                    "dispatched {dispatched} sub-task(s) in the background — poll `divisi task list` / `divisi task inspect <id>`"
                 );
             } else {
                 render::print(response, false);
@@ -2624,7 +2624,7 @@ fn main() -> anyhow::Result<()> {
             )?;
             if background {
                 println!(
-                    "dispatched a {dispatched}-node graph in the background — poll `single task list` / `single task inspect <id>`"
+                    "dispatched a {dispatched}-node graph in the background — poll `divisi task list` / `divisi task inspect <id>`"
                 );
             } else {
                 render::print(response, false);
@@ -2788,7 +2788,7 @@ fn main() -> anyhow::Result<()> {
                 // The worktree dir and its branch both outlive the merge;
                 // nothing else points the user at the cleanup step.
                 if merged && !json {
-                    println!("\nThe worktree and its branch still exist — `single task cleanup {task_id}` removes them.");
+                    println!("\nThe worktree and its branch still exist — `divisi task cleanup {task_id}` removes them.");
                 }
             }
         },
@@ -2939,7 +2939,7 @@ fn main() -> anyhow::Result<()> {
         }
         Command::UninstallIntegrations { yes, real_home } => {
             if !yes {
-                anyhow::bail!("this removes SingleCLI-managed MCP entries from every agent's config; pass --yes to confirm");
+                anyhow::bail!("this removes divisi-managed MCP entries from every agent's config; pass --yes to confirm");
             }
             let response = client::send(&socket_path, Request::UninstallIntegrations { real_home })?;
             render::print(response, false);
@@ -3076,7 +3076,7 @@ fn main() -> anyhow::Result<()> {
                 },
             )?;
             render::print(response, json);
-            eprintln!("watch it iterate:  single goal status <goal_id>");
+            eprintln!("watch it iterate:  divisi goal status <goal_id>");
         }
         Command::Acp => unreachable!("handled before the socket-based dispatch above"),
         Command::Serve { .. } => unreachable!("handled before the socket-based dispatch above"),
@@ -3146,7 +3146,7 @@ fn run_claude_pretooluse_hook() -> anyhow::Result<()> {
     let output = match verdict {
         divisi_core::preferences::Verdict::Allow => serde_json::json!({}),
         divisi_core::preferences::Verdict::Deny => {
-            hook_deny_json("blocked by SingleCLI permission policy")
+            hook_deny_json("blocked by divisi permission policy")
         }
         divisi_core::preferences::Verdict::PendingApproval(id) => wait_for_approval(&conn, id)?,
     };
@@ -3155,7 +3155,7 @@ fn run_claude_pretooluse_hook() -> anyhow::Result<()> {
 }
 
 /// Polls the pending approval created for this call until a human
-/// resolves it via `single approval resolve` (from another terminal or
+/// resolves it via `divisi approval resolve` (from another terminal or
 /// the TUI) or our own margin under `HOOK_TIMEOUT_SECS` runs out —
 /// timing out denies (fail closed) rather than guessing.
 fn wait_for_approval(conn: &rusqlite::Connection, id: i64) -> anyhow::Result<serde_json::Value> {
@@ -3170,7 +3170,7 @@ fn wait_for_approval(conn: &rusqlite::Connection, id: i64) -> anyhow::Result<ser
         match approval.status {
             divisi_core::preferences::ApprovalStatus::Allowed => return Ok(serde_json::json!({})),
             divisi_core::preferences::ApprovalStatus::Denied => {
-                return Ok(hook_deny_json("denied via `single approval resolve`"))
+                return Ok(hook_deny_json("denied via `divisi approval resolve`"))
             }
             // Consumed by an unrelated evaluate_and_learn call for the
             // same resource before this poll observed the Allowed/Denied
@@ -3184,7 +3184,7 @@ fn wait_for_approval(conn: &rusqlite::Connection, id: i64) -> anyhow::Result<ser
             divisi_core::preferences::ApprovalStatus::Pending => {
                 if std::time::Instant::now() >= deadline {
                     return Ok(hook_deny_json(&format!(
-                        "timed out waiting for approval #{id} — run `single approval resolve {id} --allow`, then retry"
+                        "timed out waiting for approval #{id} — run `divisi approval resolve {id} --allow`, then retry"
                     )));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -3254,7 +3254,7 @@ fn run_update(channel: &str, check_only: bool, yes: bool) -> anyhow::Result<()> 
 
 /// Runs entirely in-process against `divisi_core::backup` — deliberately
 /// never sends a request over the daemon socket, since the passphrase
-/// here protects every live credential SingleCLI knows about (see that
+/// here protects every live credential divisi knows about (see that
 /// module's doc comment for the full reasoning). Prompts with
 /// `rpassword::prompt_password` (hidden input, not `--flag <value>`) so
 /// the passphrase never lands in shell history or `ps` output.
@@ -3270,7 +3270,7 @@ fn run_backup_command(dirs: &DivisiDirs, action: BackupCommand) -> anyhow::Resul
                 anyhow::bail!("passphrase cannot be empty");
             }
             eprintln!(
-                "note: if divisid is currently running, stop it first with `single daemon stop` \
+                "note: if divisid is currently running, stop it first with `divisi daemon stop` \
                  so state/divisi.db isn't captured mid-write."
             );
             let warnings = divisi_core::backup::export(
@@ -3337,7 +3337,7 @@ fn run_agent_login(
         anyhow::bail!("unknown agent: {agent}");
     };
     if !adapter.discover().detected {
-        anyhow::bail!("{agent} is not installed; run `single agent install {agent} --yes` first");
+        anyhow::bail!("{agent} is not installed; run `divisi agent install {agent} --yes` first");
     }
     let real_home = divisi_core::paths::real_home_dir()?;
 
@@ -3345,7 +3345,7 @@ fn run_agent_login(
     // session-global OS keyring — an isolated `$HOME` can't hold that
     // token, so logging in there just loses it. Log in against the real
     // environment, and don't try to snapshot a per-account credential file
-    // that doesn't exist. `single task run --agent <a>` already routes
+    // that doesn't exist. `divisi task run --agent <a>` already routes
     // these to the real home automatically (see task.rs `forced_real_home`).
     let real_required = divisi_core::builtin_registry()
         .into_iter()
@@ -3358,7 +3358,7 @@ fn run_agent_login(
         adapter.login(&real_home)?;
         println!("done.");
         if divisi_core::account::has_live_login(&real_home, agent) {
-            println!("{agent} is logged in. `single task run --agent {agent}` will use it.");
+            println!("{agent} is logged in. `divisi task run --agent {agent}` will use it.");
         } else {
             eprintln!("note: {agent} did not report a persisted login afterwards — re-run its own `{agent} login` / status command directly to check.");
         }
@@ -3375,7 +3375,7 @@ fn run_agent_login(
 
     auto_capture_after_login(dirs, socket_path, &home, agent);
 
-    println!("run `single doctor` or `single agent inspect {agent}` to confirm.");
+    println!("run `divisi doctor` or `divisi agent inspect {agent}` to confirm.");
     Ok(())
 }
 
@@ -3473,7 +3473,7 @@ fn parse_orchestrator(value: &str) -> anyhow::Result<divisi_protocol::Orchestrat
     }
 }
 
-/// One `--task <agent>:<description>` for `single orchestrate-parallel`.
+/// One `--task <agent>:<description>` for `divisi orchestrate-parallel`.
 /// Splits on the first `:` only, so a description can itself contain colons.
 fn parse_parallel_task(value: &str) -> anyhow::Result<divisi_protocol::ParallelTaskSpec> {
     let (agent, description) = value.split_once(':').ok_or_else(|| {
@@ -3490,7 +3490,7 @@ fn parse_parallel_task(value: &str) -> anyhow::Result<divisi_protocol::ParallelT
     })
 }
 
-/// After a successful `single agent login`, registers this login as a
+/// After a successful `divisi agent login`, registers this login as a
 /// named account automatically — otherwise it only appears in `single
 /// account list`/the TUI Accounts tab after a separate manual `single
 /// account capture` call, which is easy to forget and was the source of
@@ -3547,7 +3547,7 @@ fn auto_capture_after_login(
             // support) — running the same command by hand would hit the
             // identical wall, not a transient issue worth retrying.
             if !message.contains("isn't implemented for") {
-                eprintln!("      run `single account capture {agent} <name>` manually if you want this login saved as an account.");
+                eprintln!("      run `divisi account capture {agent} <name>` manually if you want this login saved as an account.");
             }
         }
         Err(e) => eprintln!("note: login succeeded, but auto-capturing an account failed: {e:#}"),
@@ -3588,7 +3588,7 @@ mod graph_task_parsing_tests {
     #[test]
     fn loop_subcommand_parses_flags_and_joins_the_goal() {
         let cli = Cli::try_parse_from([
-            "single", "loop", "make", "the", "tests", "pass",
+            "divisi", "loop", "make", "the", "tests", "pass",
             "--agent", "grok", "--max-iters", "10",
         ])
         .unwrap();
@@ -3604,7 +3604,7 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn loop_subcommand_defaults_max_iters_to_six() {
-        let cli = Cli::try_parse_from(["single", "loop", "do a thing"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "loop", "do a thing"]).unwrap();
         match cli.command {
             Some(Command::Loop { max_iters, agent, .. }) => {
                 assert_eq!(max_iters, 6);
@@ -3622,7 +3622,7 @@ mod graph_task_parsing_tests {
     #[test]
     fn orchestrate_parallel_collects_every_repeated_task_flag() {
         let cli = Cli::try_parse_from([
-            "single", "orchestrate-parallel",
+            "divisi", "orchestrate-parallel",
             "--task", "grok:say ONE",
             "--task", "opencode:say TWO",
             "--task", "single-nvidia:say THREE",
@@ -3647,7 +3647,7 @@ mod graph_task_parsing_tests {
     #[test]
     fn orchestrate_graph_parses_every_repeated_task_flag_into_nodes() {
         let cli = Cli::try_parse_from([
-            "single", "orchestrate-graph",
+            "divisi", "orchestrate-graph",
             "--task", "id=a,agent=grok,desc=say AAA",
             "--task", "id=b,agent=opencode,desc=say BBB,depends_on=a",
         ])
@@ -3662,11 +3662,11 @@ mod graph_task_parsing_tests {
         assert_eq!(nodes[1].depends_on, vec!["a"]);
     }
 
-    // --- E28 Part A: `single provider list-free`/`add-free`/`sync-pool`/`key-status` parse.
+    // --- E28 Part A: `divisi provider list-free`/`add-free`/`sync-pool`/`key-status` parse.
 
     #[test]
     fn list_free_parses() {
-        let cli = Cli::try_parse_from(["single", "provider", "list-free"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "list-free"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::ListFree { json } }) => assert!(!json),
             _ => panic!("expected Command::Provider(ListFree)"),
@@ -3675,7 +3675,7 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn add_free_parses_with_key_flag() {
-        let cli = Cli::try_parse_from(["single", "provider", "add-free", "groq", "--key", "gsk-abc"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "add-free", "groq", "--key", "gsk-abc"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::AddFree { id, key, key_id } }) => {
                 assert_eq!(id, "groq");
@@ -3688,7 +3688,7 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn add_free_parses_without_key_flag() {
-        let cli = Cli::try_parse_from(["single", "provider", "add-free", "groq"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "add-free", "groq"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::AddFree { id, key, key_id } }) => {
                 assert_eq!(id, "groq");
@@ -3701,7 +3701,7 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn add_free_parses_with_explicit_key_id_for_rotation() {
-        let cli = Cli::try_parse_from(["single", "provider", "add-free", "groq", "--key", "gsk-new", "--key-id", "key2"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "add-free", "groq", "--key", "gsk-new", "--key-id", "key2"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::AddFree { id, key, key_id } }) => {
                 assert_eq!(id, "groq");
@@ -3714,19 +3714,19 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn sync_pool_parses() {
-        let cli = Cli::try_parse_from(["single", "provider", "sync-pool"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "sync-pool"]).unwrap();
         assert!(matches!(cli.command, Some(Command::Provider { action: ProviderCommand::SyncPool })));
     }
 
     #[test]
     fn key_status_parses_optional_platform() {
-        let cli = Cli::try_parse_from(["single", "provider", "key-status"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "key-status"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::KeyStatus { platform, .. } }) => assert!(platform.is_none()),
             _ => panic!("expected Command::Provider(KeyStatus)"),
         }
 
-        let cli = Cli::try_parse_from(["single", "provider", "key-status", "--platform", "groq"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "key-status", "--platform", "groq"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::KeyStatus { platform, .. } }) => {
                 assert_eq!(platform.as_deref(), Some("groq"));
@@ -3737,13 +3737,13 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn validate_parses_optional_platform() {
-        let cli = Cli::try_parse_from(["single", "provider", "validate"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "validate"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::Validate { platform, .. } }) => assert!(platform.is_none()),
             _ => panic!("expected Command::Provider(Validate)"),
         }
 
-        let cli = Cli::try_parse_from(["single", "provider", "validate", "--platform", "groq"]).unwrap();
+        let cli = Cli::try_parse_from(["divisi", "provider", "validate", "--platform", "groq"]).unwrap();
         match cli.command {
             Some(Command::Provider { action: ProviderCommand::Validate { platform, .. } }) => {
                 assert_eq!(platform.as_deref(), Some("groq"));
@@ -3754,19 +3754,19 @@ mod graph_task_parsing_tests {
 
     #[test]
     fn notch_enable_disable_status_parse() {
-        let e = Cli::try_parse_from(["single", "notch", "enable"]).unwrap();
+        let e = Cli::try_parse_from(["divisi", "notch", "enable"]).unwrap();
         assert!(matches!(e.command, Some(Command::Notch { action: NotchCommand::Enable })));
-        let d = Cli::try_parse_from(["single", "notch", "disable"]).unwrap();
+        let d = Cli::try_parse_from(["divisi", "notch", "disable"]).unwrap();
         assert!(matches!(d.command, Some(Command::Notch { action: NotchCommand::Disable })));
-        let s = Cli::try_parse_from(["single", "notch", "status"]).unwrap();
+        let s = Cli::try_parse_from(["divisi", "notch", "status"]).unwrap();
         assert!(matches!(s.command, Some(Command::Notch { action: NotchCommand::Status })));
     }
 
     #[test]
     fn notch_show_hide_parse() {
-        let show = Cli::try_parse_from(["single", "notch", "show"]).unwrap();
+        let show = Cli::try_parse_from(["divisi", "notch", "show"]).unwrap();
         assert!(matches!(show.command, Some(Command::Notch { action: NotchCommand::Show })));
-        let hide = Cli::try_parse_from(["single", "notch", "hide"]).unwrap();
+        let hide = Cli::try_parse_from(["divisi", "notch", "hide"]).unwrap();
         assert!(matches!(hide.command, Some(Command::Notch { action: NotchCommand::Hide })));
     }
 }

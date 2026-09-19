@@ -126,7 +126,7 @@ fn recorded_sum_fallback(platform: &str, model: &str, key_id: &str, kind: UsageK
 }
 
 /// Sums recorded `Request` usage across every model for one
-/// `(platform, key_id)` since `since_ms` — used by `single provider
+/// `(platform, key_id)` since `since_ms` — used by `divisi provider
 /// key-status`'s headroom column, which has no single-model granularity
 /// to filter on (spec §17's model-selection seam: each provider is one
 /// nominal model this iteration).

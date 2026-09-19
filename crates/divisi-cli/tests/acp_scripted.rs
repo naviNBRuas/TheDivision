@@ -1,4 +1,4 @@
-//! Scripted ACP client for `single acp` (spec E27.02 §7 / §10 "messenger"
+//! Scripted ACP client for `divisi acp` (spec E27.02 §7 / §10 "messenger"
 //! row). `#[ignore]` by default: it drives the real binary and, for the
 //! goal path, needs a running `divisid` with at least one usable
 //! agent. The `initialize` / `session/new` / `/status` legs work against
@@ -25,7 +25,7 @@ impl AcpProc {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .expect("spawn single acp");
+            .expect("spawn divisi acp");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         Self { child, stdin, stdout }

@@ -117,7 +117,7 @@ pub struct Quirks {
     /// Bump a caller-supplied `max_tokens` up to at least this value.
     pub min_max_tokens: Option<u32>,
     /// A cheap endpoint to probe for key validation, distinct from an
-    /// actual chat completion (used by `single provider add-free`).
+    /// actual chat completion (used by `divisi provider add-free`).
     pub validate_url: Option<&'static str>,
     /// How long a successful validation stays trusted before re-probing.
     pub validate_cache: Option<Duration>,
@@ -872,7 +872,7 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
 ];
 
 /// One provider's `enabled`/`disabled_reason` state in `free-pool.toml`
-/// (`single provider sync-pool`'s output, E28 spec §5.3/§17).
+/// (`divisi provider sync-pool`'s output, E28 spec §5.3/§17).
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreePoolEntry {
     pub enabled: bool,

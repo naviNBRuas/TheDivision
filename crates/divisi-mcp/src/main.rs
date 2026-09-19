@@ -1,4 +1,4 @@
-//! `divisi-mcp`: exposes SingleCLI's own agent/task/orchestrate/memory/
+//! `divisi-mcp`: exposes divisi's own agent/task/orchestrate/memory/
 //! provider commands as MCP tools — see `server.rs`'s module doc.
 
 mod client;

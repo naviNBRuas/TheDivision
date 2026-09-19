@@ -9,9 +9,9 @@
   install/login details.
 - **Bug reports** — open a
   [GitHub Issue](https://github.com/naviNBRuas/SingleCLI/issues) with your
-  OS/arch, `single --version`, the command you ran, and the actual vs.
-  expected output. Run `single doctor` first and include its output —
-  it's usually the fastest way to see what SingleCLI thinks is installed.
+  OS/arch, `divisi --version`, the command you ran, and the actual vs.
+  expected output. Run `divisi doctor` first and include its output —
+  it's usually the fastest way to see what divisi thinks is installed.
 - **Feature requests / ideas** — open a GitHub Issue, or start a
   [Discussion](https://github.com/naviNBRuas/SingleCLI/discussions) if one
   is enabled on the repo.
@@ -20,7 +20,7 @@
 
 ## Response times
 
-SingleCLI is maintained by one person in their spare time — see
+divisi is maintained by one person in their spare time — see
 [GOVERNANCE.md](GOVERNANCE.md). There's no SLA; issues and PRs are
 triaged as time allows.
 
@@ -30,5 +30,5 @@ triaged as time allows.
   first — your question may already be answered.
 - If it's agent-specific (a sync failure, a login that won't complete),
   name the exact agent (`claude`, `codex`, `opencode`, ...) and include
-  `single agent list` output — SingleCLI's view of what's detected and
+  `divisi agent list` output — divisi's view of what's detected and
   configured.

@@ -58,7 +58,7 @@ pub fn stable_workspace_id(cwd: &Path) -> String {
 }
 
 /// Human-readable label for a workspace: the final path component of
-/// wherever it currently lives on disk, e.g. `"SingleCLI"` for
+/// wherever it currently lives on disk, e.g. `"divisi"` for
 /// `/home/.../Repositories/naviNBRuas/SingleCLI`. Falls back to the whole
 /// string for identities that aren't paths (a remote URL, a commit hash).
 pub fn workspace_display_name(path: &str) -> String {
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn workspace_display_name_takes_the_final_path_component() {
-        assert_eq!(workspace_display_name("/home/user/code/SingleCLI"), "SingleCLI");
-        assert_eq!(workspace_display_name("git@github.com:naviNBRuas/SingleCLI.git"), "SingleCLI.git");
+        assert_eq!(workspace_display_name("/home/user/code/divisi"), "divisi");
+        assert_eq!(workspace_display_name("git@github.com:naviNBRuas/divisi.git"), "divisi.git");
     }
 }

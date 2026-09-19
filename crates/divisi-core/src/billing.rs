@@ -1,4 +1,4 @@
-//! The billing-provider registry (Usage page): which providers SingleCLI
+//! The billing-provider registry (Usage page): which providers divisi
 //! knows how to pull real `$` usage data from, and how honest that
 //! support actually is — same discipline as `registry::builtin_registry`
 //! (every entry documents whether it's been confirmed against the real
@@ -25,7 +25,7 @@
 //!   honored exactly.
 //! - **xai**: **no aggregate usage/billing API exists at all** — xAI only
 //!   returns a `cost_in_usd_ticks` field on each individual chat
-//!   completion response. Capturing that would mean SingleCLI parsing
+//!   completion response. Capturing that would mean divisi parsing
 //!   response bodies from every request it proxies for grok, a completely
 //!   different mechanism than "call a billing endpoint" and out of scope
 //!   here. Marked `verified: false` / `unsupported: true` rather than

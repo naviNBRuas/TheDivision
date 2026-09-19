@@ -188,13 +188,13 @@ pub fn run_command_live(
 /// When a child's `$HOME` is overridden for isolation, its own view of
 /// `directories::BaseDirs` (and therefore `DivisiDirs::discover()`) would
 /// otherwise resolve `~/.config/divisi` under the *isolated* home instead
-/// of the real one. That breaks any nested `single` invocation the child
+/// of the real one. That breaks any nested `divisi` invocation the child
 /// makes on its own — notably Claude Code's `PreToolUse` hook, which shells
-/// back out to `single internal claude-pretooluse-hook` — silently
+/// back out to `divisi internal claude-pretooluse-hook` — silently
 /// splitting its permission rules/preferences/pending-approvals into a
-/// second, invisible store nobody's `single approval list` or the TUI ever
+/// second, invisible store nobody's `divisi approval list` or the TUI ever
 /// looks at. Pinning `DIVISI_CONFIG_DIR` to the resolving process's own
-/// (real) config root keeps every nested `single` call pointed at the same
+/// (real) config root keeps every nested `divisi` call pointed at the same
 /// central state regardless of what `$HOME` the child sees.
 /// Kills a timed-out or cancelled child and waits for it to actually exit.
 /// A plain `child.kill()` only signals the one PID we spawned directly —
@@ -359,8 +359,8 @@ mod tests {
     fn overriding_home_also_pins_single_config_dir_for_the_child() {
         // Regression test: a child spawned with $HOME overridden (agent
         // isolation) must still see the *real* DIVISI_CONFIG_DIR, or any
-        // nested `single` invocation it makes on its own (e.g. Claude
-        // Code's PreToolUse hook shelling back into `single internal
+        // nested `divisi` invocation it makes on its own (e.g. Claude
+        // Code's PreToolUse hook shelling back into `divisi internal
         // claude-pretooluse-hook`) would resolve config/state under the
         // isolated home instead of the real central one — splitting
         // pending approvals/preferences into a store nobody ever looks at.
@@ -415,7 +415,7 @@ mod tests {
     }
 
     /// Exercises the actual mechanism `divisi-runtime::task::run_background`
-    /// relies on for `single task cancel`: a long-running process is killed
+    /// relies on for `divisi task cancel`: a long-running process is killed
     /// early when its cancel flag flips, well before the (much longer)
     /// timeout would have — and the outcome is marked `cancelled`, not
     /// `timed_out`, so callers can tell the two apart.

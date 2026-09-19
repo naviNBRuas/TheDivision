@@ -1,4 +1,4 @@
-//! Routes an open document's URI to the SingleCLI LSP registry entry that
+//! Routes an open document's URI to the divisi LSP registry entry that
 //! should handle it, and manages the spawned backend processes.
 //!
 //! Claude Code spawns exactly one `divisi-lsp` process for the whole plugin
@@ -61,9 +61,9 @@ impl Router {
                 } else {
                     &mut by_file_name
                 };
-                // First registered preset for a given key wins; SingleCLI's
+                // First registered preset for a given key wins; divisi's
                 // own registry is the source of truth for which preset is
-                // "the" handler for an extension, same as `single lsp list`
+                // "the" handler for an extension, same as `divisi lsp list`
                 // shows only one row per extension in practice.
                 table.entry(ext.to_ascii_lowercase()).or_insert_with(|| spec.clone());
             }
@@ -106,7 +106,7 @@ fn extension_of(uri: &str) -> Option<String> {
 }
 
 pub fn load_registry() -> Result<Vec<LspServerSpec>> {
-    let dirs = divisi_core::DivisiDirs::discover().context("resolving SingleCLI config directory")?;
+    let dirs = divisi_core::DivisiDirs::discover().context("resolving divisi config directory")?;
     divisi_core::lsp::load(&dirs.lsp_registry_file())
 }
 

@@ -13,7 +13,7 @@
 //! enabled by default; servers that need a secret (`github`) or are more
 //! invasive (`filesystem` needs explicit directory args to be safe,
 //! `playwright`/`chrome-devtools` drive a real browser) ship disabled —
-//! present in the registry so `single mcp enable <name>` and provider/
+//! present in the registry so `divisi mcp enable <name>` and provider/
 //! secret wiring reach them, but not auto-enabled.
 
 use anyhow::{Context, Result};
@@ -63,7 +63,7 @@ pub fn default_servers() -> Vec<McpServerSpec> {
             command: "npx".into(),
             // No directories configured yet — this arg list is a real,
             // functioning invocation but scoped to nothing until the user
-            // edits it (`single mcp add filesystem npx -y
+            // edits it (`divisi mcp add filesystem npx -y
             // @modelcontextprotocol/server-filesystem /path/to/allow`),
             // which is why it ships disabled rather than auto-granting
             // filesystem access to every synced agent.
@@ -110,8 +110,8 @@ pub fn default_servers() -> Vec<McpServerSpec> {
 /// ship disabled: each either needs a secret (`brave-search`, `slack`,
 /// `postgres` — connection string) or drives something invasive
 /// (`puppeteer` — a real browser, like `playwright` above), so opting in
-/// via `single mcp add-preset <name>` is a deliberate choice, not
-/// something SingleCLI turns on for you.
+/// via `divisi mcp add-preset <name>` is a deliberate choice, not
+/// something divisi turns on for you.
 pub struct McpPreset {
     pub name: &'static str,
     pub command: &'static str,
@@ -119,7 +119,7 @@ pub struct McpPreset {
     /// Env var names this server needs a secret value for, e.g.
     /// `CLOUDFLARE_API_TOKEN`. `to_spec()` pre-wires each into
     /// `secret_env` under the `mcp:<preset-name>:<VAR>` key convention —
-    /// the value itself still needs `single secret set mcp:<preset-name>:<VAR> <value>`
+    /// the value itself still needs `divisi secret set mcp:<preset-name>:<VAR> <value>`
     /// before the server can actually run.
     pub secret_env_vars: &'static [&'static str],
 }
@@ -156,7 +156,7 @@ pub fn presets() -> Vec<McpPreset> {
             secret_env_vars: &["CLOUDFLARE_API_TOKEN"],
         },
         // Not an npm package like the others — a real companion mode of
-        // SingleCLI's own divisi-gateway binary (crates/divisi-gateway/src/distrobox.rs),
+        // divisi's own divisi-gateway binary (crates/divisi-gateway/src/distrobox.rs),
         // exposing run_in_kali/run_in_blackarch by shelling into those
         // distrobox containers. Requires distrobox itself, and containers
         // named "kali"/"blackarch" to already exist (`distrobox list`).
@@ -182,7 +182,7 @@ pub fn presets() -> Vec<McpPreset> {
         // positional CLI arg rather than an env var (redis, sqlite,
         // twilio) — these ship with a placeholder arg and no
         // secret_env_vars, same pattern as the `filesystem` default above:
-        // present so `single mcp add-preset` reaches them, but requiring a
+        // present so `divisi mcp add-preset` reaches them, but requiring a
         // manual edit before they'll actually run.
 
         // Dev tools / project management
@@ -203,7 +203,7 @@ pub fn presets() -> Vec<McpPreset> {
         McpPreset { name: "mysql", command: "npx", args: &["-y", "@benborla29/mcp-server-mysql"], secret_env_vars: &["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASS", "MYSQL_DB"] }, // confirmed
         // Real, functioning invocation but no connection URL configured —
         // ships disabled like `filesystem` above; edit the arg before
-        // enabling (`single mcp add-preset redis` then edit mcp.toml).
+        // enabling (`divisi mcp add-preset redis` then edit mcp.toml).
         McpPreset { name: "redis", command: "npx", args: &["-y", "@modelcontextprotocol/server-redis", "redis://localhost:6379"], secret_env_vars: &[] },
         McpPreset { name: "qdrant-server", command: "uvx", args: &["mcp-server-qdrant"], secret_env_vars: &["QDRANT_URL", "QDRANT_API_KEY"] }, // confirmed
         McpPreset { name: "chroma", command: "uvx", args: &["chroma-mcp"], secret_env_vars: &[] }, // local mode by default, no secret required
@@ -379,13 +379,13 @@ struct GatewayModeFile {
 /// The `divisi-gateway` server spec `install_integrations` syncs into every
 /// agent when gateway mode is on — one entry instead of every enabled
 /// server in the registry, since `divisi-gateway` itself dynamically proxies
-/// to them (see `crates/divisi-gateway`). Resolved via `PATH`, same as `single`
+/// to them (see `crates/divisi-gateway`). Resolved via `PATH`, same as `divisi`
 /// itself, since both binaries are installed side by side.
 pub fn gateway_server_spec() -> McpServerSpec {
     McpServerSpec { name: "divisi-gateway".into(), command: "divisi-gateway".into(), args: vec![], env: BTreeMap::new(), secret_env: BTreeMap::new(), enabled: true }
 }
 
-/// The fixed spec for `divisi-mcp` — SingleCLI's own self-exposing MCP
+/// The fixed spec for `divisi-mcp` — divisi's own self-exposing MCP
 /// server (task/orchestrate/agent/memory/provider tools). Unlike
 /// `gateway_server_spec`, this isn't conditional on gateway mode: it's
 /// always synced, since it isn't one of the registry servers gateway mode

@@ -1,4 +1,4 @@
-//! The headless SingleCLI runtime daemon. `divisi-cli` and `divisi-tui` are
+//! The headless divisi runtime daemon. `divisi-cli` and `divisi-tui` are
 //! both just clients of this over the Unix socket — per spec section 3,
 //! the runtime must be headless and the TUI is only one client.
 

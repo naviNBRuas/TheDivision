@@ -56,7 +56,7 @@ pub fn session_key(explicit: Option<&str>, first_user_message: &str) -> String {
 /// message types once the real one landed.
 pub use crate::pool::client::ChatMessage;
 
-const HANDOFF_MARKER: &str = "SingleCLI context handoff:";
+const HANDOFF_MARKER: &str = "divisi context handoff:";
 
 /// Prepends the spec §6.7 handoff system message when — and only when —
 /// an entry exists for `session_key`, the provider/model actually

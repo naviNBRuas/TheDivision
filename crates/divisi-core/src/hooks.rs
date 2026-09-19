@@ -1,7 +1,7 @@
 //! Per-agent opt-in mid-run permission interception — an agent's own
-//! process pausing mid-task to ask SingleCLI (and, when undecided, the
+//! process pausing mid-task to ask divisi (and, when undecided, the
 //! user) before it uses a tool, as opposed to `divisi-gateway`'s gateway,
-//! which only gates tool calls SingleCLI itself routes. Stored at
+//! which only gates tool calls divisi itself routes. Stored at
 //! `~/.config/divisi/hooks.toml`, same shape as `docker.rs`'s settings.
 //!
 //! Only `claude` is actually wired up (Claude Code's `PreToolUse` hook —

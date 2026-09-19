@@ -3,7 +3,7 @@
 //! Instead of registering 50+ MCP servers into an agent's native config
 //! (burning context on every session), an agent registers only this one
 //! binary. It exposes `list_available_mcp_tools`/`invoke_mcp` and lazily
-//! proxies to whichever real server, from SingleCLI's `mcp.toml` registry,
+//! proxies to whichever real server, from divisi's `mcp.toml` registry,
 //! a call actually needs — see `gateway.rs` for the mechanics.
 
 mod distrobox;

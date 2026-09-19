@@ -113,7 +113,7 @@ impl SelfHealConfig {
         }
     }
 
-    /// `single self-heal disable <category>` — persists the toggle.
+    /// `divisi self-heal disable <category>` — persists the toggle.
     pub fn disable_category(dirs: &DivisiDirs, category: Category) -> Result<()> {
         let mut cfg = Self::load(dirs);
         match category {

@@ -1,9 +1,9 @@
 //! Generates the `.claude-plugin/marketplace.json` entry for `divisi-lsp`
-//! from SingleCLI's own LSP registry — the same registry `divisi-lsp`'s
+//! from divisi's own LSP registry — the same registry `divisi-lsp`'s
 //! `proxy::Router` reads at runtime, so the manifest's `extensionToLanguage`
 //! map and the proxy's actual routing table can never drift apart as long
-//! as this generator is re-run after registry changes (`single lsp add`,
-//! `single lsp enable`, ...) — see `single lsp --help`'s note on
+//! as this generator is re-run after registry changes (`divisi lsp add`,
+//! `divisi lsp enable`, ...) — see `divisi lsp --help`'s note on
 //! `install-integrations` needing a re-run after registry edits, same idea.
 //!
 //! Only dot-extension entries make it into the generated map — Claude
@@ -41,12 +41,12 @@ pub fn generate(specs: &[LspServerSpec]) -> Value {
     json!({
         "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
         "name": "single-lsp-marketplace",
-        "description": "Dynamic LSP proxy for SingleCLI's unified language server registry.",
+        "description": "Dynamic LSP proxy for divisi's unified language server registry.",
         "owner": { "name": "Navin B. Ruas", "email": "founder@nbr.company" },
         "plugins": [
             {
                 "name": "divisi-lsp",
-                "description": "Dynamically proxies to whichever real language server SingleCLI's registry maps your open file's extension to.",
+                "description": "Dynamically proxies to whichever real language server divisi's registry maps your open file's extension to.",
                 "version": "0.1.0",
                 "author": { "name": "Navin B. Ruas", "email": "founder@nbr.company" },
                 "source": "./plugins/divisi-lsp",
@@ -75,7 +75,7 @@ pub fn write_to(output_dir: &Path, specs: &[LspServerSpec]) -> Result<()> {
     std::fs::create_dir_all(&plugin_dir).with_context(|| format!("creating {}", plugin_dir.display()))?;
     std::fs::write(
         plugin_dir.join("README.md"),
-        "# divisi-lsp\n\nDynamic LSP proxy — see SingleCLI's docs/superpowers/specs/2026-08-24-claude-code-singlecli-integration-design.md.\n",
+        "# divisi-lsp\n\nDynamic LSP proxy — see divisi's docs/superpowers/specs/2026-08-24-claude-code-singlecli-integration-design.md.\n",
     )?;
     Ok(())
 }

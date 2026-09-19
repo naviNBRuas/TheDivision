@@ -1,4 +1,4 @@
-//! Control socket: `single notch show|hide` (and `disable`'s
+//! Control socket: `divisi notch show|hide` (and `disable`'s
 //! quit-before-SIGTERM preference) talk to the running HUD over
 //! `notch.sock` with one JSON object per line -- `{"cmd":"show"}` /
 //! `{"cmd":"hide"}` / `{"cmd":"quit"}`. See plan Phase 5 Task 11.

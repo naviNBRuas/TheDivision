@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SingleCLI notch HUD -- launchd user agent (macOS).
+  divisi notch HUD -- launchd user agent (macOS).
 
   Install:
     cp notch.launchd.plist ~/Library/LaunchAgents/company.nbr.single-notch.plist
@@ -12,10 +12,10 @@
 
   This plist starts the *process* at login regardless of `notch.toml`'s
   `enabled` flag -- the HUD itself still checks that flag and stays
-  collapsed/inert if you haven't run `single notch enable` at least
+  collapsed/inert if you haven't run `divisi notch enable` at least
   once. Only install this file if you actually want the HUD to persist
   across logout/login; day-to-day toggling should go through
-  `single notch enable`/`disable` instead.
+  `divisi notch enable`/`disable` instead.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

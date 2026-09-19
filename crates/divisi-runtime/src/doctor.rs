@@ -57,7 +57,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
                     .unwrap_or_default()
             )
         } else if let Some(install) = &agent.bootstrap_install {
-            format!("not installed; `single setup` would run: {}", install.command)
+            format!("not installed; `divisi setup` would run: {}", install.command)
         } else {
             "not installed; no verified install method".into()
         };
@@ -76,15 +76,15 @@ pub fn run(ctx: &Context) -> DoctorReport {
                     name: format!("agent: {} auth", agent.name),
                     status: CheckStatus::Skipped,
                     detail: if adapter.login_supported() {
-                        format!("not logged in — run `single agent login {}`", agent.name)
+                        format!("not logged in — run `divisi agent login {}`", agent.name)
                     } else {
-                        // `single agent login` would just error here — this
+                        // `divisi agent login` would just error here — this
                         // agent's auth state is detectable (support() says
                         // so) but no real login command is wired up for it
                         // (e.g. agy: no auth/login subcommand exists at
                         // all in `agy --help`). Don't point at a command
                         // that doesn't work.
-                        format!("not logged in — no `single agent login {}` support yet; run {}'s own login/auth command directly", agent.name, agent.name)
+                        format!("not logged in — no `divisi agent login {}` support yet; run {}'s own login/auth command directly", agent.name, agent.name)
                     },
                 },
                 AuthState::Unsupported => DoctorCheck {
@@ -98,9 +98,9 @@ pub fn run(ctx: &Context) -> DoctorReport {
     }
 
     for (binary, purpose) in [
-        ("pdftotext", "PDF text extraction for `single doc ingest` (poppler-utils)"),
-        ("pdftoppm", "scanned-PDF rasterization for `single doc ingest` (poppler-utils)"),
-        ("tesseract", "OCR for scanned PDFs/images for `single doc ingest`"),
+        ("pdftotext", "PDF text extraction for `divisi doc ingest` (poppler-utils)"),
+        ("pdftoppm", "scanned-PDF rasterization for `divisi doc ingest` (poppler-utils)"),
+        ("tesseract", "OCR for scanned PDFs/images for `divisi doc ingest`"),
     ] {
         let present = std::process::Command::new("which").arg(binary).output().map(|o| o.status.success()).unwrap_or(false);
         checks.push(DoctorCheck {
@@ -117,7 +117,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
         detail: if docker_present {
             "found".into()
         } else {
-            "not installed — needed only for agents/accounts with `single agent docker enable`".into()
+            "not installed — needed only for agents/accounts with `divisi agent docker enable`".into()
         },
     });
     if docker_present {
@@ -152,7 +152,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
         None => checks.push(DoctorCheck {
             name: "vector store (qdrant)".into(),
             status: CheckStatus::Skipped,
-            detail: "not configured — set DIVISI_QDRANT_URL to enable `single memory search --semantic`".into(),
+            detail: "not configured — set DIVISI_QDRANT_URL to enable `divisi memory search --semantic`".into(),
         }),
     }
     let embeddings_configured = crate::embeddings::is_configured();
@@ -162,7 +162,7 @@ pub fn run(ctx: &Context) -> DoctorReport {
         detail: if embeddings_configured {
             "configured".into()
         } else {
-            "not configured — `single secret set embeddings:api_key <key>`; semantic search falls back to substring search until then".into()
+            "not configured — `divisi secret set embeddings:api_key <key>`; semantic search falls back to substring search until then".into()
         },
     });
 

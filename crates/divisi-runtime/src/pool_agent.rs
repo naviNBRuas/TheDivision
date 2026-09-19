@@ -120,7 +120,7 @@ pub fn execute(
                 bandit::record_outcome(conn, &platform, &model, &key_id, true, resp.latency_ms, resp.usage_tokens.unwrap_or(0), now)?;
                 // Live-verification finding: a real successful dispatch
                 // never updated `pool_provider_keys` at all, so
-                // `single provider key-status` kept reporting "keyed,
+                // `divisi provider key-status` kept reporting "keyed,
                 // unvalidated" forever for a key that had already served
                 // real, successful requests -- only the one-time
                 // best-effort probe at `add-free` time ever called
@@ -204,7 +204,7 @@ pub fn candidates_from_keys(conn: &Connection, require_structured_output: bool) 
 }
 
 /// One process-wide handoff store, since a session's "last provider/model"
-/// state needs to persist across separate `single task run` invocations
+/// state needs to persist across separate `divisi task run` invocations
 /// within the daemon's lifetime, not just within one `execute` call.
 static HANDOFF_STORE: std::sync::OnceLock<HandoffStore> = std::sync::OnceLock::new();
 
@@ -438,7 +438,7 @@ mod tests {
         let candidates = vec![("groq".to_string(), "groq".to_string(), "default".to_string()), ("cerebras".to_string(), "cerebras".to_string(), "default".to_string())];
         let _ = execute(&conn, "hi", &bandit::Strategy::Priority, &candidates, Some("sess1"), &handoff_store, &always_resolve, &dispatch).unwrap();
 
-        assert!(seen_content.borrow().as_ref().unwrap().starts_with("SingleCLI context handoff:"));
+        assert!(seen_content.borrow().as_ref().unwrap().starts_with("divisi context handoff:"));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 //! `sessions` table: one conversation thread (spec §3.1). one per Zed panel
-//! thread; also created by `single session new`. the transcript is derived
+//! thread; also created by `divisi session new`. the transcript is derived
 //! from `coordinator_events` filtered by session, not stored here.
 
 use anyhow::Result;
@@ -81,7 +81,7 @@ pub fn close(conn: &Connection, id: &str) -> Result<()> {
 
 /// sets the session title only if it is still empty — called by
 /// `goal::create` with the first goal's truncated text, so a session shows
-/// something useful in `single session list` without a title ever being
+/// something useful in `divisi session list` without a title ever being
 /// asked for explicitly.
 pub fn set_title_if_empty(conn: &Connection, id: &str, title: &str) -> Result<()> {
     conn.execute(

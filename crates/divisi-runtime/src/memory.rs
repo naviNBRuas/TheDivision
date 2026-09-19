@@ -8,9 +8,9 @@
 //! future work once a provider abstraction exists (Phase 6). This is
 //! honestly a smaller capability than the full spec describes, not a stub
 //! pretending otherwise: `search` is substring matching, documented as such
-//! in `single memory search`'s output.
+//! in `divisi memory search`'s output.
 //!
-//! Nothing in SingleCLI automatically promotes agent output into this store
+//! Nothing in divisi automatically promotes agent output into this store
 //! yet — there is no orchestrator calling it (Phase 4). Every write is
 //! explicit and tagged with the `MemorySource` the caller claims, exactly
 //! as given; this module does not itself decide what's trustworthy.

@@ -54,10 +54,10 @@
 //! contents — only profile names and timestamps.
 //!
 //! **No real-home fallback.** `is_authenticated` and `capture` read only
-//! SingleCLI's isolated `home` (`~/.config/divisi/homes/<agent>/`) — the
+//! divisi's isolated `home` (`~/.config/divisi/homes/<agent>/`) — the
 //! real, ambient `$HOME` is never consulted for auth detection or
 //! snapshotting. A login done directly against the vendor CLI, outside
-//! `single agent login`, is invisible to SingleCLI until you log in again
+//! `divisi agent login`, is invisible to divisi until you log in again
 //! inside the isolated home. `agent_home::ensure_bootstrapped` still
 //! seeds a brand-new isolated home from the real one once, but strips out
 //! credential files while doing so — see that module's doc comment.
@@ -94,7 +94,7 @@ fn support(agent: &str) -> Result<bool> {
         // `login()`; this module's named multi-account capture/switch
         // just hasn't had its credential-file location verified for it
         // yet (see this file's module docs for the ones that have).
-        other => bail!("named multi-account capture/switching isn't implemented for {other} yet (only claude, codex, cursor, copilot, grok, codebuff, and agy are supported so far) — the login itself still worked fine, this only affects `single account capture/use`"),
+        other => bail!("named multi-account capture/switching isn't implemented for {other} yet (only claude, codex, cursor, copilot, grok, codebuff, and agy are supported so far) — the login itself still worked fine, this only affects `divisi account capture/use`"),
     })
 }
 
@@ -268,10 +268,10 @@ pub fn has_live_login(home: &Path, agent: &str) -> bool {
 }
 
 /// Auto-detected "is anything logged in right now" for `agent`, checked
-/// **only** against SingleCLI's isolated `home` — the real, ambient
+/// **only** against divisi's isolated `home` — the real, ambient
 /// `$HOME` is never consulted here. A login that only exists in the real
 /// home (e.g. the user ran the vendor CLI directly instead of `single
-/// agent login`) is invisible to SingleCLI by design; see `capture`'s doc
+/// agent login`) is invisible to divisi by design; see `capture`'s doc
 /// comment for the same rule applied to snapshotting. See `AuthState`
 /// docs for how this differs from the manually-set `AccountStatus` on a
 /// captured profile.
@@ -287,7 +287,7 @@ pub fn is_authenticated(home: &Path, agent: &str) -> AuthState {
 }
 
 /// Best-effort human-readable identity for the currently-live login under
-/// `home`, used to auto-label an account right after `single agent login`.
+/// `home`, used to auto-label an account right after `divisi agent login`.
 /// `None` when the agent's credential format has no identity field
 /// (e.g. codex's `auth.json`) or nothing is logged in yet — callers should
 /// fall back to a generated name in that case.
@@ -344,7 +344,7 @@ fn backup(path: &Path) -> Result<Option<PathBuf>> {
 }
 
 /// Captures the agent's currently-live login state into a new named
-/// profile. Only ever reads from SingleCLI's isolated `home` — the real,
+/// profile. Only ever reads from divisi's isolated `home` — the real,
 /// ambient `$HOME` is never consulted, so a login done outside `single
 /// agent login` (directly against the vendor CLI) is invisible here.
 /// Fails if the isolated home has no live login.
@@ -355,7 +355,7 @@ pub fn capture(accounts_root: &Path, home: &Path, agent: &str, name: &str, label
 
     if !has_live_login(home, agent) {
         bail!(
-            "{agent} is not currently logged in inside SingleCLI's isolated home ({}) — run `single agent login {agent}` first",
+            "{agent} is not currently logged in inside divisi's isolated home ({}) — run `divisi agent login {agent}` first",
             home.display()
         );
     }
@@ -424,7 +424,7 @@ pub fn capture(accounts_root: &Path, home: &Path, agent: &str, name: &str, label
 }
 
 /// Sets the manually-tracked usability status of a captured account (see
-/// `AccountStatus` docs — SingleCLI never auto-detects this).
+/// `AccountStatus` docs — divisi never auto-detects this).
 pub fn set_status(accounts_root: &Path, agent: &str, name: &str, status: AccountStatus) -> Result<()> {
     let dir = profile_dir(accounts_root, agent, name);
     let meta_path = dir.join("meta.json");
@@ -904,8 +904,8 @@ mod tests {
     fn capture_ignores_real_home_and_fails_when_isolated_home_has_no_login() {
         // Isolated home exists but has never had claude credentials written
         // into it (the scenario when a user ran `claude` directly instead
-        // of `single agent login claude`). Real home has a live login, but
-        // that must not matter — SingleCLI never reads the real home here.
+        // of `divisi agent login claude`). Real home has a live login, but
+        // that must not matter — divisi never reads the real home here.
         let isolated_home = tempfile::tempdir().unwrap();
         let real_home = setup_fake_home();
         let accounts_root = tempfile::tempdir().unwrap();
@@ -914,7 +914,7 @@ mod tests {
         assert!(has_live_login(real_home.path(), "claude"));
 
         let err = capture(accounts_root.path(), isolated_home.path(), "claude", "work", None).unwrap_err();
-        assert!(err.to_string().contains("single agent login claude"));
+        assert!(err.to_string().contains("divisi agent login claude"));
 
         // The isolated home must remain untouched — no sync from real_home.
         assert!(!has_live_login(isolated_home.path(), "claude"));

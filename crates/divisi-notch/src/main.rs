@@ -1,7 +1,7 @@
 //! `divisi-notch` binary entry point.
 //!
 //! `--stub` / `DIVISI_NOTCH_STUB=1` writes a pidfile and blocks until
-//! SIGTERM, so `single notch enable|disable|status` (see
+//! SIGTERM, so `divisi notch enable|disable|status` (see
 //! `divisi-cli::notch_proc`) has a real companion process to spawn,
 //! detect, and stop even while the real UI is still being built.
 //! Otherwise runs the real (if still collapsed-pill-only) notch window,
@@ -99,7 +99,7 @@ fn run_ui_with_fallback() -> Result<()> {
             run_plain_ui().map_err(|e| anyhow::anyhow!("{e}"))
         }
         Err(_) => Err(anyhow::anyhow!(
-            "this compositor has no wlr-layer-shell (GNOME/KDE), so the notch cannot be drawn as a real overlay from a client process. On GNOME use the shell extension (`single notch enable` installs it); pass --window for an ordinary window"
+            "this compositor has no wlr-layer-shell (GNOME/KDE), so the notch cannot be drawn as a real overlay from a client process. On GNOME use the shell extension (`divisi notch enable` installs it); pass --window for an ordinary window"
         )),
     }
 }
@@ -304,7 +304,7 @@ fn subscription(state: &NotchApp) -> Subscription<Message> {
 fn run_plain_ui() -> iced::Result {
     iced::application(NotchApp::default, update, view)
         .subscription(subscription)
-        .title("SingleCLI Notch")
+        .title("divisi Notch")
         .run()
 }
 

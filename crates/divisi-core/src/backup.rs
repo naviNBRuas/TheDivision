@@ -3,7 +3,7 @@
 //! archive that can be moved to another machine.
 //!
 //! Deliberately **not** built as a `Request`/`ResponseData` round trip
-//! through `divisi-runtime` the way every other SingleCLI feature is —
+//! through `divisi-runtime` the way every other divisi feature is —
 //! the passphrase that protects live OAuth tokens and API keys must never
 //! cross the daemon's Unix socket or land in its event log. This module
 //! runs entirely in-process instead, callable directly by both
@@ -16,7 +16,7 @@
 //!
 //! Archive format: a tar of every real file under `root()`, plus one
 //! synthetic entry (`SECRETS_MANIFEST_NAME`) holding every OS-keychain
-//! secret as TOML — chosen as a name no real SingleCLI config file could
+//! secret as TOML — chosen as a name no real divisi config file could
 //! ever collide with — encrypted as a whole with `age`'s passphrase
 //! (scrypt) mode.
 //!
@@ -24,7 +24,7 @@
 //! and writing to `state/divisi.db` during an export, the snapshot could
 //! catch it mid-write (SQLite's `-wal`/`-shm` companion files are backed
 //! up as plain files, not through a consistent checkpoint). Callers
-//! (`single backup export`, the TUI's Backup tab) should tell the user to
+//! (`divisi backup export`, the TUI's Backup tab) should tell the user to
 //! stop the daemon first — enforcing that is a UX concern for those
 //! call sites, not this engine.
 
@@ -144,7 +144,7 @@ fn add_dir_recursive<W: Write>(builder: &mut tar::Builder<W>, base: &Path, dir: 
 
 /// Decrypts `src_path` with `passphrase`, unpacks the tar, and writes
 /// every file back under `dirs.root()` (through the same
-/// backup-before-overwrite discipline every other SingleCLI config writer
+/// backup-before-overwrite discipline every other divisi config writer
 /// uses) and every secret back into the OS keychain. `dry_run` reports
 /// what would happen without writing anything.
 pub fn import(dirs: &DivisiDirs, src_path: &Path, passphrase: &SecretString, dry_run: bool) -> Result<BackupReport> {

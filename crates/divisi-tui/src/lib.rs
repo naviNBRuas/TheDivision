@@ -10,7 +10,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use divisi_core::DivisiDirs;
 use std::time::Duration;
 
-/// Runs the SingleCLI dashboard: a tabbed control center over the runtime
+/// Runs the divisi dashboard: a tabbed control center over the runtime
 /// socket (Agents/Tasks/MCP/Providers/Accounts/Memory/Help), including
 /// interactive in-TUI agent-install and provider-add flows.
 pub fn run(dirs: DivisiDirs) -> Result<()> {

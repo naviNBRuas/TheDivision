@@ -150,7 +150,7 @@ fn coordinator_tick_loop(registry: crate::registry::TaskRegistry) {
 /// Guards `self_heal::run_pass` against overlapping with itself — a slow
 /// pass (an agent install genuinely can take a while) must not stack a
 /// second one on top when the interval elapses again before the first
-/// finishes. `single doctor --fix` (`handlers.rs`) doesn't share this
+/// finishes. `divisi doctor --fix` (`handlers.rs`) doesn't share this
 /// guard (it has its own `DoctorGuard`), so the two can still race in
 /// theory; `run_pass`'s own steps are individually `catch_unwind`-safe
 /// and idempotent (a repair either has nothing to do or finds the same

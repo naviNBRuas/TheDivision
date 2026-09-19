@@ -33,7 +33,7 @@ pub struct SecretTool;
 impl SecretStore for SecretTool {
     fn set(&self, name: &str, value: &str) -> Result<()> {
         let mut child = Command::new("secret-tool")
-            .args(["store", "--label", &format!("SingleCLI secret: {name}"), "service", SERVICE, "name", name])
+            .args(["store", "--label", &format!("divisi secret: {name}"), "service", SERVICE, "name", name])
             .stdin(Stdio::piped())
             .spawn()
             .context("spawning secret-tool store (is libsecret-tools installed?)")?;

@@ -1,4 +1,4 @@
-# SingleCLI
+# divisi
 
 A unified control plane and coordinator for heterogeneous AI coding-agent
 CLIs — 24 built-in agents (Claude Code, Codex, OpenCode, Antigravity,
@@ -8,12 +8,12 @@ with no recompilation. Configure MCP servers, provider keys, and accounts
 once; every supported agent gets the same configuration synced into its
 own native format.
 
-Beyond syncing config, SingleCLI's **Coordinator** turns a single goal
+Beyond syncing config, divisi's **Coordinator** turns a single goal
 ("add tests for the parser and fix whatever they find") into a real
 dependency graph of tasks, dispatches each node to whichever real agent
 or model fits, retries and reroutes around rate limits and cooldowns
 automatically, and reports back — through the CLI, the TUI's own **Goals**
-tab, or Zed's agent panel via a native ACP bridge (`single acp`). When
+tab, or Zed's agent panel via a native ACP bridge (`divisi acp`). When
 none of your logged-in agent CLIs have capacity, the **free-provider
 pool** (44 vendored providers, Thompson-sampling bandit routing, real
 per-key cooldown/headroom tracking) dispatches straight over HTTP instead
@@ -32,14 +32,14 @@ of shelling a CLI at all — no agent login required to keep working.
 
 Every one of these CLIs maintains its own independent config for the same
 underlying capabilities — MCP servers, provider API keys, login
-credentials — each in a different file/format. SingleCLI keeps one
+credentials — each in a different file/format. divisi keeps one
 unified registry for each and syncs it out to whichever CLIs are
 installed, installs the CLIs themselves on a machine that has none of
 them yet, and lets you add a brand-new agent CLI to the whole system by
 writing one TOML file, no recompilation required.
 
-SingleCLI also doesn't touch your real, ambient `~/.claude`, `~/.codex`,
-etc. on every run. Each agent gets its own SingleCLI-managed home under
+divisi also doesn't touch your real, ambient `~/.claude`, `~/.codex`,
+etc. on every run. Each agent gets its own divisi-managed home under
 `~/.config/divisi/homes/<agent>/`, bootstrapped from the real one exactly
 once; every `task run`, `install-integrations`, `plugin sync`, `provider
 sync`, and `account capture`/`use` after that operates only inside that
@@ -53,7 +53,7 @@ isolated copy — see `docs/architecture.md`'s "Isolation" section.
 curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.sh | sh
 ```
 
-Downloads the prebuilt `single` and `divisid` binaries for your
+Downloads the prebuilt `divisi` and `divisid` binaries for your
 platform from the latest [release](https://github.com/naviNBRuas/SingleCLI/releases)
 to `~/.local/bin` (override with `DIVISI_INSTALL_DIR`). See
 [`install.sh`](install.sh) — it's a plain shell script, read it before
@@ -65,15 +65,15 @@ piping it into `sh` if you want to know exactly what it does.
 cargo build --release --workspace
 ```
 
-Binaries land in `target/release/`: `single` (the CLI/TUI) and
+Binaries land in `target/release/`: `divisi` (the CLI/TUI) and
 `divisid` (the headless runtime daemon). Put both on `$PATH`.
 
 ## Quickstart
 
 ```bash
-single doctor          # what's installed, what SingleCLI can manage
+single doctor          # what's installed, what divisi can manage
 single agent list      # the agent registry, live detection status
-single agent login claude   # log in to claude's SingleCLI-managed home (real terminal, real OAuth)
+single agent login claude   # log in to claude's divisi-managed home (real terminal, real OAuth)
 single agent login codex    # same for codex, opencode, or perplexity
 single mcp list         # the unified MCP registry
 single setup --yes       # install missing agent CLIs + sync config
@@ -110,7 +110,7 @@ single task run "..." --agent claude --account work             # run against an
 single skill install my-skill ./my-skill-dir
 single skill sync-claude my-skill       # copies it into ~/.claude/skills/my-skill/
 
-single memory graph create-entity SingleCLI project
+single memory graph create-entity divisi project
 single memory graph show                # dump the shared knowledge graph
 
 single                  # launch the TUI: Agents/Goals/Tasks/MCP/LSP/Plugins/Tools/Providers/Accounts/
@@ -145,7 +145,7 @@ Every list/inspect command supports `--json` for scripting.
   `agy`, and `perplexity` (`pplx`) with detection/versions/capabilities
   observed from real config files and `--version` output; a unified MCP
   registry synced into each agent's native config format with backups;
-  vendor-verified bootstrap installers (`single setup`); a headless
+  vendor-verified bootstrap installers (`divisi setup`); a headless
   runtime daemon over a Unix socket with a CLI and TUI client; profiles
   and config precedence.
 - **Phase 2** — CRUD for the MCP/LSP/tool registries, an OS-keychain
@@ -153,7 +153,7 @@ Every list/inspect command supports `--json` for scripting.
   yet enforced), and a local skills directory.
 - **Phase 3** — a SQLite-backed, scoped, provenance-tagged memory store,
   and a git/project context resolver.
-- **Phase 4** — real single-agent task execution: `single task run`
+- **Phase 4** — real single-agent task execution: `divisi task run`
   invokes an agent CLI's actual non-interactive mode (`claude -p`, `codex
   exec`, `opencode run`, `agy -p`), optionally isolated in a real git
   worktree, captures the output as an artifact, and records the result.
@@ -165,42 +165,42 @@ Every list/inspect command supports `--json` for scripting.
   Zen, ...) with keys held in the OS keychain, synced into the agents with
   a verified config slot for them (Claude Code's `env` settings, Codex's
   `OPENAI_API_KEY`).
-- **Auth** — `single account capture/use/list/remove`: snapshot an agent's
+- **Auth** — `divisi account capture/use/list/remove`: snapshot an agent's
   current login state as a named profile and switch between them later —
   e.g. two separate Claude Code accounts — with automatic backups and
   without ever printing token contents.
 - **Memory upgrades** — a shared SQLite knowledge graph (entities,
-  observations, typed relations — `single memory graph ...`), plus
-  optional Redis working memory (`single memory cache ...`,
+  observations, typed relations — `divisi memory graph ...`), plus
+  optional Redis working memory (`divisi memory cache ...`,
   `DIVISI_REDIS_URL`) and Qdrant vector storage/search for RAG
-  (`single memory vector ...`, `DIVISI_QDRANT_URL`) — both built and
+  (`divisi memory vector ...`, `DIVISI_QDRANT_URL`) — both built and
   tested against real local instances. Task failures are automatically
   recorded as searchable memory ("learn from errors").
-- **Multi-agent orchestration** — `single orchestrate "<goal>" --agents
+- **Multi-agent orchestration** — `divisi orchestrate "<goal>" --agents
   a,b,c [--worktree]` runs several agents in sequence on one goal, sharing
   one git worktree and handing each agent the previous one's real
   captured output. A sequential relay, not live parallel chat — see
   `docs/architecture.md` for the honest scope.
 - **Provider presets** — OpenAI, Anthropic, OpenCode Zen, and NVIDIA,
   configurable from the TUI's Providers tab (`[a]`, masked key entry
-  straight to the OS keychain) or `single provider add-preset <name>`.
+  straight to the OS keychain) or `divisi provider add-preset <name>`.
 - **Richer starter registries** — the default MCP/LSP/tool catalogs ship
   with real, commonly-used entries (fetch, sequential-thinking,
   rust-analyzer, pyright, docker, gh, ...) instead of a near-empty list,
   seeded from this project's own verified working configuration, plus
-  preset catalogs (`single mcp/lsp presets`, `add-preset <name>`) to grow
+  preset catalogs (`divisi mcp/lsp presets`, `add-preset <name>`) to grow
   either registry without a code change.
-- **Self-update** — `single update` checks GitHub Releases and replaces
+- **Self-update** — `divisi update` checks GitHub Releases and replaces
   its own binaries in place, on a `stable` (tagged releases) or `nightly`
   (rebuilt on every push to `main`) channel.
-- **Plugin management** — `single plugin add/remove/list/inspect/sync`:
+- **Plugin management** — `divisi plugin add/remove/list/inspect/sync`:
   installs a named plugin via each agent's own real command (`claude
   plugin install`, `codex plugin add`, `opencode plugin <module>`, `agy
   plugin install`). Installation only — no marketplace browsing/discovery.
-- **LSP sync into OpenCode** — `single install-integrations` now writes
+- **LSP sync into OpenCode** — `divisi install-integrations` now writes
   the LSP registry into `opencode.jsonc`'s real `lsp` key alongside MCP
   (the only agent with a confirmed native LSP config surface).
-- **Skills synced into Claude Code** — `single skill sync-claude <name>`
+- **Skills synced into Claude Code** — `divisi skill sync-claude <name>`
   copies a locally-installed skill into Claude's real skill directory
   (`~/.claude/skills/<name>/`), backing up any existing same-named
   directory first.
@@ -217,13 +217,13 @@ Every list/inspect command supports `--json` for scripting.
   a quick-add flow for MCP/LSP/Plugins/Tools, remove/toggle/sync
   keybindings, and an in-TUI task-creation flow (description → workspace
   path → pick one or more agents).
-- **`--real-home` for system-configuration tasks** — `single task run
+- **`--real-home` for system-configuration tasks** — `divisi task run
   --agent claude --real-home "set up my dotfiles, install my usual
   tools, make this look nice"` runs against your actual `$HOME`, not the
   isolated sandbox every other task uses. Off by default (prints a
   warning when used) since it gives the agent real credentials/file
   access — for the one legitimate case where that's the point: using an
-  agent through `single` to actually configure your machine. Also a
+  agent through `divisi` to actually configure your machine. Also a
   `[g]` toggle in the TUI's task-creation flow.
 - **Live task output in the TUI** — press `Enter` on any row in the Tasks
   tab to see that task's real output, tailed as it's produced while the
@@ -231,10 +231,10 @@ Every list/inspect command supports `--json` for scripting.
   final output once it finishes. Since an `orchestrate` run creates a
   separate task row per agent per step, this is how you watch each agent
   in a multi-agent run individually.
-- **Isolated agent homes + `single agent login`** — every agent runs
-  against a SingleCLI-managed home under `~/.config/divisi/homes/<agent>/`
+- **Isolated agent homes + `divisi agent login`** — every agent runs
+  against a divisi-managed home under `~/.config/divisi/homes/<agent>/`
   (bootstrapped from the real one exactly once), never the real, ambient
-  `~/.claude`/`~/.codex`/etc. after that. `single agent login <name>` runs
+  `~/.claude`/`~/.codex`/etc. after that. `divisi agent login <name>` runs
   that agent's own real interactive login command (`claude auth login`,
   `codex login`, `opencode auth login`, `pplx auth login`,
   `cursor-agent login`, `goose configure`) attached to your terminal so
@@ -246,7 +246,7 @@ Every list/inspect command supports `--json` for scripting.
   runs and its `configure` wizard wired as login; Aider gets
   non-interactive runs only — it has no MCP support and authenticates via
   API-key flags/env vars, not an interactive login.
-- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 of the current 24 built-in agents; the registry has since grown to also include qwen-code, amp, openhands, droid, codebuff, plandex, continue-cli, grok, mistral-vibe, crush, kilocode, and `single-pool`/`single-agent` (SingleCLI's own native, MCP-only agents — see "Coordinator, goals, and the free-provider pool" below).
+- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 of the current 24 built-in agents; the registry has since grown to also include qwen-code, amp, openhands, droid, codebuff, plandex, continue-cli, grok, mistral-vibe, crush, kilocode, and `single-pool`/`single-agent` (divisi's own native, MCP-only agents — see "Coordinator, goals, and the free-provider pool" below).
   Copilot gets full parity too (MCP sync into `~/.copilot/mcp-config.json`,
   non-interactive runs, login, plugin install). Kiro gets non-interactive
   runs and login (both confirmed by running it directly), but MCP stays
@@ -261,7 +261,7 @@ Every list/inspect command supports `--json` for scripting.
 ## Coordinator, goals, and the free-provider pool
 
 Everything above is the config/registry layer. On top of it, the
-**Coordinator** (`single goal`/`single coordinator`) is a second, higher
+**Coordinator** (`divisi goal`/`divisi coordinator`) is a second, higher
 level of the tool: submit one goal in plain text, and it plans a real
 dependency graph (`code`/`test`/`research`/`review`/`docs`/`infra`
 nodes), dispatches each ready node to whichever agent fits, runs
@@ -269,8 +269,8 @@ independent nodes in parallel (each in its own git worktree when the node
 kind calls for isolation), retries around failures and rate limits, and
 supervises the result — auto-continuing on success, queuing a
 human-confirmed merge when it isn't sure, per `--mode auto/plan/careful/
-dry`. `single goal status <id>` shows the graph node-by-node; the TUI's
-**Goals** tab and `single coordinator status` show everything running/
+dry`. `divisi goal status <id>` shows the graph node-by-node; the TUI's
+**Goals** tab and `divisi coordinator status` show everything running/
 queued/blocked at once.
 
 Two more pieces plug into this:
@@ -278,14 +278,14 @@ Two more pieces plug into this:
 - **The free-provider pool (E28)** — `single-pool` is a built-in agent
   that never shells a CLI at all: it picks a `(provider, model, key)` via
   a Thompson-sampling bandit over a vendored ~44-provider free-LLM
-  catalog (`single provider list-free`) and dispatches straight to that
+  catalog (`divisi provider list-free`) and dispatches straight to that
   provider's HTTP API, benching whatever's rate-limited/failing and
   retrying the next candidate before you ever see a failure. `single
-  provider add-free <id>` keys a provider; `single provider validate`
-  re-probes existing keys on demand; `single provider key-status` shows
+  provider add-free <id>` keys a provider; `divisi provider validate`
+  re-probes existing keys on demand; `divisi provider key-status` shows
   keyed/valid/cooldown/headroom per provider — real, live state, not a
   placeholder.
-- **A native Zed ACP bridge (`single acp`)** — a stdio [Agent Client
+- **A native Zed ACP bridge (`divisi acp`)** — a stdio [Agent Client
   Protocol](https://agentclientprotocol.com) server: every prompt from
   Zed's agent panel becomes a coordinator goal, with progress streamed
   back as it runs. `/goals` in the panel shows active goals plus recent
@@ -317,8 +317,8 @@ cargo test --workspace
 ```
 
 No API keys are required to build, test, or run `doctor`/`agent list`.
-`single setup --yes`, `single install-integrations --yes`, `single account
-use`, and `single provider sync --yes` touch real files/run real
+`divisi setup --yes`, `divisi install-integrations --yes`, `divisi account
+use`, and `divisi provider sync --yes` touch real files/run real
 installers — everything else is read-only or operates in a temp directory
 during tests. The Redis and Qdrant backends are optional (unset
 `DIVISI_REDIS_URL`/`DIVISI_QDRANT_URL` and their commands just report "not

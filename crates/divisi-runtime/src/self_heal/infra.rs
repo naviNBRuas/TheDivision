@@ -190,7 +190,7 @@ fn db_integrity(ctx: &Context, conn: &Connection, allow_db_restore: bool) -> Res
         // A kill landing mid-copy here left `divisi.db` itself truncated
         // -- confirmed live via `disk I/O error: Error code 522: Unable
         // to obtain number of requested bytes (file truncated?)` on a
-        // plain `single approval resolve`, on the very day this was
+        // plain `divisi approval resolve`, on the very day this was
         // found, well after 0.15.4's backup-side PASSIVE-checkpoint fix
         // (which only addressed producing a good backup, not restoring
         // one crash-safely). Copy to a temp file in the same directory

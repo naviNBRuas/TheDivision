@@ -50,7 +50,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let (text, style) = match (&app.status, app.loading) {
         (Some(s), _) => (
             format!(
-                "SingleCLI  ·  profile: {}  ·  agents: {}/{} detected  ·  v{}",
+                "divisi  ·  profile: {}  ·  agents: {}/{} detected  ·  v{}",
                 s.active_profile, s.agents_detected, s.agents_known, s.version
             ),
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
@@ -58,8 +58,8 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         // Status hasn't arrived yet because the first refresh is still in
         // flight — not the same as the daemon actually being unreachable,
         // so this stays neutral instead of alarming red.
-        (None, true) => (format!("SingleCLI  ·  {} connecting…", app.spinner_frame()), Style::default().fg(ACCENT)),
-        (None, false) => ("SingleCLI  ·  runtime unreachable".to_string(), Style::default().fg(BAD)),
+        (None, true) => (format!("divisi  ·  {} connecting…", app.spinner_frame()), Style::default().fg(ACCENT)),
+        (None, false) => ("divisi  ·  runtime unreachable".to_string(), Style::default().fg(BAD)),
     };
     let header = Paragraph::new(Line::from(Span::styled(text, style)))
         .alignment(Alignment::Center)
@@ -453,7 +453,7 @@ fn draw_accounts(frame: &mut Frame, area: Rect, app: &App) {
             .style(style)
         })
         .collect();
-    let title = with_scroll_indicator(" Accounts — single account capture/use <agent> <name> ".to_string(), app.accounts.len(), &window);
+    let title = with_scroll_indicator(" Accounts — divisi account capture/use <agent> <name> ".to_string(), app.accounts.len(), &window);
     let table = Table::new(
         rows,
         [Constraint::Length(12), Constraint::Length(16), Constraint::Length(24), Constraint::Length(14), Constraint::Min(20)],
@@ -690,17 +690,17 @@ fn draw_backup(frame: &mut Frame, area: Rect, _app: &App) {
         Line::from(Span::styled("Full-setup backup/restore", Style::default().add_modifier(Modifier::BOLD))),
         Line::from(""),
         Line::from("  Captures: config, every agent's real credentials, keychain secrets"),
-        Line::from("  (provider keys, billing keys, anything set via `single secret set`),"),
+        Line::from("  (provider keys, billing keys, anything set via `divisi secret set`),"),
         Line::from("  and task/memory/knowledge-graph history — encrypted with a passphrase."),
         Line::from(""),
         Line::from(vec![Span::styled("  [x]", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)), Span::raw(" export to a new archive")]),
         Line::from(vec![
             Span::styled("  [i]", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
-            Span::raw(" preview an import from an existing archive (dry run only — apply for real with `single backup import <path> --yes`)"),
+            Span::raw(" preview an import from an existing archive (dry run only — apply for real with `divisi backup import <path> --yes`)"),
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "  If divisid is running, stop it first (`single daemon stop`) so state/divisi.db isn't captured mid-write.",
+            "  If divisid is running, stop it first (`divisi daemon stop`) so state/divisi.db isn't captured mid-write.",
             Style::default().fg(MUTED),
         )),
     ];
@@ -759,19 +759,19 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::from("  e                    toggle enabled/disabled (MCP/Tools)"),
         Line::from("  s                    sync the selected plugin into every registered agent (Plugins tab)"),
         Line::from("  g                    toggle divisi-gateway's dynamic gateway (MCP tab) — one synced entry per agent instead of every"),
-        Line::from("                       enabled server; takes effect on the next `single install-integrations`"),
+        Line::from("                       enabled server; takes effect on the next `divisi install-integrations`"),
         Line::from(""),
         Line::from(Span::styled("Usage tab", Style::default().add_modifier(Modifier::BOLD))),
-        Line::from("  refetches on tab entry / r    real $ spend needs a billing admin key: `single provider set-billing-key <name> <key>`"),
+        Line::from("  refetches on tab entry / r    real $ spend needs a billing admin key: `divisi provider set-billing-key <name> <key>`"),
         Line::from("                                agents with no billing API (claude, codex, cursor, ...) show local run stats only."),
         Line::from(""),
         Line::from(Span::styled("Backup tab", Style::default().add_modifier(Modifier::BOLD))),
         Line::from("  x                    export your entire setup (config, credentials, keychain secrets) to a password-encrypted archive"),
-        Line::from("  i                    preview restoring from an archive (dry run only — apply for real with `single backup import <path> --yes`)"),
+        Line::from("  i                    preview restoring from an archive (dry run only — apply for real with `divisi backup import <path> --yes`)"),
         Line::from(""),
         Line::from(Span::styled("Everything else", Style::default().add_modifier(Modifier::BOLD))),
-        Line::from("  Use the `single` CLI for actions not yet in the TUI: mcp add, provider add/sync,"),
-        Line::from("  account capture/use, task run, memory graph/cache/vector — see `single --help`."),
+        Line::from("  Use the `divisi` CLI for actions not yet in the TUI: mcp add, provider add/sync,"),
+        Line::from("  account capture/use, task run, memory graph/cache/vector — see `divisi --help`."),
     ];
     let p = Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Help "));
     frame.render_widget(p, area);
@@ -842,7 +842,7 @@ fn draw_provider_add_modal(frame: &mut Frame, area: Rect, app: &App) {
             vec![
                 Line::from(Span::styled(format!("{preset_name} added"), Style::default().fg(OK))),
                 Line::from(""),
-                Line::from("Run `single provider sync <name> --agents <agent> --yes` to write it into an agent's config,"),
+                Line::from("Run `divisi provider sync <name> --agents <agent> --yes` to write it into an agent's config,"),
                 Line::from("or do it from the CLI — sync isn't wired into the TUI yet."),
                 Line::from(""),
                 Line::from("[enter/esc] close"),
@@ -919,7 +919,7 @@ fn draw_backup_modal(frame: &mut Frame, area: Rect, app: &App) {
                 Line::from(Span::styled(format!("Preview: {ok}/{total} items would restore cleanly"), Style::default().add_modifier(Modifier::BOLD))),
                 Line::from(""),
                 Line::from(Span::styled("This was a preview only — nothing was written.", Style::default().fg(MUTED))),
-                Line::from(Span::styled("Run `single backup import <path> --yes` to actually apply it.", Style::default().fg(MUTED))),
+                Line::from(Span::styled("Run `divisi backup import <path> --yes` to actually apply it.", Style::default().fg(MUTED))),
                 Line::from(""),
             ];
             for item in report.files.iter().chain(&report.secrets).filter(|i| !i.success).take(8) {

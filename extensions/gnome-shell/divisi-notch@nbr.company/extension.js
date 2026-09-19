@@ -1,4 +1,4 @@
-// SingleCLI notch: a right-edge, vertically centered overlay drawn as shell
+// divisi notch: a right-edge, vertically centered overlay drawn as shell
 // chrome (not a window, so tiling extensions never see it). Data comes from
 // `divisi-notch --snapshot`, which reuses the Rust aggregation.
 //
@@ -583,7 +583,7 @@ export default class SingleNotch extends Extension {
     _summaryTip() {
         const s = this._snapshot;
         if (this._offline || !s)
-            return 'divisid is not answering. Start it with `single daemon restart`.';
+            return 'divisid is not answering. Start it with `divisi daemon restart`.';
         return `Pool ${s.tone}: healthy ratio ${s.healthy_ratio.toFixed(2)}, ${s.provider_count} providers, ` +
             `${s.total_keys} keys, ${s.benches.length} benched. Goals: ${s.detail.goals_running} running, ` +
             `${s.detail.goals_queued} queued, ${s.detail.goals_waiting} waiting, ${s.detail.goals_blocked} blocked.`;
@@ -629,7 +629,7 @@ export default class SingleNotch extends Extension {
         const innerW = W_CARD - PAD * 2 - 2;
         const header = new St.BoxLayout({reactive: true, x_expand: true, style: 'spacing: 9px; padding: 0 0 2px 0;'});
         header.add_child(this._dot(color, 11, running));
-        header.add_child(this._label('SingleCLI', {bold: true, size: 14, expand: true}));
+        header.add_child(this._label('divisi', {bold: true, size: 14, expand: true}));
         header.add_child(this._label(this._offline ? 'offline' : !s ? 'loading…' : `${TONE_WORD[s.tone] ?? s.tone} · ${this._pct()}%`,
             {color, bold: true, size: 12}));
         header.connect('button-press-event', () => {
@@ -654,7 +654,7 @@ export default class SingleNotch extends Extension {
         this._content.add_child(this._scroll);
 
         if (this._offline || !s) {
-            body.add_child(this._empty(this._offline ? 'The daemon is not answering. Run `single daemon restart`.' : 'Loading…'));
+            body.add_child(this._empty(this._offline ? 'The daemon is not answering. Run `divisi daemon restart`.' : 'Loading…'));
         } else {
             ({overview: () => this._tabOverview(body, s), goals: () => this._tabGoals(body, s),
                 pool: () => this._tabPool(body, s, innerW), agents: () => this._tabAgents(body, s),
@@ -913,7 +913,7 @@ export default class SingleNotch extends Extension {
                 `${p.keys_unvalidated} not yet validated, ${p.keys_disabled} disabled` +
                 (p.key_count > 1 ? '. The pool rotates across them.' : '.'));
         if (p.auth_state === 'unverified')
-            lines.push(p.can_validate ? 'Run `single provider validate` to check it.' : 'This provider has no validation endpoint, so a key can only be confirmed by a real successful call.');
+            lines.push(p.can_validate ? 'Run `divisi provider validate` to check it.' : 'This provider has no validation endpoint, so a key can only be confirmed by a real successful call.');
         if (p.reason)
             lines.push(p.reason);
         lines.push(p.metered ? `${p.requests_today} requests today of ${p.rpd_limit ?? '?'} per day (counted locally).`

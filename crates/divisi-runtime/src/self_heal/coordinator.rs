@@ -104,7 +104,7 @@ fn reroute_repeated_failures(_ctx: &Context, conn: &Connection) -> Result<String
 
 /// `routing.toml` drift: an agent named in a kind's list that isn't
 /// currently detected is removed from every list it appears in (backup
-/// written first) -- `single provider sync-pool` / the next detection
+/// written first) -- `divisi provider sync-pool` / the next detection
 /// re-adds it. Skipped entirely if the file itself was modified in the
 /// last 24h (spec's ">24h undetected" duration-tracking is approximated
 /// here by the file's own mtime, since no per-agent detection-history

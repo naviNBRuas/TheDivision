@@ -122,7 +122,7 @@ pub fn remove(path: &Path, names: &[String]) -> Result<Option<Value>> {
     Ok(Some(root))
 }
 
-/// Writes SingleCLI's LSP registry into `opencode.jsonc`'s `lsp` key,
+/// Writes divisi's LSP registry into `opencode.jsonc`'s `lsp` key,
 /// keyed by name with a `"command"` array — the one shape this project has
 /// directly observed in a real `opencode.jsonc` (`{"dockerfile":
 /// {"command": ["docker-langserver","--stdio"]}}`). Only `enabled`
@@ -181,7 +181,7 @@ pub fn apply_lsp(path: &Path, servers: &[LspServerSpec]) -> Result<Value> {
 /// ..., "apiKey": "{env:VAR}"}, "models": {...}}`. The `apiKey` value is
 /// always the literal env-var-reference string `"{env:VAR}"`, never a raw
 /// secret — opencode resolves that reference from its own process
-/// environment at runtime, which SingleCLI populates separately via
+/// environment at runtime, which divisi populates separately via
 /// `divisi_core::provider_keys::resolve_env_for_agent`. This function
 /// never sees or needs the actual secret value.
 /// Well-known models.dev registry providers that back an OpenAI-compatible
@@ -202,8 +202,8 @@ const KNOWN_REGISTRY_PROVIDERS: &[&str] = &[
 /// provider written under a key that *is* a models.dev provider — `nvidia`,
 /// `openrouter`, … — gets that provider's entire registry catalog (100+
 /// entries, including EOL'd models) merged on top of the one or two models
-/// SingleCLI actually curated, and opencode's "auto" selection can then
-/// pick a dead model. Writing it under `single-<name>` instead (SingleCLI's
+/// divisi actually curated, and opencode's "auto" selection can then
+/// pick a dead model. Writing it under `single-<name>` instead (divisi's
 /// existing pool namespace, which isn't in models.dev) leaves only the
 /// declared models. `--output-format`/`autoload` do not prevent the merge —
 /// verified against opencode 1.18.29.

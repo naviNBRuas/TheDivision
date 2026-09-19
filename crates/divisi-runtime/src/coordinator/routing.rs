@@ -46,7 +46,7 @@ pub struct CoordinatorConfig {
     pub prefer_pool: bool,
     /// E28 spec §8: per-goal cap on `capacity_waits` before a
     /// `waiting_on_capacity` goal finally gives up to `Blocked`.
-    /// Overridable per goal via `single goal amend <id> capacity-budget=N`.
+    /// Overridable per goal via `divisi goal amend <id> capacity-budget=N`.
     #[serde(default = "default_max_capacity_waits_per_goal")]
     pub max_capacity_waits_per_goal: u32,
     /// E28 spec §8: per-goal wall-clock cap (minutes, since the goal's
@@ -82,7 +82,7 @@ impl Default for CoordinatorConfig {
 impl CoordinatorConfig {
     /// reads `coordinator.toml`, writing the defaults to disk if it is
     /// absent. a malformed file falls back to defaults rather than failing
-    /// every tick (same tolerance as the rest of SingleCLI's config).
+    /// every tick (same tolerance as the rest of divisi's config).
     pub fn load(dirs: &DivisiDirs) -> Self {
         let path = dirs.coordinator_file();
         match std::fs::read_to_string(&path) {

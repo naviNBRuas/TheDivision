@@ -4,13 +4,13 @@
 //! One-shot CLI commands don't need this — see `client.rs`'s in-process
 //! fallback — this is only exercised by the no-subcommand TUI path.
 //!
-//! Also owns `stop_running`/`is_running` (`single daemon stop|status`):
+//! Also owns `stop_running`/`is_running` (`divisi daemon stop|status`):
 //! the daemon inherits its environment, notably `$PATH`, once at spawn
 //! time and keeps it for the rest of the process's life, so installing a
 //! new agent CLI or editing shell rc files never becomes visible to an
 //! already-running daemon — detection (`divisi-agent-sdk::discover`)
 //! shells out to `which` as a *child of the daemon*, not the user's
-//! current shell. `single daemon restart` is the fix.
+//! current shell. `divisi daemon restart` is the fix.
 
 use anyhow::{Context, Result};
 use divisi_core::DivisiDirs;
@@ -81,6 +81,6 @@ fn daemon_binary_path() -> Result<std::path::PathBuf> {
     if candidate.exists() {
         return Ok(candidate);
     }
-    // Fall back to $PATH lookup if not installed alongside `single` (e.g. `cargo run`).
+    // Fall back to $PATH lookup if not installed alongside `divisi` (e.g. `cargo run`).
     Ok(std::path::PathBuf::from("divisid"))
 }

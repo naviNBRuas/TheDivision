@@ -2,7 +2,7 @@
 //! `~/.config/divisi/skills/<name>/`. Phase 2 scope is local-only —
 //! `install` copies a local source directory in; there is no marketplace/
 //! network fetch yet (that would need the plugin system from spec section
-//! 29, which is later-phase work). A skill is just a directory; SingleCLI
+//! 29, which is later-phase work). A skill is just a directory; divisi
 //! doesn't yet interpret its contents (translating it into each agent's
 //! native skill mechanism is also later-phase — see docs/architecture.md).
 
@@ -72,7 +72,7 @@ pub fn inspect(skills_dir: &Path, name: &str) -> Result<Option<Vec<String>>> {
     Ok(Some(entries))
 }
 
-/// Copies a SingleCLI-managed skill into Claude Code's real skill
+/// Copies a divisi-managed skill into Claude Code's real skill
 /// directory (`~/.claude/skills/<name>/SKILL.md`) — confirmed real via
 /// `claude plugin init --help` output on the reference machine, which
 /// shows new skills scaffolded at exactly that path. If a directory of

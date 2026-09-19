@@ -8,7 +8,7 @@
 //! background/cancellable execution. Those all need the runtime to hold
 //! live process state across multiple requests (spec section 3's daemon
 //! lifecycle, deferred since Phase 1's ADR 0001) or an actual reasoning
-//! step to pick agents (spec section 20) that SingleCLI itself doesn't
+//! step to pick agents (spec section 20) that divisi itself doesn't
 //! have. What's here is real: a real agent subprocess, real git worktree
 //! isolation, a real captured artifact, and a real persisted record —
 //! just for one agent at a time, one task at a time.
@@ -527,7 +527,7 @@ pub fn reconcile_orphaned_tasks(conn: &Connection) -> Result<usize> {
 }
 
 /// Forces a stuck row terminal when there is no live process to signal —
-/// backs `single task cancel --force`. Used on a zombie the in-memory
+/// backs `divisi task cancel --force`. Used on a zombie the in-memory
 /// registry has no cancel handle for (a row wedged by a bug, or one a
 /// pre-reconciliation daemon left behind). No-op on an already-terminal
 /// row, so `--force` is safe to pass blindly.
@@ -553,7 +553,7 @@ pub struct RunTaskOptions<'a> {
     /// Skips isolated-home materialization entirely and runs the agent
     /// against the real, ambient `$HOME` — for tasks that need to
     /// actually modify the real system (dotfiles, installed packages,
-    /// desktop config), not a SingleCLI-managed sandbox copy. An
+    /// desktop config), not a divisi-managed sandbox copy. An
     /// explicit opt-in: the agent gets full access to real credentials
     /// and files, which is exactly what the isolated-home default exists
     /// to avoid in the ordinary case.
@@ -613,7 +613,7 @@ fn build_context_preamble(
             for hit in hits {
                 // `Task`-scoped rows are per-task failure diagnostics
                 // written by `remember_failure` — useful to look up
-                // deliberately (`single memory list --scope task`), but
+                // deliberately (`divisi memory list --scope task`), but
                 // noise if replayed into every later agent's prompt (a
                 // busy project accumulates hundreds). Everything else a
                 // keyword search turns up is fair game.
@@ -645,7 +645,7 @@ fn build_context_preamble(
     }
 
     // Shared blackboard state: the knowledge graph is written manually
-    // (`single memory graph create-entity`/`add-observation`) by humans or
+    // (`divisi memory graph create-entity`/`add-observation`) by humans or
     // agents that choose to, not auto-populated from task output — see
     // knowledge_graph.rs's module doc. This is the read half: whatever's
     // there that's relevant gets surfaced to every agent automatically,
@@ -736,7 +736,7 @@ pub fn run(conn: &Connection, ctx: &Context, opts: RunTaskOptions) -> Result<Tas
     // for it -- always considered available.
     if opts.agent != "single-pool" && !adapter.discover().detected {
         anyhow::bail!(
-            "agent '{}' is not installed; run `single setup --yes` first",
+            "agent '{}' is not installed; run `divisi setup --yes` first",
             opts.agent
         );
     }
@@ -825,7 +825,7 @@ pub fn run_background(
     // for it -- always considered available.
     if opts.agent != "single-pool" && !adapter.discover().detected {
         anyhow::bail!(
-            "agent '{}' is not installed; run `single setup --yes` first",
+            "agent '{}' is not installed; run `divisi setup --yes` first",
             opts.agent
         );
     }
@@ -872,7 +872,7 @@ pub fn run_background(
 /// file — never done automatically, since a worktree might still be worth
 /// inspecting right after a run. Errors on a task that's still `Running`
 /// rather than silently killing a worktree out from under a live agent —
-/// unless `force` is set (`single task cleanup --force`), the escape hatch
+/// unless `force` is set (`divisi task cleanup --force`), the escape hatch
 /// for a row wedged non-terminal with no live process behind it, which
 /// also gets marked `Failed` so it doesn't linger as a phantom "running".
 pub fn cleanup(conn: &Connection, ctx: &Context, id: i64, force: bool) -> Result<()> {
@@ -977,7 +977,7 @@ fn execute(
 
     // Resolved once and reused by every `remember_failure` call below so a
     // task's failures land in the same project scope its later memory
-    // searches will be filtered by (`single memory search --project ...`,
+    // searches will be filtered by (`divisi memory search --project ...`,
     // and the memory/notes preamble task runs inject going forward).
     let project = divisi_core::project_context::resolve(&run_cwd).repo_root;
 
@@ -1011,7 +1011,7 @@ fn execute(
         )?;
     }
 
-    // Every run goes against a SingleCLI-managed home, never the real
+    // Every run goes against a divisi-managed home, never the real
     // ambient $HOME (divisi_core::agent_home docs) — either the default
     // per-agent isolated home, or, when --account is given, that named
     // account's own isolated home (divisi_core::account docs) — unless
@@ -1410,7 +1410,7 @@ fn maybe_fail_over(conn: &Connection, ctx: &Context, id: i64, opts: &RunTaskOpti
 /// "Learn from errors": every task failure is also written to the memory
 /// store (source=tool_output, since it's this project's own tooling
 /// reporting what went wrong rather than something a user or agent
-/// asserted) so `single memory list --scope task` surfaces past failures
+/// asserted) so `divisi memory list --scope task` surfaces past failures
 /// for whoever — human or agent — looks next. Written at `Task` scope, not
 /// `Project`: `build_context_preamble` skips `Task`-scoped rows, so these
 /// diagnostics stay out of every later agent's prompt (a busy project
@@ -1612,7 +1612,7 @@ mod tests {
     }
 
     /// `remember_failure` writes at `Task` scope precisely so its rows
-    /// don't get replayed into every later agent's prompt — `single memory
+    /// don't get replayed into every later agent's prompt — `divisi memory
     /// list --scope task` is the way to look at them. A keyword-matching
     /// `Project` row in the same search still comes through.
     #[test]

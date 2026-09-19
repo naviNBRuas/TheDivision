@@ -1,7 +1,7 @@
 {
   "uuid": "divisi-notch@nbr.company",
-  "name": "SingleCLI Notch",
-  "description": "Edge notch showing SingleCLI free-provider pool health. Hover to reveal, click to expand.",
+  "name": "divisi Notch",
+  "description": "Edge notch showing divisi free-provider pool health. Hover to reveal, click to expand.",
   "shell-version": ["48", "49", "50"],
   "url": "https://github.com/naviNBRuas/SingleCLI",
   "version": 1

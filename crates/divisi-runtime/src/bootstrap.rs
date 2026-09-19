@@ -1,6 +1,6 @@
-//! `single setup`: install any registry agent that isn't detected, using
+//! `divisi setup`: install any registry agent that isn't detected, using
 //! its verified bootstrap install command, then hand off to
-//! `integrations::apply_all` to sync SingleCLI's MCP registry into every
+//! `integrations::apply_all` to sync divisi's MCP registry into every
 //! agent (freshly installed or pre-existing).
 //!
 //! Running an install script is not easily reversible, so this module never
@@ -19,7 +19,7 @@ pub fn run(ctx: &Context, dry_run: bool) -> SetupPlan {
 }
 
 /// Same per-agent logic as `run`, scoped to a single named agent — the
-/// seam the TUI's interactive install flow and `single agent install` use
+/// seam the TUI's interactive install flow and `divisi agent install` use
 /// so installing one agent doesn't require planning/touching all five.
 pub fn run_one(ctx: &Context, agent_name: &str, dry_run: bool) -> anyhow::Result<SetupAction> {
     let agent = ctx.find_agent(agent_name).ok_or_else(|| anyhow::anyhow!("unknown agent: {agent_name}"))?;
@@ -103,7 +103,7 @@ mod tests {
     fn every_agent_gets_a_real_action_kind_based_on_actual_detection() {
         // Doesn't assume any particular agent is/isn't installed on the
         // machine running the test (this repo's own dev machine has since
-        // installed pplx for real via `single setup --yes`) — only that
+        // installed pplx for real via `divisi setup --yes`) — only that
         // every agent resolves to a real, non-panicking outcome: detected
         // agents report AlreadyInstalled, undetected ones with a verified
         // bootstrap command report Install, and none of that touches the

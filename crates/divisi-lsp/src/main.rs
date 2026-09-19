@@ -1,7 +1,7 @@
 //! `divisi-lsp`: a dynamic LSP proxy. Claude Code spawns this one process
 //! for every extension registered in its plugin manifest (see
 //! `docs/superpowers/specs/2026-08-24-claude-code-singlecli-integration-design.md`);
-//! it routes each open document to the real language server SingleCLI's
+//! it routes each open document to the real language server divisi's
 //! LSP registry maps that extension to, spawning backends lazily and
 //! reusing them for documents of the same language — see `proxy.rs`.
 

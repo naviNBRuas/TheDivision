@@ -1,5 +1,5 @@
-//! `single serve --openai` — an OpenAI-compatible HTTP proxy over the
-//! SingleCLI pool (E27.01 backlog #2 / Zed backlog #2). Lets Zed's inline
+//! `divisi serve --openai` — an OpenAI-compatible HTTP proxy over the
+//! divisi pool (E27.01 backlog #2 / Zed backlog #2). Lets Zed's inline
 //! assistant / edit-prediction / commit-message model run on the pool via
 //! `language_models.openai_compatible`.
 //!
@@ -57,7 +57,7 @@ struct Server {
 }
 
 pub fn run(cfg: Config) -> Result<()> {
-    let ctx = divisi_runtime::Context::load().context("loading SingleCLI context")?;
+    let ctx = divisi_runtime::Context::load().context("loading divisi context")?;
 
     let (host, port) = split_host_port(&cfg.addr);
     let is_loopback = matches!(host.as_str(), "127.0.0.1" | "::1" | "localhost")
@@ -84,7 +84,7 @@ pub fn run(cfg: Config) -> Result<()> {
     ];
 
     let listener = TcpListener::bind(&cfg.addr).with_context(|| format!("binding {}", cfg.addr))?;
-    eprintln!("single serve --openai listening on http://{}/v1  (Ctrl-C to stop)", cfg.addr);
+    eprintln!("divisi serve --openai listening on http://{}/v1  (Ctrl-C to stop)", cfg.addr);
     if cfg.api_key.is_none() {
         eprintln!("api key (send as `Authorization: Bearer <key>`): {api_key}");
     }
@@ -313,7 +313,7 @@ fn chat_completions(stream: &mut TcpStream, body: &str, cfg: &Config, ctx: &divi
             return write_json(
                 stream,
                 502,
-                &json!({ "error": { "message": "the SingleCLI daemon is unreachable", "type": "api_error" } }),
+                &json!({ "error": { "message": "the divisi daemon is unreachable", "type": "api_error" } }),
             );
         }
     };

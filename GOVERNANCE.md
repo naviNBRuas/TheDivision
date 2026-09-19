@@ -1,6 +1,6 @@
 # Governance
 
-SingleCLI is maintained under a **BDFL (Benevolent Dictator For Life)**
+divisi is maintained under a **BDFL (Benevolent Dictator For Life)**
 model.
 
 ## Decision-making

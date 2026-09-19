@@ -1,5 +1,5 @@
 //! E29 spec §"Redaction": heuristic secret detection + a TTL'd alias store.
-//! Every prompt reaching an LLM/agent through SingleCLI (ACP, direct
+//! Every prompt reaching an LLM/agent through divisi (ACP, direct
 //! `task run`/`goal submit`, the OpenAI-compat server) is scanned here
 //! before it leaves the process; a match is replaced with a
 //! `{{REDACTED_N}}` alias and the real value is encrypted (age,
@@ -203,7 +203,7 @@ pub fn sweep_expired(conn: &Connection) -> Result<usize> {
 }
 
 /// Decrypts a single `{{REDACTED:<session_id>:N}}` alias token's real
-/// value and deletes its row — used by `single secret promote-alias` to
+/// value and deletes its row — used by `divisi secret promote-alias` to
 /// move a temp alias into a properly named secret. Errors if `alias_token`
 /// isn't a well-formed alias, or the row is unknown/expired.
 pub fn take_alias_value(store: &RedactStore, secret_store: &dyn single_secret_store::SecretStoreObj, alias_token: &str) -> Result<String> {
@@ -618,7 +618,7 @@ mod tests {
     /// Live-verification regression: a real planner-prompt JSON schema
     /// example (`divisi-runtime`'s own `PLAN_INSTRUCTION`) is one
     /// whitespace-delimited "word" full of punctuation variety — high
-    /// entropy for the wrong reason. Confirmed live via `single task run`
+    /// entropy for the wrong reason. Confirmed live via `divisi task run`
     /// with a JSON-example prompt before this fix.
     #[test]
     fn does_not_redact_json_schema_examples() {

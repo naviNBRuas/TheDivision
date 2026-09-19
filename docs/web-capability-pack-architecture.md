@@ -1,7 +1,7 @@
 # Web Capability Pack — integration plan
 
 Written 2026-08-24, ahead of the overnight build run. Grounds the
-"premium web development" feature request in SingleCLI's actual
+"premium web development" feature request in divisi's actual
 architecture (crates: `divisi-core`, `divisi-protocol`, `divisi-runtime`,
 `divisi-agent-sdk`, `divisi-cli`, `divisi-tui`, `divisi-gateway`) rather than
 inventing a parallel system.
@@ -12,7 +12,7 @@ Two combined prompts ask for a full "digital agency" capability: premium
 web design knowledge, a pattern/component library, motion/3D expertise,
 autonomous browser-driven visual QA (screenshots, Lighthouse, axe),
 asset intelligence (discovery, generation, optimization, licensing), and
-an 8-role agent orchestrator, wired into SingleCLI as a removable
+an 8-role agent orchestrator, wired into divisi as a removable
 "Web Capability Pack." Both prompts explicitly forbid fabricating
 functionality, test results, or quality scores. Given that constraint,
 this plan only claims a piece is "built" once it's real and verified —
@@ -20,27 +20,27 @@ everything else is marked designed-but-deferred.
 
 ## Where each piece actually belongs
 
-**Not new "agents."** SingleCLI's `agent` registry
+**Not new "agents."** divisi's `agent` registry
 (`divisi-agent-sdk::adapters`) is for real coding-agent CLIs (claude,
 codex, opencode, ...). The spec's 8 roles (WebArchitect, FrontendEngineer,
 MotionDesigner, ThreeDDesigner, UXDesigner, AccessibilityEngineer,
 PerformanceEngineer, VisualQA) are **prompt personas**, not new binaries
 to integrate. Each becomes a skill fragment
 (`skills/web/premium-web/roles/<role>.md`) whose content gets prepended
-to a `single task run`/`orchestrate-graph` dispatch — reusing the exact
+to a `divisi task run`/`orchestrate-graph` dispatch — reusing the exact
 mechanism already proven in this repo's own dogfooding (see
 `crates/divisi-runtime/src/orchestrate_graph.rs`), not a parallel
 orchestrator.
 
 **Skills**: `~/.config/divisi/skills/web/premium-web/` — pure markdown,
-managed by the existing `single skill` command (`divisi_core::skills`).
+managed by the existing `divisi skill` command (`divisi_core::skills`).
 No code changes needed to consume these once written; any agent doing
 web work can load them today.
 
 **"Design MCP" / "Asset MCP"**: the honest interpretation is *register
-real existing MCP servers* into SingleCLI's already-real dynamic MCP
+real existing MCP servers* into divisi's already-real dynamic MCP
 registry (`divisi_core::mcp`, `~/.config/divisi/mcp.toml`,
-`single mcp add`), not hand-write a design/asset protocol server from
+`divisi mcp add`), not hand-write a design/asset protocol server from
 scratch overnight. Priority one: a Playwright MCP server for browser
 automation — the one section of the spec with a genuinely mature,
 off-the-shelf solution (this Claude Code session's own
@@ -51,7 +51,7 @@ work; not attempted tonight beyond a local-directory scanner.
 
 **`divisi-web` crate (new, real)**: a thin workspace member, same shape
 as `divisi-gateway` — reads the skill/pattern markdown and exposes
-`single web patterns list|search`, `single web design-system get`.
+`divisi web patterns list|search`, `divisi web design-system get`.
 Scoped and tested like the `task-hooks` feature shipped tonight
 (`cargo build --workspace` / `cargo test --workspace` must pass, no
 placeholder implementations).

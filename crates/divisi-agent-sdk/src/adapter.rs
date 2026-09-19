@@ -5,8 +5,8 @@ use divisi_protocol::{IntegrationWrite, LspServerSpec, McpServerSpec, RunOutcome
 use std::path::Path;
 use std::time::Duration;
 
-/// What SingleCLI asks of an agent adapter: real detection, writing
-/// SingleCLI's unified MCP registry into the agent's native config format,
+/// What divisi asks of an agent adapter: real detection, writing
+/// divisi's unified MCP registry into the agent's native config format,
 /// and (Phase 4) a synchronous one-shot non-interactive invocation.
 ///
 /// `run_prompt` is deliberately **not** the full spec section 39 lifecycle
@@ -32,7 +32,7 @@ pub trait AgentAdapter {
     fn configure_mcp(&self, home: &Path, servers: &[McpServerSpec], dry_run: bool) -> Result<IntegrationWrite>;
 
     /// Inverse of `configure_mcp`: removes only the named servers, used by
-    /// `single uninstall-integrations`.
+    /// `divisi uninstall-integrations`.
     fn remove_mcp(&self, home: &Path, names: &[String], dry_run: bool) -> Result<IntegrationWrite>;
 
     /// Same shape as `configure_mcp`, for the LSP registry. Default:
@@ -46,7 +46,7 @@ pub trait AgentAdapter {
         Ok(unsupported_lsp(self.command(), home))
     }
 
-    /// Inverse of `configure_lsp`, used by `single uninstall-integrations`.
+    /// Inverse of `configure_lsp`, used by `divisi uninstall-integrations`.
     fn remove_lsp(&self, home: &Path, _names: &[String], _dry_run: bool) -> Result<IntegrationWrite> {
         Ok(unsupported_lsp(self.command(), home))
     }
@@ -92,7 +92,7 @@ pub trait AgentAdapter {
     /// Same as `run_prompt`, but asks the agent for a structured-output
     /// mode that reports real token usage (`RunOutcome::usage`). Opt-in
     /// per agent — the coordinator sets it for agents listed in
-    /// `coordinator.toml`'s `usage_json_agents`, and `single task run
+    /// `coordinator.toml`'s `usage_json_agents`, and `divisi task run
     /// --usage-json` requests it directly. Default: fall through to
     /// `run_prompt` (no usage; the caller then parse-or-estimates). Only
     /// override where the agent has a verified JSON envelope carrying
@@ -114,7 +114,7 @@ pub trait AgentAdapter {
     /// (`claude plugin install`, `codex plugin add`, `opencode plugin`,
     /// `agy plugin install` — verified per-agent, see each impl). `home`
     /// is used as both the subprocess's working directory and its `$HOME`
-    /// override, so the install lands in the agent's SingleCLI-managed
+    /// override, so the install lands in the agent's divisi-managed
     /// home (`divisi_core::agent_home`), not the real ambient one.
     /// Default: unsupported (agents with no verified plugin CLI, e.g.
     /// `pplx`).
@@ -124,7 +124,7 @@ pub trait AgentAdapter {
 
     /// Runs this agent's own real interactive login command attached to
     /// the user's terminal, with `$HOME` overridden to `home` (its
-    /// SingleCLI-managed isolated home — `divisi_core::agent_home`) so
+    /// divisi-managed isolated home — `divisi_core::agent_home`) so
     /// the resulting credentials land there, not in the real ambient
     /// `$HOME`. Interactive by design: OAuth logins need a browser
     /// round-trip or a device code the user reads and confirms, so this
@@ -136,7 +136,7 @@ pub trait AgentAdapter {
 
     /// Whether `login()` above is a real, verified command rather than the
     /// default unsupported stub — lets callers (namely `doctor`) give an
-    /// honest answer instead of pointing at `single agent login <name>`
+    /// honest answer instead of pointing at `divisi agent login <name>`
     /// for an agent that will just error. Override to `true` alongside any
     /// real `login()` implementation.
     fn login_supported(&self) -> bool {
@@ -147,7 +147,7 @@ pub trait AgentAdapter {
 /// `<command> -p -- <prompt>` — for agents where `-p` is a bare mode-switch
 /// flag and the prompt is a separate positional argument (confirmed for
 /// claude by direct execution). The `--` is load-bearing, not decorative:
-/// `single task run`'s memory/notes preamble (`task::context_preamble`)
+/// `divisi task run`'s memory/notes preamble (`task::context_preamble`)
 /// starts with a literal `"---"`, and without a `--` separator these
 /// agents' clap-style parsers reject that value as an unrecognized option
 /// rather than binding it as the positional prompt. **Not every agent

@@ -1,4 +1,4 @@
-# SingleCLI notch HUD -- systemd user unit (Linux).
+# divisi notch HUD -- systemd user unit (Linux).
 #
 # Install:
 #   mkdir -p ~/.config/systemd/user
@@ -8,7 +8,7 @@
 #
 # The HUD itself still respects `notch.toml`'s `enabled = false` default
 # -- this unit only controls whether the *process* starts at login, not
-# whether it renders anything. Prefer `single notch enable`/`disable` for
+# whether it renders anything. Prefer `divisi notch enable`/`disable` for
 # day-to-day toggling; use this unit only if you want it to survive a
 # logout/login cycle automatically.
 #
@@ -19,7 +19,7 @@
 # wlr-layer-shell protocol.
 
 [Unit]
-Description=SingleCLI notch HUD
+Description=divisi notch HUD
 After=graphical-session.target
 PartOf=graphical-session.target
 

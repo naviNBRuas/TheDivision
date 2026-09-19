@@ -52,7 +52,7 @@ const CAREFUL_INSTRUCTION: &str =
     "\n\nWork toward this goal. When it is fully complete, reply with a line containing only DONE.";
 
 /// plans a goal still in `planning` with no graph and moves it to
-/// `running`. `careful` mode (`single loop`) skips the LLM planner and
+/// `running`. `careful` mode (`divisi loop`) skips the LLM planner and
 /// builds a single iterating node; every other mode runs the planner.
 /// `agent`, when set, pins every node to that agent instead of routing.
 /// Safe to call repeatedly — a no-op once a graph exists.
@@ -129,7 +129,7 @@ pub fn drive(ctx: &Context, conn: &mut Connection, registry: &crate::registry::T
 /// `graph_nodes.status = 'running'` row with a dead backing task into
 /// `failed`/`done` — a crash signature). This catches what that reconcile
 /// doesn't:
-/// - a `Paused` goal (a *clean* prior `single daemon stop` marked it,
+/// - a `Paused` goal (a *clean* prior `divisi daemon stop` marked it,
 ///   distinguishing it from a crash) → back to `running`;
 /// - a `Planning`/`Running`/`WaitingOnCapacity` goal with an empty graph
 ///   → the planner call was interrupted before it ever wrote one →
@@ -198,7 +198,7 @@ pub fn resume_interrupted(ctx: &Context, conn: &mut Connection) -> Result<usize>
     Ok(touched)
 }
 
-/// E28 spec §10: a clean `single daemon stop` — called from the
+/// E28 spec §10: a clean `divisi daemon stop` — called from the
 /// `Request::Shutdown` handler, before the process actually exits — marks
 /// every currently active goal `Paused` so `resume_interrupted` (not the
 /// crash-oriented `scheduler::reconcile`) picks it back up next start.
@@ -207,7 +207,7 @@ pub fn pause_active_goals(conn: &Connection) -> Result<usize> {
     goal::pause_all_active(conn)
 }
 
-/// E28 spec §10: `single goal resume <id>` — manual re-tick of a
+/// E28 spec §10: `divisi goal resume <id>` — manual re-tick of a
 /// `Blocked`/`Failed`/`Paused`/`WaitingOnCapacity` goal a human judges
 /// recoverable. Unlike `resume_interrupted`, this clears any stale
 /// per-node capacity stamp (the human is overriding the hold, not
@@ -234,7 +234,7 @@ pub fn resume_goal(ctx: &Context, conn: &mut Connection, goal_id: &str) -> Resul
             return Err(e);
         }
     }
-    events::append(conn, &g.session_id, Some(goal_id), events::EventKind::SessionResumed, &format!("{goal_id}: resumed via `single goal resume`"))?;
+    events::append(conn, &g.session_id, Some(goal_id), events::EventKind::SessionResumed, &format!("{goal_id}: resumed via `divisi goal resume`"))?;
     Ok(())
 }
 
@@ -243,7 +243,7 @@ pub fn resume_goal(ctx: &Context, conn: &mut Connection, goal_id: &str) -> Resul
 /// the ready-set forever -- neither `resume_goal`'s retry-stamp clearing
 /// nor a plain `GoalAmend` re-tick touches it, since both only ever
 /// affect goal-level status or capacity-wait stamps, not a node's own
-/// `status` field. `single goal retry-node` is the human's explicit
+/// `status` field. `divisi goal retry-node` is the human's explicit
 /// "I judge this one fixable now" action: reset exactly the named node
 /// back to `pending` (status, task_id, attempts, retry stamp all
 /// cleared) and re-tick. Errors if the node doesn't exist or the goal
@@ -283,7 +283,7 @@ fn reset_node_for_retry(conn: &mut Connection, goal_id: &str, node_id: &str) -> 
         &g.session_id,
         Some(goal_id),
         events::EventKind::SessionResumed,
-        &format!("{node_id}: reset from {prior_status:?} to pending via `single goal retry-node`"),
+        &format!("{node_id}: reset from {prior_status:?} to pending via `divisi goal retry-node`"),
     )?;
     Ok(())
 }
@@ -466,7 +466,7 @@ mod tests {
     }
 
     /// Same regression as `resume_interrupted_blocks_the_goal_when_replan_
-    /// fails_instead_of_leaving_it_running`, for `single goal resume`'s
+    /// fails_instead_of_leaving_it_running`, for `divisi goal resume`'s
     /// own path (`resume_goal`) — `resume_status` flips the goal to
     /// `running` before planning is attempted, and a failure used to
     /// propagate to the CLI caller as an error while leaving the goal

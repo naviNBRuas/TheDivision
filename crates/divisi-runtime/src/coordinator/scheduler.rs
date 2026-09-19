@@ -262,7 +262,7 @@ fn timeout_for(effort: Effort) -> Duration {
 /// `attempts + 1` while retries remain, `failed` only once exhausted.
 /// Live-verification finding: this used to jump straight to `failed`
 /// unconditionally, permanently dooming every node downstream of one that
-/// happened to be running when the daemon restarted — `single goal
+/// happened to be running when the daemon restarted — `divisi goal
 /// resume` re-ticks pending nodes but never revives a `failed` one, so
 /// the goal stayed `running` forever with no dispatchable work. Returns
 /// the number of nodes touched. This is the coordinator-node analogue of
@@ -533,7 +533,7 @@ fn settle_finished_node(
     };
     let goal = goal::get(conn, &goal_id)?.context("goal vanished mid-run")?;
 
-    // `careful` mode (`single loop`): re-dispatch the single node with the
+    // `careful` mode (`divisi loop`): re-dispatch the single node with the
     // previous output appended until the agent emits a lone `DONE` line or
     // the iteration cap (`max_dispatches`) is spent. Runs before the normal
     // success/failure handling.
@@ -609,11 +609,11 @@ fn handle_capacity_exhaustion(conn: &Connection, goal: &Goal, node_id: &str, art
     if goal.capacity_waits >= max_waits || elapsed_minutes >= max_wait_minutes as i64 {
         // Live-verification finding (2026-09-11/12): `elapsed_minutes` is
         // measured from `goal.created_at`, not from the goal's last
-        // resume — so `single goal resume` on a goal that has simply been
+        // resume — so `divisi goal resume` on a goal that has simply been
         // sitting blocked for days re-trips this exact same wall-clock
         // check on the very next tick, before the pool ever gets a
         // chance to actually retry dispatch. The fix for a stuck-for-days
-        // goal is `single goal amend <id> capacity-minutes=<N>` (a
+        // goal is `divisi goal amend <id> capacity-minutes=<N>` (a
         // *separate* field from `amend ... minutes=<N>`, which raises the
         // goal's overall time budget, not this capacity-wait one) — spent
         // real time confused between the two before finding
@@ -621,7 +621,7 @@ fn handle_capacity_exhaustion(conn: &Connection, goal: &Goal, node_id: &str, art
         // now says exactly which knob to turn instead of leaving that to
         // be rediscovered by reading this function's source.
         let reason = format!(
-            "waited {:.1}h for capacity, still exhausted (raise via `single goal amend {} capacity-minutes=<N>`, not `minutes=`)",
+            "waited {:.1}h for capacity, still exhausted (raise via `divisi goal amend {} capacity-minutes=<N>`, not `minutes=`)",
             elapsed_minutes as f64 / 60.0,
             goal.id
         );
@@ -672,7 +672,7 @@ fn parse_earliest_recovery_ms(text: &str) -> Option<i64> {
     digits.parse().ok()
 }
 
-/// One iteration step for a `careful` (`single loop`) goal. `prev_artifact`
+/// One iteration step for a `careful` (`divisi loop`) goal. `prev_artifact`
 /// is the just-finished task's artifact path.
 fn settle_careful_node(
     conn: &mut Connection,
@@ -884,9 +884,9 @@ fn build_node_prompt(graph: &TaskGraph, node: &Node) -> String {
 /// `auto_merge` now means "eligible to be offered a merge confirmation
 /// once review passes", not "skip human review". This function requests
 /// confirmation via `divisi_core::pending_merge` and stops — it never
-/// calls `worktree::merge` itself. Only `single goal merge confirm`
+/// calls `worktree::merge` itself. Only `divisi goal merge confirm`
 /// (`Request::GoalMergeResolve`, `allow: true`) does, after a human has
-/// been shown the real diff (`single goal merge show`, backed by
+/// been shown the real diff (`divisi goal merge show`, backed by
 /// `worktree::diff`). A no-op for every other goal/node shape, so this
 /// changes nothing unless a human explicitly opted in.
 fn maybe_auto_merge(conn: &Connection, goal: &Goal, node_id: &str) -> Result<()> {
@@ -920,7 +920,7 @@ fn maybe_auto_merge(conn: &Connection, goal: &Goal, node_id: &str) -> Result<()>
             &goal.session_id,
             Some(&goal.id),
             EventKind::MergeAwaitingConfirmation,
-            &format!("{dep_id} ({branch}) awaiting human merge confirmation after {node_id} passed review — see `single goal merge show {pending_id}`"),
+            &format!("{dep_id} ({branch}) awaiting human merge confirmation after {node_id} passed review — see `divisi goal merge show {pending_id}`"),
         )?;
     }
     Ok(())
@@ -1397,7 +1397,7 @@ mod tests {
         assert_eq!(p, "s1");
     }
 
-    // ---- careful mode (`single loop`) ----
+    // ---- careful mode (`divisi loop`) ----
 
     fn careful_goal(conn: &mut rusqlite::Connection, max_iters: u32) -> crate::coordinator::goal::Goal {
         use crate::coordinator::{goal, graph::GoalMode, session};
