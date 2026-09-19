@@ -1,4 +1,5 @@
 pub mod accounting;
+pub mod assistant;
 pub mod billing;
 pub mod bootstrap;
 pub mod context;
