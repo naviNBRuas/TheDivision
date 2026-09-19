@@ -32,6 +32,13 @@ fn rename_db(root: &Path) -> Result<()> {
             std::fs::rename(&from, &to).with_context(|| format!("renaming {}", from.display()))?;
         }
     }
+    // Compatibility link for the deprecation window: old binaries that are still
+    // running (or scripts that name the file) keep reading the same database
+    // instead of creating a second, empty one. Removed together with the aliases.
+    let (main_old, main_new) = (root.join("state/single.db"), root.join("state/divisi.db"));
+    if main_new.exists() && std::fs::symlink_metadata(&main_old).is_err() {
+        std::os::unix::fs::symlink("divisi.db", &main_old).with_context(|| format!("linking {}", main_old.display()))?;
+    }
     Ok(())
 }
 
@@ -101,9 +108,19 @@ mod tests {
         assert_eq!(fs::read_to_string(root.join("config.toml")).unwrap(), "x = 1");
         assert_eq!(fs::read_to_string(root.join("state/divisi.db")).unwrap(), "db");
         assert_eq!(fs::read_to_string(root.join("state/divisi.db-wal")).unwrap(), "wal");
-        assert!(!root.join("state/single.db").exists());
+        // Old binaries still running against `state/single.db` must see the same data, not fork a new db.
+        assert!(fs::symlink_metadata(root.join("state/single.db")).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(root.join("state/single.db")).unwrap(), "db");
         assert!(fs::symlink_metadata(home.path().join("single")).unwrap().file_type().is_symlink());
         assert_eq!(fs::read_to_string(home.path().join("single/config.toml")).unwrap(), "x = 1");
+    }
+
+    #[test]
+    fn no_db_means_no_compat_link() {
+        let home = tempfile::tempdir().unwrap();
+        fs::create_dir_all(home.path().join("single/state")).unwrap();
+        let root = resolve_default_root(home.path());
+        assert!(fs::symlink_metadata(root.join("state/single.db")).is_err());
     }
 
     #[test]
