@@ -1,0 +1,7 @@
+# Processes launched by cargo (tests, `cargo run`) get a sandboxed config home.
+# DivisiDirs::discover() migrates ~/.config/single lazily, and several tests call
+# it without a DIVISI_CONFIG_DIR override; without this, a plain `cargo test`
+# would move the developer's real config directory. Set XDG_CONFIG_HOME yourself
+# to override (this does not force). Installed binaries are unaffected.
+[env]
+XDG_CONFIG_HOME = { value = "target/xdg-config", relative = true }
