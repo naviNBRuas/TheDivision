@@ -22,6 +22,9 @@
 - **Mark geometry (48-unit grid):** obelus bar 32 long, 6 thick, rx 1.5; dots radius 4.6 at y = 24 ± 14. Slash: bar length 44, rotated -62 degrees.
 - **Motion:** loop 4.2s: hold "/" 0.5s, morph in 1.1s, hold "÷" 0.9s, morph out 1.1s, rest 0.6s. Morph in: angle -62 → -360 with cubic in-out easing, bar length 44 → 32, dots appear from progress 0.5 with an out-back spring. `NO_MOTION` and `NO_COLOR` must degrade to static or plain output.
 - **Test runs:** `cargo test --workspace`. If rustc SIGSEGVs under memory pressure, rerun with `-j1`.
+- **Test hygiene (learned in execution):** the integration tests bootstrap full copies of every agent home into `/tmp` (about 1.5 GB), and the suite leaks `.tmp*` dirs there. If `/tmp` (tmpfs) has under about 2 GB free, `copy_dir_recursive` swallows the ENOSPC and leaves zero-byte files, so tests fail with `EOF while parsing` on an agent config. Before a run: `df -h /tmp`, and clear idle leftovers with `find /tmp -maxdepth 1 -name '.tmp*' -user "$USER" -mmin +5 -exec rm -rf {} +`.
+- **Config safety:** `.cargo/config.toml` sandboxes `XDG_CONFIG_HOME` under `target/xdg-config` for cargo-launched processes, because tests call `DivisiDirs::discover()` and it now migrates the legacy config dir. Never run `divisi migrate --apply` or an installed new binary against the real home before Task 13.
+- **Guard exit code:** `python3 scripts/rename_divisi.py check | tail -1` hides the exit status. Use `python3 scripts/rename_divisi.py check >/dev/null; echo $?` (0 = clean) before committing.
 
 ---
 
