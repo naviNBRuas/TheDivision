@@ -1,0 +1,33 @@
+[package]
+name = "divisi-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "divisi"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+directories.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+tempfile = "3"
+rpassword = "7"
+age.workspace = true
+libc.workspace = true
+divisi-agent-sdk = { path = "../divisi-agent-sdk" }
+divisi-core = { path = "../divisi-core" }
+divisi-web = { path = "../divisi-web" }
+divisi-protocol = { path = "../divisi-protocol" }
+divisi-runtime = { path = "../divisi-runtime" }
+divisi-tui = { path = "../divisi-tui" }
+
+[dev-dependencies]
+assert_cmd = "2"

@@ -1,0 +1,29 @@
+[package]
+name = "divisi-notch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Opt-in top-center notch HUD for SingleCLI pool health (E30)"
+
+[[bin]]
+name = "divisi-notch"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+iced = { workspace = true, features = ["tokio"] }
+divisi-core = { path = "../divisi-core" }
+divisi-protocol = { path = "../divisi-protocol" }
+
+# Wayland layer-shell positioning (Phase 6 Task 13) -- Linux only. macOS
+# panel semantics (Task 12) and X11 fallback are deferred; this machine's
+# real environment is Wayland (confirmed live: WAYLAND_DISPLAY set), and
+# `iced_layershell` 0.19.1 pins iced_core/iced_program/iced_runtime to
+# "0.14", matching our exact iced version -- verified against its real
+# Cargo.toml, not assumed from the version number alone.
+[target.'cfg(target_os = "linux")'.dependencies]
+iced_layershell = "0.19"

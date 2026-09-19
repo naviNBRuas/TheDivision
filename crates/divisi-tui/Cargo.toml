@@ -1,0 +1,15 @@
+[package]
+name = "divisi-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+serde_json.workspace = true
+divisi-core = { path = "../divisi-core" }
+divisi-protocol = { path = "../divisi-protocol" }
+age.workspace = true

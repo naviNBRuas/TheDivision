@@ -1299,8 +1299,190 @@ dependencies = [
 ]
 
 [[package]]
+name = "divisi-agent-sdk"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "divisi-core",
+ "divisi-protocol",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "divisi-brand"
 version = "0.23.0"
+
+[[package]]
+name = "divisi-cli"
+version = "0.23.0"
+dependencies = [
+ "age",
+ "anyhow",
+ "assert_cmd",
+ "clap",
+ "directories",
+ "divisi-agent-sdk",
+ "divisi-core",
+ "divisi-protocol",
+ "divisi-runtime",
+ "divisi-tui",
+ "divisi-web",
+ "libc",
+ "reqwest",
+ "rpassword",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "divisi-core"
+version = "0.23.0"
+dependencies = [
+ "age",
+ "anyhow",
+ "chrono",
+ "directories",
+ "divisi-protocol",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "divisi-gateway"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "divisi-core",
+ "divisi-protocol",
+ "rmcp",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "divisi-lsp"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "divisi-core",
+ "divisi-protocol",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
+name = "divisi-mcp"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "divisi-core",
+ "divisi-protocol",
+ "divisi-runtime",
+ "rmcp",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "divisi-native-agent"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "divisi-core",
+ "reqwest",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "divisi-notch"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "divisi-core",
+ "divisi-protocol",
+ "iced",
+ "iced_layershell",
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "divisi-protocol"
+version = "0.23.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "divisi-runtime"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "directories",
+ "divisi-agent-sdk",
+ "divisi-core",
+ "divisi-protocol",
+ "redis",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "divisi-tui"
+version = "0.23.0"
+dependencies = [
+ "age",
+ "anyhow",
+ "crossterm",
+ "divisi-core",
+ "divisi-protocol",
+ "ratatui",
+ "serde_json",
+]
+
+[[package]]
+name = "divisi-web"
+version = "0.23.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "dlib"
@@ -4897,188 +5079,6 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
-
-[[package]]
-name = "single-agent-sdk"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "chrono",
- "serde",
- "serde_json",
- "serde_yaml",
- "single-core",
- "single-protocol",
- "tempfile",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "single-cli"
-version = "0.23.0"
-dependencies = [
- "age",
- "anyhow",
- "assert_cmd",
- "clap",
- "directories",
- "libc",
- "reqwest",
- "rpassword",
- "rusqlite",
- "serde",
- "serde_json",
- "single-agent-sdk",
- "single-core",
- "single-protocol",
- "single-runtime",
- "single-tui",
- "single-web",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "single-core"
-version = "0.23.0"
-dependencies = [
- "age",
- "anyhow",
- "chrono",
- "directories",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "single-protocol",
- "tar",
- "tempfile",
- "thiserror 2.0.20",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "single-lsp"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "libc",
- "serde_json",
- "single-core",
- "single-protocol",
-]
-
-[[package]]
-name = "single-mcp"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "rmcp",
- "rusqlite",
- "serde_json",
- "single-core",
- "single-protocol",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "single-native-agent"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "clap",
- "reqwest",
- "rmcp",
- "serde",
- "serde_json",
- "single-core",
- "tokio",
-]
-
-[[package]]
-name = "single-notch"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "iced",
- "iced_layershell",
- "libc",
- "serde",
- "serde_json",
- "single-core",
- "single-protocol",
-]
-
-[[package]]
-name = "single-protocol"
-version = "0.23.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "single-runtime"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "chrono",
- "directories",
- "redis",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "single-agent-sdk",
- "single-core",
- "single-protocol",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "single-tui"
-version = "0.23.0"
-dependencies = [
- "age",
- "anyhow",
- "crossterm",
- "ratatui",
- "serde_json",
- "single-core",
- "single-protocol",
-]
-
-[[package]]
-name = "single-web"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "singlecli-mcp"
-version = "0.23.0"
-dependencies = [
- "anyhow",
- "rmcp",
- "rusqlite",
- "serde_json",
- "single-core",
- "single-protocol",
- "single-runtime",
- "tempfile",
- "tokio",
-]
 
 [[package]]
 name = "skrifa"

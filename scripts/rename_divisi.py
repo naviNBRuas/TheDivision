@@ -64,6 +64,12 @@ IDENTS = [
     (r"\bsingle_lsp\b", "divisi_lsp"),
     (r"\bsingle_mcp\b", "divisi_gateway"),
     (r"\bsinglecli_mcp\b", "divisi_mcp"),
+    # Cargo's env!("CARGO_BIN_EXE_<bin>"): the `_` before the bin name defeats the token boundary.
+    (r"CARGO_BIN_EXE_single-runtimed\b", "CARGO_BIN_EXE_divisid"),
+    (r"CARGO_BIN_EXE_singlecli-mcp\b", "CARGO_BIN_EXE_divisi-mcp"),
+    (r"CARGO_BIN_EXE_single-mcp\b", "CARGO_BIN_EXE_divisi-gateway"),
+    (r"CARGO_BIN_EXE_single-(lsp|notch)\b", r"CARGO_BIN_EXE_divisi-\1"),
+    (r"CARGO_BIN_EXE_single\b(?!-)", "CARGO_BIN_EXE_divisi"),
     (r"\bSingleDirs\b", "DivisiDirs"),
     (r"\bSingleCliServer\b", "DivisiServer"),
     (r"\bSingleAgentAdapter\b", "DivisiAgentAdapter"),

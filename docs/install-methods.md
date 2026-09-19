@@ -5,7 +5,7 @@ each command was verified. Per the project's own rule ("do not fabricate
 APIs, flags, configuration formats, or capabilities"), every command below
 was fetched directly from the vendor's own current documentation or GitHub
 README — not taken on trust from a research summary — before being wired
-into `crates/single-core/src/registry.rs`.
+into `crates/divisi-core/src/registry.rs`.
 
 | Agent | Command | Install command | Source |
 |---|---|---|---|
@@ -69,7 +69,7 @@ works universally.
 `cody` was not installed on the reference machine, so unlike every other
 entry in this file, its command syntax (`cody auth login --web`, `cody
 chat -m "..."`) comes from Sourcegraph's own current docs (fetched
-directly), not from running the CLI — `single-core::registry` marks it
+directly), not from running the CLI — `divisi-core::registry` marks it
 `unverified: true` for this reason, and it has no MCP support wired up
 since none is documented. Sourcegraph itself also documents Cody CLI as
 "Experimental" for Enterprise accounts.
@@ -90,6 +90,6 @@ Codex CLI's and Antigravity's official docs don't explicitly document a
 `--version` flag the way Claude Code and OpenCode do. `codex --version` and
 `agy --version` were confirmed to work directly on the reference machine
 (see the Phase 1 investigation in this repo's git history), so
-`single-agent-sdk::discover` uses `<command> --version` uniformly — but
+`divisi-agent-sdk::discover` uses `<command> --version` uniformly — but
 treat this as machine-observed behavior, not vendor-documented contract,
 if either CLI changes its `--version` output format in the future.

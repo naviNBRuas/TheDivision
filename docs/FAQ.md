@@ -62,7 +62,7 @@ if you want to exercise that code path.
 An optional top-center overlay (macOS / Linux) that shows live free-provider
 pool health — key tallies, benches, recent goals, agent auth dots. It is
 off by default. Enable with `single notch enable` (starts a companion
-`single-notch` process that polls `runtime.sock`). Disable with
+`divisi-notch` process that polls `runtime.sock`). Disable with
 `single notch disable`. It does not replace the TUI Pool tab and does not
 edit pool config. Session autostart examples: `docs/examples/notch.*`.
 
@@ -75,11 +75,11 @@ Placement depends on the desktop:
   hover an item, and expands into a detail card on click; it hides again when
   the pointer leaves. `single notch enable` installs and enables it. GNOME on
   Wayland only discovers a newly installed extension at login, so log out and
-  back in once. The extension gets its data from `single-notch --snapshot`.
-- **wlroots compositors (Sway, Hyprland, river) and macOS:** the `single-notch`
+  back in once. The extension gets its data from `divisi-notch --snapshot`.
+- **wlroots compositors (Sway, Hyprland, river) and macOS:** the `divisi-notch`
   process draws a top-center overlay itself.
 - **KDE (KWin):** no layer-shell and no extension yet, so it exits with an
-  explanatory error; `single-notch --window` runs it as an ordinary window.
+  explanatory error; `divisi-notch --window` runs it as an ordinary window.
 
 ## Where do I report a bug or ask something not covered here?
 

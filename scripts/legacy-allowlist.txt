@@ -10,3 +10,4 @@ install.sh	Phase B: ships with the first divisi release
 .github/workflows/*	Phase B: release artifact names
 docker/*	Phase B: image names
 README.md	install section keeps the old release names until Phase B
+crates/divisi-core/src/mcp.rs	legacy MCP server names removed on sync

@@ -53,7 +53,7 @@ isolated copy — see `docs/architecture.md`'s "Isolation" section.
 curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.sh | sh
 ```
 
-Downloads the prebuilt `single` and `single-runtimed` binaries for your
+Downloads the prebuilt `single` and `divisid` binaries for your
 platform from the latest [release](https://github.com/naviNBRuas/SingleCLI/releases)
 to `~/.local/bin` (override with `SINGLE_INSTALL_DIR`). See
 [`install.sh`](install.sh) — it's a plain shell script, read it before
@@ -66,7 +66,7 @@ cargo build --release --workspace
 ```
 
 Binaries land in `target/release/`: `single` (the CLI/TUI) and
-`single-runtimed` (the headless runtime daemon). Put both on `$PATH`.
+`divisid` (the headless runtime daemon). Put both on `$PATH`.
 
 ## Quickstart
 
@@ -302,10 +302,10 @@ plugin is real; browsing what's available is not), and full generic
 model/provider abstraction beyond the free-pool's own dispatch (live
 model-catalog discovery per provider — each free-pool provider is
 currently treated as offering one nominal model) are later work. The
-Coordinator's parallel task graph and `singlecli-mcp`'s permission
+Coordinator's parallel task graph and `divisi-mcp`'s permission
 enforcement, both listed as future work in earlier revisions of this
 README, are real and shipped — see "Coordinator, goals, and the
-free-provider pool" above and `single-core::preferences`/`permissions`.
+free-provider pool" above and `divisi-core::preferences`/`permissions`.
 See `docs/architecture.md`'s "Not in Phase 1-6" section for
 the full, honest list.
 

@@ -60,7 +60,7 @@ SingleCLI supports two paths for adding agent support:
   mode, MCP format). Start here; see the README's "Phase 5" note.
 - **Built-in** (Rust) — for agents needing deeper integration (real login
   flow, native LSP/plugin sync). Look at an existing adapter in
-  `crates/single-agent-sdk` as a template, and read
+  `crates/divisi-agent-sdk` as a template, and read
   [`docs/install-methods.md`](docs/install-methods.md) first — it documents
   the verified install/login/MCP commands for every currently-supported
   agent, including the ones that were investigated and left out (e.g.

@@ -1,18 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/single-core",
-    "crates/single-protocol",
-    "crates/single-runtime",
-    "crates/single-agent-sdk",
-    "crates/single-cli",
-    "crates/single-tui",
-    "crates/single-mcp",
-    "crates/singlecli-mcp",
-    "crates/single-lsp",
-    "crates/single-web",
-    "crates/single-native-agent",
-    "crates/single-notch",
+    "crates/divisi-core",
+    "crates/divisi-protocol",
+    "crates/divisi-runtime",
+    "crates/divisi-agent-sdk",
+    "crates/divisi-cli",
+    "crates/divisi-tui",
+    "crates/divisi-gateway",
+    "crates/divisi-mcp",
+    "crates/divisi-lsp",
+    "crates/divisi-web",
+    "crates/divisi-native-agent",
+    "crates/divisi-notch",
     "crates/divisi-brand",
 ]
 
@@ -50,7 +50,7 @@ libc = "0.2"
 lto = true
 strip = true
 
-# `iced_layershell` 0.19.1 (single-notch's Wayland positioning, E30 Phase
+# `iced_layershell` 0.19.1 (divisi-notch's Wayland positioning, E30 Phase
 # 6) pins `iced_exdevtools = "0.19.1"`, which has a real upstream compile
 # bug on this toolchain -- an exhaustive match over winit-core 0.31.0-
 # beta.3's now-`#[non_exhaustive]` `NativeKeyCode` enum. 0.20.1 fixes it

@@ -4,7 +4,7 @@ SingleCLI is built in Rust on top of a small, deliberately boring set of
 crates. Particular thanks to the maintainers of:
 
 - [Tokio](https://tokio.rs) — the async runtime behind the headless
-  `single-runtimed` daemon and every non-interactive agent task.
+  `divisid` daemon and every non-interactive agent task.
 - [Ratatui](https://github.com/ratatui-org/ratatui) and
   [Crossterm](https://github.com/crossterm-rs/crossterm) — the TUI control
   center (Agents/Tasks/MCP/LSP/Plugins/Tools/Providers/Accounts/Memory

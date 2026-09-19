@@ -1,0 +1,19 @@
+[package]
+name = "divisi-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "divisi-lsp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+divisi-core = { path = "../divisi-core" }
+divisi-protocol = { path = "../divisi-protocol" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

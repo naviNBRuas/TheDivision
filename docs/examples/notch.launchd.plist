@@ -24,16 +24,16 @@
     <string>company.nbr.single-notch</string>
     <key>ProgramArguments</key>
     <array>
-        <!-- Adjust if `single-notch` isn't installed at the default location. -->
-        <string>/usr/local/bin/single-notch</string>
+        <!-- Adjust if `divisi-notch` isn't installed at the default location. -->
+        <string>/usr/local/bin/divisi-notch</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>/tmp/single-notch.log</string>
+    <string>/tmp/divisi-notch.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/single-notch.err</string>
+    <string>/tmp/divisi-notch.err</string>
 </dict>
 </plist>

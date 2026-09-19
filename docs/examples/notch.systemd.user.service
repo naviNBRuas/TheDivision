@@ -2,9 +2,9 @@
 #
 # Install:
 #   mkdir -p ~/.config/systemd/user
-#   cp notch.systemd.user.service ~/.config/systemd/user/single-notch.service
+#   cp notch.systemd.user.service ~/.config/systemd/user/divisi-notch.service
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now single-notch.service
+#   systemctl --user enable --now divisi-notch.service
 #
 # The HUD itself still respects `notch.toml`'s `enabled = false` default
 # -- this unit only controls whether the *process* starts at login, not
@@ -25,8 +25,8 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-# Adjust if `single-notch` isn't installed at the default location.
-ExecStart=%h/.local/bin/single-notch
+# Adjust if `divisi-notch` isn't installed at the default location.
+ExecStart=%h/.local/bin/divisi-notch
 Restart=on-failure
 RestartSec=2
 

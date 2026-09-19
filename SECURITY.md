@@ -23,7 +23,7 @@ Please include:
 ## Scope
 
 In scope: SingleCLI's own code — the CLI, TUI, headless daemon
-(`single-runtimed`), agent adapters, and the registries/stores under
+(`divisid`), agent adapters, and the registries/stores under
 `~/.config/single/`.
 
 Out of scope: vulnerabilities in a third-party agent CLI SingleCLI
