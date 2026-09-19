@@ -527,6 +527,23 @@ mod tests {
     }
 
     #[test]
+    fn history_returns_the_main_thread_and_only_what_is_new() {
+        let e = env();
+        let hist = |since: i64| match crate::handlers::handle(&e.ctx, Request::ChatHistory { session: None, since_event_id: since }) {
+            Response::Ok { data: ResponseData::Chat(o) } => o,
+            other => panic!("{other:?}"),
+        };
+        let empty = hist(0);
+        assert!(empty.events.is_empty());
+        assert!(!empty.session_id.is_empty(), "a client learns the main thread id before it has said anything");
+        let sent = send(&e, &none(), "status");
+        assert_eq!(hist(0).session_id, sent.session_id);
+        assert_eq!(hist(0).events.len(), 2);
+        let last = hist(0).events[0].id;
+        assert_eq!(hist(last).events.len(), 1, "only the events after the id");
+    }
+
+    #[test]
     fn goal_ids_survive_redaction_but_real_secrets_do_not() {
         let e = env();
         let o = send(&e, &none(), "cancel goal_dljki9w0vhif_0001 and note my key sk-abcdEFGH1234567890abcdEFGH1234567890abcd");

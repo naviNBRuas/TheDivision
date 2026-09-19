@@ -750,6 +750,13 @@ pub enum Request {
         /// Where it was typed: `zed`, `tui`, `notch` or `cli`.
         surface: String,
     },
+    /// Everything in a conversation after an event id: chat lines and the goals' own progress.
+    /// `session: None` is the shared main conversation, which is how a client learns its id.
+    ChatHistory {
+        #[serde(default)]
+        session: Option<String>,
+        since_event_id: i64,
+    },
     /// Answer a confirmation divisi asked for (a `chat_confirm` event). The first answer wins;
     /// answering an already-resolved confirmation returns its recorded outcome.
     ChatConfirm {
@@ -2092,6 +2099,22 @@ pub struct ChatLine {
     pub degraded: bool,
 }
 
+/// A one-line note for the goal events worth showing inside a conversation (a goal finishing,
+/// blocking or failing a step). `None` for everything else, which would only be noise there.
+pub fn progress_line(kind: &str, body: &str) -> Option<String> {
+    let label = match kind {
+        "integrated" => "done",
+        "blocked" => "blocked",
+        "node_failed" => "a step failed",
+        "capacity_wait" => "waiting on capacity",
+        "budget" => "budget",
+        _ => return None,
+    };
+    let first = body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let short: String = first.chars().take(140).collect();
+    Some(if short.is_empty() { label.to_owned() } else { format!("{label}: {short}") })
+}
+
 /// Reads a `chat_*` coordinator event into a display line. Returns `None` for any other event
 /// kind (goal progress, plans, ...). A body that is not the expected JSON is shown as-is.
 pub fn chat_line(kind: &str, body: &str) -> Option<ChatLine> {
@@ -2315,6 +2338,8 @@ mod tests {
             Request::ChatSend { session: None, text: "how is the pool?".into(), surface: "tui".into() },
             Request::ChatSend { session: Some("sess_1".into()), text: "cancel goal_1".into(), surface: "zed".into() },
             Request::ChatConfirm { approval_id: 7, allow: true, remember: false },
+            Request::ChatHistory { session: None, since_event_id: 0 },
+            Request::ChatHistory { session: Some("sess_1".into()), since_event_id: 12 },
             Request::CoordinatorStatus,
             Request::GoalMergeList,
             Request::GoalMergeShow { id: 1 },
@@ -2361,6 +2386,16 @@ mod tests {
         assert_eq!((ask.role, ask.text.as_str(), ask.approval_id), (ChatRole::Confirm, "cancel goal_1", Some(7)));
         let done = chat_line("chat_result", r#"{"approval_id":7,"outcome":"approved"}"#).unwrap();
         assert_eq!((done.role, done.text.as_str(), done.approval_id), (ChatRole::Result, "approved", Some(7)));
+    }
+
+    #[test]
+    fn only_the_goal_events_worth_reading_become_progress_lines() {
+        assert_eq!(progress_line("integrated", "All tests pass.\nmore").as_deref(), Some("done: All tests pass."));
+        assert_eq!(progress_line("blocked", "planning failed").as_deref(), Some("blocked: planning failed"));
+        assert_eq!(progress_line("node_failed", "").as_deref(), Some("a step failed"));
+        assert_eq!(progress_line("node_output", "lots of text"), None);
+        assert_eq!(progress_line("plan", "3 nodes"), None);
+        assert!(progress_line("blocked", &"x".repeat(500)).unwrap().chars().count() < 170);
     }
 
     #[test]

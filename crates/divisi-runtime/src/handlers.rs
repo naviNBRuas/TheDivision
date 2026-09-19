@@ -1913,6 +1913,15 @@ fn dispatch(
             let model = crate::assistant::chat::PoolModel { ctx, conn: &conn };
             Ok(ResponseData::Chat(crate::assistant::chat::chat_send(ctx, &conn, &model, &cfg, session.as_deref(), &text, &surface)?))
         }
+        Request::ChatHistory { session, since_event_id } => {
+            let conn = coordinator_db(ctx)?;
+            let session_id = match session {
+                Some(id) => id,
+                None => crate::coordinator::session::main_thread(&conn)?.id,
+            };
+            let events = crate::coordinator::events::since(&conn, &session_id, since_event_id)?.into_iter().map(coordinator_event).collect();
+            Ok(ResponseData::Chat(divisi_protocol::ChatOutcome { session_id, events }))
+        }
         Request::ChatConfirm { approval_id, allow, remember } => {
             let conn = coordinator_db(ctx)?;
             let cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);
