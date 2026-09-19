@@ -1555,6 +1555,7 @@ enum NotchCommand {
 }
 
 fn main() -> anyhow::Result<()> {
+    divisi_core::env::adopt_legacy_env();
     let cli = Cli::parse();
     let dirs = DivisiDirs::discover()?;
     dirs.ensure_created()?;

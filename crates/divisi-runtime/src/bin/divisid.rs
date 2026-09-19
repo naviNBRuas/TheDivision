@@ -6,6 +6,7 @@ use divisi_core::DivisiDirs;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    divisi_core::env::adopt_legacy_env();
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let dirs = DivisiDirs::discover()?;

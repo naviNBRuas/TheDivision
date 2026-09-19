@@ -8,6 +8,7 @@ use rmcp::ServiceExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    divisi_core::env::adopt_legacy_env();
     let service = server::DivisiServer::new()?.serve(rmcp::transport::io::stdio()).await?;
     service.waiting().await?;
     Ok(())

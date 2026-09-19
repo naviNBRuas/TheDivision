@@ -15,6 +15,7 @@ use std::io::{BufReader, BufWriter};
 use std::sync::mpsc::channel;
 
 fn main() -> anyhow::Result<()> {
+    divisi_core::env::adopt_legacy_env();
     let registry = load_registry()?;
     let router = Router::from_registry(registry);
 

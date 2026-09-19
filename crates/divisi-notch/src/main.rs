@@ -38,6 +38,7 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 fn main() -> Result<()> {
+    divisi_core::env::adopt_legacy_env();
     // One-shot JSON for the GNOME Shell extension (`extensions/gnome-shell`),
     // which draws the notch itself and reuses this crate's aggregation
     // rather than re-implementing pool logic in JS.

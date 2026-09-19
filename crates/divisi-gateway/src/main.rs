@@ -13,6 +13,7 @@ use rmcp::ServiceExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    divisi_core::env::adopt_legacy_env();
     if std::env::args().any(|a| a == "--distrobox") {
         let service = distrobox::DistroboxServer.serve(rmcp::transport::io::stdio()).await?;
         service.waiting().await?;

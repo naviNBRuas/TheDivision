@@ -563,6 +563,7 @@ fn run_agent_loop(
 // -- Main --
 
 fn main() -> Result<()> {
+    divisi_core::env::adopt_legacy_env();
     let cli = Cli::parse();
     let Command::Run {
         provider,
