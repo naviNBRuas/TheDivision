@@ -21,3 +21,4 @@ crates/divisi-core/src/backup.rs	__singlecli_secrets__.toml is persisted inside 
 crates/divisi-cli/src/update.rs	release asset name singlecli-<target> until Phase B
 crates/divisi-cli/src/internal_lsp_manifest.rs	references a historical spec filename
 .cargo/config.toml	comment explains the legacy config directory migration
+crates/divisi-cli/tests/no_config_side_effects.rs	test clears the legacy SINGLE_CONFIG_DIR variable
