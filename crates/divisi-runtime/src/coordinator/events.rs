@@ -46,6 +46,14 @@ pub enum EventKind {
     /// must `divisi goal merge confirm` it first. See
     /// `docs/architecture.md`'s "branches are never auto-merged" invariant.
     MergeAwaitingConfirmation,
+    /// A message you typed into the shared conversation (`{text, surface}`).
+    ChatUser,
+    /// divisi's reply (`{text, intent, goal_ids, degraded}`).
+    ChatAssistant,
+    /// A risky action waiting for your yes or no (`{approval_id, summary, action, expires_at}`).
+    ChatConfirm,
+    /// How a confirmation ended (`{approval_id, outcome}`: approved, denied or expired).
+    ChatResult,
 }
 
 impl EventKind {
@@ -68,6 +76,10 @@ impl EventKind {
             EventKind::Merged => "merged",
             EventKind::MergeFailed => "merge_failed",
             EventKind::MergeAwaitingConfirmation => "merge_awaiting_confirmation",
+            EventKind::ChatUser => "chat_user",
+            EventKind::ChatAssistant => "chat_assistant",
+            EventKind::ChatConfirm => "chat_confirm",
+            EventKind::ChatResult => "chat_result",
         }
     }
 }
@@ -170,5 +182,21 @@ mod tests {
         let g = for_goal(&conn, "goal_1", 10).unwrap();
         assert_eq!(g.len(), 2);
         assert_eq!(g[0].body, "two"); // oldest-first
+    }
+
+    #[test]
+    fn chat_kinds_are_stored_and_read_back_in_order() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        for (kind, body) in [
+            (EventKind::ChatUser, r#"{"text":"how is the pool","surface":"tui"}"#),
+            (EventKind::ChatAssistant, r#"{"text":"all healthy"}"#),
+            (EventKind::ChatConfirm, r#"{"approval_id":7}"#),
+            (EventKind::ChatResult, r#"{"approval_id":7,"outcome":"approved"}"#),
+        ] {
+            append(&conn, "sess_main", None, kind, body).unwrap();
+        }
+        let got: Vec<String> = since(&conn, "sess_main", 0).unwrap().into_iter().map(|e| e.kind).collect();
+        assert_eq!(got, ["chat_user", "chat_assistant", "chat_confirm", "chat_result"]);
     }
 }

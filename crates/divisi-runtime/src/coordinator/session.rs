@@ -117,3 +117,71 @@ mod tests {
         assert_eq!(get(&conn, &s.id).unwrap().unwrap().status, "closed");
     }
 }
+
+/// Title of the shared conversation that the TUI, the notch and `divisi chat` open by default.
+pub const MAIN_TITLE: &str = "chat:main";
+
+pub fn set_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
+    conn.execute("UPDATE sessions SET title = ?2, updated_at = ?3 WHERE id = ?1", params![id, title, now()])?;
+    Ok(())
+}
+
+/// The shared conversation: the oldest active session titled `MAIN_TITLE`, created on first use.
+/// A closed one is replaced rather than reopened.
+pub fn main_thread(conn: &Connection) -> Result<Session> {
+    let existing = conn
+        .query_row(
+            "SELECT * FROM sessions WHERE title = ?1 AND status = 'active' ORDER BY created_at LIMIT 1",
+            [MAIN_TITLE],
+            row_to_session,
+        )
+        .optional()?;
+    if let Some(s) = existing {
+        return Ok(s);
+    }
+    let cwd = divisi_core::paths::real_home_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    let mut s = new_session(conn, &cwd)?;
+    set_title(conn, &s.id, MAIN_TITLE)?;
+    s.title = MAIN_TITLE.into();
+    Ok(s)
+}
+
+#[cfg(test)]
+mod main_thread_tests {
+    use super::*;
+
+    fn db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn the_main_thread_is_created_once_and_reused() {
+        let conn = db();
+        let first = main_thread(&conn).unwrap();
+        let second = main_thread(&conn).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(first.title, MAIN_TITLE);
+        assert_eq!(list(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_closed_main_thread_is_replaced() {
+        let conn = db();
+        let first = main_thread(&conn).unwrap();
+        close(&conn, &first.id).unwrap();
+        let second = main_thread(&conn).unwrap();
+        assert_ne!(first.id, second.id);
+        assert_eq!(second.title, MAIN_TITLE);
+    }
+
+    #[test]
+    fn ordinary_sessions_are_not_mistaken_for_the_main_thread() {
+        let conn = db();
+        let other = new_session(&conn, std::path::Path::new("/tmp")).unwrap();
+        let main = main_thread(&conn).unwrap();
+        assert_ne!(other.id, main.id);
+    }
+}
+
