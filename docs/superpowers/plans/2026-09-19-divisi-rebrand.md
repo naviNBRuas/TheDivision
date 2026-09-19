@@ -17,7 +17,7 @@
 - **Commits:** subject `type: description` with type in `feat|fix|refactor|docs|test|chore|perf|build|ci`; sole author `Navin B. Ruas <founder@nbr.company>` (already the git config); no `Co-Authored-By` or any trailer; message describes what changed. One atomic, building commit per task step marked "Commit".
 - **Version:** 0.24.0 (set in Task 11). No git tag.
 - **Name map:** bin `single`→`divisi`; crate `single-cli`→`divisi-cli`; crates `single-{core,protocol,runtime,agent-sdk,native-agent,tui,web,lsp,notch}`→`divisi-*`; package `single-agent`→`divisi-agent`; daemon `single-runtimed`→`divisid`; `singlecli-mcp`→`divisi-mcp`; `single-mcp`→`divisi-gateway`; `SINGLE_*`→`DIVISI_*`; `~/.config/single`→`~/.config/divisi`; notch UUID `single-notch@nbr.company`→`divisi-notch@nbr.company`; `SingleDirs`→`DivisiDirs`.
-- **Legacy names kept in 0.24.0** (persisted; renaming needs a data migration): agent ids `"single-pool"` and `"single-agent"`, opencode provider namespace `single-<provider>`, Qdrant collection `single_memory`, keyring entry `single-redact-master-key`, and the repository URL `naviNBRuas/SingleCLI`.
+- **Legacy names kept in 0.24.0** (persisted; renaming needs a data migration): agent ids `"single-pool"` and `"single-agent"` (the `divisi-agent` *binary* is renamed; only the id and adapter key stay), opencode provider namespace `single-<provider>`, Qdrant collection `single_memory`, keyring entry `single-redact-master-key`, MCP permission resource prefix `singlecli:<tool>`, backup manifest name `__singlecli_secrets__.toml`, and the repository URL `naviNBRuas/SingleCLI`.
 - **Colour tokens:** graphite `#16181d`, bone `#f2f2f0`, signal `#ff5a1f`, go `#3ddc97`, caution `#ffd23f`, fault `#ff2d55`.
 - **Mark geometry (48-unit grid):** obelus bar 32 long, 6 thick, rx 1.5; dots radius 4.6 at y = 24 ± 14. Slash: bar length 44, rotated -62 degrees.
 - **Motion:** loop 4.2s: hold "/" 0.5s, morph in 1.1s, hold "÷" 0.9s, morph out 1.1s, rest 0.6s. Morph in: angle -62 → -360 with cubic in-out easing, bar length 44 → 32, dots appear from progress 0.5 with an out-back spring. `NO_MOTION` and `NO_COLOR` must degrade to static or plain output.
@@ -1221,7 +1221,7 @@ pub fn run(old: &str, new: &str) -> ! {
 
 - [ ] **Step 4: Add the six shim binaries**
 
-Each file is one line of logic. `crates/divisi-cli/src/bin/single.rs`:
+Add a seventh shim for the renamed native agent: `single-agent.rs` → `("single-agent", "divisi-agent")`. Each file is one line of logic. `crates/divisi-cli/src/bin/single.rs`:
 ```rust
 fn main() {
     divisi_core::shim::run("single", "divisi")
@@ -1833,7 +1833,8 @@ Renamed from SingleCLI to divisi.
 - Binaries: `single` → `divisi`, `single-runtimed` → `divisid`, `singlecli-mcp` → `divisi-mcp`, `single-mcp` → `divisi-gateway`, `single-lsp` → `divisi-lsp`, `single-notch` → `divisi-notch`. The old names remain as aliases until 0.26.
 - Crates `single-*` → `divisi-*`; environment `SINGLE_*` → `DIVISI_*` (old names still read); config `~/.config/single` → `~/.config/divisi` (moved automatically on first run, symlink left behind).
 - New: the divisi mark (÷ active, / idle), `divisi logo`, the animated TUI and notch mark, `divisi migrate`.
-- Unchanged for now: agent ids `single-pool` and `single-agent`, the opencode provider namespace, the Qdrant collection `single_memory`, the `single-redact-master-key` keyring entry.
+- Unchanged for now: agent ids `single-pool` and `single-agent`, the opencode provider namespace, the Qdrant collection `single_memory`, the `single-redact-master-key` keyring entry, the MCP permission resource prefix `singlecli:<tool>` (saved rules keep working), and the `__singlecli_secrets__.toml` backup manifest name.
+- Integration sync now also removes the old `single-mcp` and `singlecli-mcp` entries from agent configs.
 ```
 Set `version = "0.24.0"` in `[workspace.package]` of the root `Cargo.toml`.
 
@@ -1902,7 +1903,7 @@ Expected: `inactive`. If active, stop and ask.
 Run:
 ```bash
 cargo build --workspace --release
-for b in divisi divisid divisi-mcp divisi-gateway divisi-lsp divisi-notch divisi-agent single single-runtimed single-mcp singlecli-mcp single-lsp single-notch; do install -m755 target/release/$b ~/.local/bin/$b; done
+for b in divisi divisid divisi-mcp divisi-gateway divisi-lsp divisi-notch divisi-agent single single-runtimed single-mcp singlecli-mcp single-lsp single-notch single-agent; do install -m755 target/release/$b ~/.local/bin/$b; done
 divisi --version
 ```
 Expected: `divisi 0.24.0`. The `single*` names are now the aliases.
@@ -1918,7 +1919,7 @@ Run: `divisi install-integrations --real-home --yes`, then
 ```bash
 grep -rn "single-mcp\|singlecli-mcp\|single-runtimed" ~/.claude.json ~/.config/zed/settings.json ~/.claude/settings.json 2>/dev/null | head
 ```
-Expected: no stale references. Remove any that remain by hand (they still work through the aliases, but should not linger). Update `~/.claude/CLAUDE.md` names (`single-mcp`, `singlecli-mcp`, `single install-integrations`) and the memory notes that name the old binaries.
+Expected: no stale references (the sync itself now removes the old `single-mcp` and `singlecli-mcp` entries; zed and `~/.claude/settings.json` are not covered by it). Remove any that remain by hand (they still work through the aliases, but should not linger). Update `~/.claude/CLAUDE.md` names (`single-mcp`, `singlecli-mcp`, `single install-integrations`) and the memory notes that name the old binaries.
 
 - [ ] **Step 5: Resume the daemon deliberately**
 
