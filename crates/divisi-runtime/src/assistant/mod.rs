@@ -4,6 +4,8 @@
 //! pool model resolves the rest, and [`gate`] decides whether an intent runs at once or waits
 //! for your confirmation. Nothing a model proposes runs without passing the gate.
 
+pub mod actions;
+pub mod chat;
 pub mod gate;
 pub mod model;
 pub mod reply;

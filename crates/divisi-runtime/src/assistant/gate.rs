@@ -13,6 +13,8 @@ pub struct ChatConfig {
     pub fanout_cap: usize,
     /// A goal whose text contains one of these words needs confirmation.
     pub risky_verbs: Vec<String>,
+    /// Goal mode used when a message does not say (`auto`, `plan`, `careful` or `dry`).
+    pub default_mode: String,
 }
 
 impl Default for ChatConfig {
@@ -21,6 +23,7 @@ impl Default for ChatConfig {
             confirm_expiry_secs: 1800,
             fanout_cap: 12,
             risky_verbs: ["push", "publish", "deploy", "release", "delete", "drop", "force", "wipe", "destroy"].map(String::from).to_vec(),
+            default_mode: "auto".into(),
         }
     }
 }
@@ -39,6 +42,9 @@ impl ChatConfig {
         }
         if let Some(list) = chat.get("risky_verbs").and_then(|v| v.as_array()) {
             cfg.risky_verbs = list.iter().filter_map(|v| v.as_str()).map(|s| s.to_lowercase()).collect();
+        }
+        if let Some(m) = chat.get("default_mode").and_then(|v| v.as_str()).filter(|m| ["auto", "plan", "careful", "dry"].contains(m)) {
+            cfg.default_mode = m.to_owned();
         }
         cfg
     }
@@ -163,10 +169,11 @@ mod tests {
     fn config_reads_the_chat_section_and_ignores_nonsense() {
         let dir = tempfile::tempdir().unwrap();
         let dirs = DivisiDirs::from_root(dir.path().to_path_buf());
-        std::fs::write(dirs.config_file(), "[chat]\nconfirm_expiry_secs = 60\nfanout_cap = 3\nrisky_verbs = [\"Ship\", \"nuke\"]\n").unwrap();
+        std::fs::write(dirs.config_file(), "[chat]\nconfirm_expiry_secs = 60\nfanout_cap = 3\nrisky_verbs = [\"Ship\", \"nuke\"]\ndefault_mode = \"plan\"\n").unwrap();
         let cfg = ChatConfig::load(&dirs);
         assert_eq!((cfg.confirm_expiry_secs, cfg.fanout_cap), (60, 3));
         assert_eq!(cfg.risky_verbs, ["ship", "nuke"], "lower-cased");
+        assert_eq!(cfg.default_mode, "plan");
 
         std::fs::write(dirs.config_file(), "[chat]\nconfirm_expiry_secs = -5\nfanout_cap = \"lots\"\n").unwrap();
         assert_eq!(ChatConfig::load(&dirs), ChatConfig::default(), "bad values fall back to defaults");

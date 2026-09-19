@@ -1907,7 +1907,18 @@ fn dispatch(
                 .collect();
             Ok(ResponseData::CoordinatorEvents(out))
         }
-        Request::ChatSend { .. } | Request::ChatConfirm { .. } => anyhow::bail!("chat is not wired up yet"),
+        Request::ChatSend { session, text, surface } => {
+            let conn = coordinator_db(ctx)?;
+            let cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);
+            let model = crate::assistant::chat::PoolModel { ctx, conn: &conn };
+            Ok(ResponseData::Chat(crate::assistant::chat::chat_send(ctx, &conn, &model, &cfg, session.as_deref(), &text, &surface)?))
+        }
+        Request::ChatConfirm { approval_id, allow, remember } => {
+            let conn = coordinator_db(ctx)?;
+            let cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);
+            let model = crate::assistant::chat::PoolModel { ctx, conn: &conn };
+            Ok(ResponseData::Chat(crate::assistant::chat::chat_confirm(ctx, &conn, &model, &cfg, approval_id, allow, remember)?))
+        }
         Request::CoordinatorStatus => Ok(ResponseData::CoordinatorSnapshot(coordinator_status_info(ctx)?)),
         Request::NotchSnapshot => Ok(ResponseData::NotchSnapshot(divisi_protocol::NotchSnapshotInfo {
             pool: pool_status_info(ctx)?,
@@ -2200,7 +2211,7 @@ fn notes_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
     Ok(conn)
 }
 
-fn coordinator_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
+pub(crate) fn coordinator_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
     let conn = crate::state::open(&ctx.dirs.db_path())?;
     crate::task::ensure_schema(&conn)?; // graph nodes point at tasks rows
     crate::coordinator::ensure_coordinator_schema(&conn)?;
@@ -2234,7 +2245,7 @@ fn session_info(s: crate::coordinator::session::Session) -> divisi_protocol::Ses
     }
 }
 
-fn coordinator_event(e: crate::coordinator::events::Event) -> divisi_protocol::CoordinatorEvent {
+pub(crate) fn coordinator_event(e: crate::coordinator::events::Event) -> divisi_protocol::CoordinatorEvent {
     divisi_protocol::CoordinatorEvent { id: e.id, goal_id: e.goal_id, ts: e.ts, kind: e.kind, body: e.body }
 }
 

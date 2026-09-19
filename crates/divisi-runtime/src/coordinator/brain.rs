@@ -243,6 +243,21 @@ Output ONLY a JSON array, no prose. Each element:\n\
 depends_on lists the ids that must finish first ([] = independent).\n\
 Give code subtasks non-overlapping file scopes so they can run in parallel.\n";
 
+/// One quick, routed model call that must answer with a JSON value. The assistant uses it to
+/// interpret a chat message; the agent is chosen by the same dynamic routing as planning, with
+/// the same retry and fallback across agents, and is never pinned.
+pub fn ask_json(
+    conn: &Connection,
+    ctx: &Context,
+    prompt: &str,
+    cwd: &std::path::Path,
+    table: &RoutingTable,
+    health: &PoolHealth,
+) -> Result<Value> {
+    let agent = routing::select_agent(table, NodeKind::Plan, Effort::Quick, health).context("no agent available for the assistant")?;
+    run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Quick, table, health, cwd, prompt)
+}
+
 /// planner: goal text (+ cwd context) → validated `TaskGraph`.
 #[allow(clippy::too_many_arguments)]
 pub fn plan(
