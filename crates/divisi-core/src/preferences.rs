@@ -225,6 +225,18 @@ pub fn resolve(conn: &Connection, id: i64, allow: bool, remember: bool) -> Resul
     Ok(())
 }
 
+/// Marks an already-resolved (allowed or denied) approval as spent, so it cannot grant or deny
+/// the next request for the same resource. For callers that act on an answer immediately
+/// instead of retrying. A pending approval is left untouched.
+pub fn mark_used(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE approvals SET status = ?1 WHERE id = ?2 AND status IN ('allowed', 'denied')",
+        params![status_as_str(ApprovalStatus::Used), id],
+    )
+    .context("marking approval as used")?;
+    Ok(())
+}
+
 /// What a caller should actually do about `resource`, per the full
 /// pipeline: static `permissions.toml` rules, then learned preferences,
 /// then an unconsumed one-time approval, then (only if none of those has
@@ -402,5 +414,37 @@ mod tests {
         learn(&conn, "mcp:danger", Decision::Allow, 1.0, None).unwrap();
         let rules = vec![Rule { pattern: "mcp:danger".into(), decision: Decision::Deny }];
         assert!(matches!(evaluate_and_learn(&rules, &conn, "mcp:danger:do", None).unwrap(), Verdict::Deny));
+    }
+
+    #[test]
+    fn mark_used_stops_a_resolved_approval_from_granting_the_next_request() {
+        let conn = test_conn();
+        // The user allows one chat action, which is executed on the spot.
+        let id = request_approval(&conn, "chat:goal.cancel", Some("ctx")).unwrap();
+        resolve(&conn, id, true, false).unwrap();
+        mark_used(&conn, id).unwrap();
+        assert_eq!(get_approval(&conn, id).unwrap().unwrap().status, ApprovalStatus::Used);
+        // The next identical request must ask again instead of inheriting that one-time grant.
+        let Verdict::PendingApproval(next) = evaluate_and_learn(&[], &conn, "chat:goal.cancel", None).unwrap() else {
+            panic!("a spent approval must not auto-allow the next request");
+        };
+        assert_ne!(next, id);
+    }
+
+    #[test]
+    fn without_mark_used_the_one_time_grant_leaks_to_the_next_request() {
+        // Documents the behaviour mark_used exists to prevent.
+        let conn = test_conn();
+        let id = request_approval(&conn, "chat:goal.cancel", None).unwrap();
+        resolve(&conn, id, true, false).unwrap();
+        assert!(matches!(evaluate_and_learn(&[], &conn, "chat:goal.cancel", None).unwrap(), Verdict::Allow));
+    }
+
+    #[test]
+    fn mark_used_leaves_pending_approvals_alone() {
+        let conn = test_conn();
+        let id = request_approval(&conn, "chat:config", None).unwrap();
+        mark_used(&conn, id).unwrap();
+        assert_eq!(get_approval(&conn, id).unwrap().unwrap().status, ApprovalStatus::Pending);
     }
 }
