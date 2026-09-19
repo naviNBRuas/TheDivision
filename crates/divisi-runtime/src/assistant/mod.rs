@@ -5,6 +5,8 @@
 //! for your confirmation. Nothing a model proposes runs without passing the gate.
 
 pub mod gate;
+pub mod model;
+pub mod reply;
 pub mod rules;
 
 use serde::{Deserialize, Serialize};
