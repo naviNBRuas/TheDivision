@@ -49,8 +49,8 @@ registered (.com .org .io .ai .dev .app .sh), so the site lives under
 
 ## 2. Visual identity
 
-**Marks.** The obelus (÷) is the primary logo and the active state. The slash
-(/) is the idle state and the prompt, path and command glyph.
+**Marks.** The obelus (÷) is the primary logo and the resting state everywhere it
+appears. The slash (/) is the working animation and the prompt, path and command glyph.
 
 **Geometry** (48-unit grid): obelus bar 32 long, 6 thick, corner radius 1.5;
 two dots of radius 4.6 at y = 24 ± 14. Slash: the same bar lengthened to 44 and
@@ -74,13 +74,22 @@ reads as broken.
 **Type.** Wordmark and headings: Space Grotesk 800, lowercase, tight tracking.
 Technical text: JetBrains Mono. Body: Inter.
 
-**Motion: Spin & pop.** Loop: hold "/" 0.5s; morph in 1.1s; hold "÷" 0.9s;
+**Revised 2026-09-19: the obelus is the resting logo and the slash is the animation.**
+At rest every surface shows the obelus (÷). While work is running the mark is a bare spinning
+slash (/): the dots collapse as the bar spins into the slash, the slash keeps turning
+(one turn per 1.2s), and when the work ends it finishes the current turn and the dots spring
+back into ÷. In the TUI the busy glyph is the classic spinner (`/ - \ |`), still `/` under
+`NO_MOTION`, and `-:-` (rest) or `/` (busy) under `TERM=dumb`. The slash also remains the
+prompt, path and command glyph. The morph geometry below is unchanged; only the state
+mapping and the loop changed (demo loop 4.8s: rest 0.8, start 0.6, work 2.4, finish 1.0).
+
+**Motion (original description: Spin & pop).** Loop: hold "/" 0.5s; morph in 1.1s; hold "÷" 0.9s;
 morph out 1.1s; rest 0.6s (4.2s total).
 - Morph in: bar takes one extra full turn (-62 to -360 degrees) with cubic
   in-out easing while its length goes 44 to 32. Dots appear from progress 0.5
   with an out-back overshoot spring.
 - Morph out is the exact reverse.
-- State mapping: "/" idle, morph = starting or finishing, "÷" working.
+- State mapping (superseded by the revision above): originally "/" idle and "÷" working.
 - Reduced motion: honour `prefers-reduced-motion` and `NO_MOTION` by swapping
   between the two static marks with no spin.
 
@@ -92,8 +101,8 @@ for the notch. The prototype lives in the brainstorm session
 (`mark-animation.html`) and is the reference implementation.
 
 **Surfaces.** CLI/TUI: half-block mark in the header and while a goal runs;
-`/` as prompt prefix. Notch: 20px mark plus a status word; idle shows "/",
-a running goal animates. Site/README: full lockup with a looping hero. Favicon
+`/` as prompt prefix. Notch: 20px mark plus a status word; idle shows "÷",
+a running goal animates as a spinning "/". Site/README: full lockup with a looping hero. Favicon
 and avatar: static ÷ on graphite. Under `NO_COLOR` or a dumb terminal the marks
 degrade to plain ASCII (`/` and `-:-`).
 

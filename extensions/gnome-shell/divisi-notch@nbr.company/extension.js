@@ -129,6 +129,7 @@ export default class SingleNotch extends Extension {
         this._frames = null;
         this._markArea = null;
         this._markRunning = false;
+        this._mark = {phase: 'idle', t0: 0, exitAt: 0};
         try {
             const [, bytes] = Gio.File.new_for_path(`${this.path}/mark-frames.json`).load_contents(null);
             this._frames = JSON.parse(new TextDecoder().decode(bytes));
@@ -136,7 +137,7 @@ export default class SingleNotch extends Extension {
             console.warn(`divisi notch: mark-frames.json unavailable (${e.message}); using a static mark`);
         }
         this._addTimer(33, () => {
-            if (this._markArea?.mapped && this._markRunning)
+            if (this._markArea?.mapped && (this._markRunning || this._mark.phase !== 'idle'))
                 this._markArea.queue_repaint();
             return GLib.SOURCE_CONTINUE;
         });
@@ -217,6 +218,7 @@ export default class SingleNotch extends Extension {
         this._pulseDots = [];
         this._frames = this._markArea = null;
         this._markRunning = false;
+        this._mark = null;
     }
 
     // ---- timers -------------------------------------------------------------
@@ -524,16 +526,49 @@ export default class SingleNotch extends Extension {
 
     // ---- widgets ---------------------------------------------------------------------------
 
+    // At rest the mark is the obelus. While work runs it is a spinning slash: `enter` plays
+    // once (the dots collapse as the bar spins into the slash), `spin` loops, and when work
+    // ends the current turn finishes, then `exit` plays once and the obelus is back.
     _markFrame() {
         const f = this._frames;
         if (!f)
             return {a: 0, l: 32, o: 14, r: 4.6};
-        if (!this._markRunning)
-            return f.frames[0];
         if (!St.Settings.get().enable_animations)
-            return f.frames[Math.floor(2.0 * f.fps)];
-        const t = (GLib.get_monotonic_time() / 1e6) % f.loop_secs;
-        return f.frames[Math.min(f.frames.length - 1, Math.floor(t * f.fps))];
+            return this._markRunning ? f.spin[0] : f.rest;
+        const now = GLib.get_monotonic_time() / 1e6;
+        const m = this._mark;
+        if (this._markRunning && (m.phase === 'idle' || m.phase === 'exit')) {
+            m.phase = 'enter';
+            m.t0 = now;
+        }
+        if (m.phase === 'enter') {
+            const i = Math.floor((now - m.t0) * f.fps);
+            if (i < f.enter.length)
+                return f.enter[i];
+            m.phase = 'spin';
+            m.t0 = now;
+            m.exitAt = 0;
+        }
+        if (m.phase === 'spin') {
+            const dur = f.spin.length / f.fps;
+            const el = now - m.t0;
+            if (!this._markRunning && !m.exitAt)
+                m.exitAt = m.t0 + Math.ceil(el / dur) * dur;
+            if (m.exitAt && now >= m.exitAt) {
+                m.phase = 'exit';
+                m.t0 = m.exitAt;
+                m.exitAt = 0;
+            } else {
+                return f.spin[Math.floor((el % dur) * f.fps) % f.spin.length];
+            }
+        }
+        if (m.phase === 'exit') {
+            const i = Math.floor((now - m.t0) * f.fps);
+            if (i < f.exit.length)
+                return f.exit[i];
+            m.phase = 'idle';
+        }
+        return f.rest;
     }
 
     _markWidget(running) {

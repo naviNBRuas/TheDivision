@@ -22,7 +22,7 @@ Renamed from SingleCLI to divisi.
 
 ### Added
 
-- The divisi mark (÷ while working, / at rest) with a shared motion spec, rendered in the TUI header, in the GNOME notch and by `divisi logo [--animate]`. `NO_MOTION`, `NO_COLOR` and `TERM=dumb` degrade to a static or ASCII mark.
+- The divisi mark with a shared motion spec, rendered in the TUI header, in the GNOME notch and by `divisi logo [--animate]`. The obelus (÷) is the logo at rest; while work is running it becomes a spinning slash (`/`), and springs back into ÷ when the work ends. `NO_MOTION`, `NO_COLOR` and `TERM=dumb` degrade to a still slash or ASCII (`-:-` at rest, `/` busy).
 - `divisi migrate`: moves a pre-rename install onto divisi names (config dir, systemd unit, notch extension). Dry run unless `--apply`.
 - `.cargo/config.toml` sandboxes `XDG_CONFIG_HOME` for cargo-launched processes so tests cannot migrate a real config directory.
 

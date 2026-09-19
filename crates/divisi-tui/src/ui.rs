@@ -46,22 +46,22 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-/// The header mark: "/" at rest, spinning into "÷" while work is running.
-/// `no_motion` (env `NO_MOTION`) shows a static "÷" while busy.
+/// The header mark: the obelus "÷" at rest, a spinning slash (`/ - \ |`) while work is
+/// running. `no_motion` (env `NO_MOTION`) shows a still "/" while busy.
 pub fn mark_char(busy: bool, t_secs: f32, no_motion: bool) -> char {
     if !busy {
-        return '/';
+        return divisi_brand::glyph::REST;
     }
     if no_motion {
-        return '÷';
+        return '/';
     }
-    divisi_brand::glyph::glyph(divisi_brand::motion::loop_at(t_secs).progress)
+    divisi_brand::glyph::spinner(t_secs)
 }
 
-/// `mark_char` as text, or the plain-ASCII fallback (`/`, `-:-`) for `TERM=dumb`.
+/// `mark_char` as text, or the plain-ASCII fallback (`-:-` at rest, `/` busy) for `TERM=dumb`.
 pub fn mark_text(busy: bool, t_secs: f32, no_motion: bool, ascii: bool) -> String {
     if ascii {
-        return divisi_brand::glyph::ascii(if busy { 1.0 } else { 0.0 }).to_string();
+        return divisi_brand::glyph::ascii(busy).to_string();
     }
     mark_char(busy, t_secs, no_motion).to_string()
 }
@@ -1189,28 +1189,28 @@ mod mark_tests {
     use super::{mark_char, mark_text};
 
     #[test]
-    fn idle_shows_the_slash() {
-        assert_eq!(mark_char(false, 1.0, false), '/');
-        assert_eq!(mark_char(false, 1.0, true), '/');
+    fn rest_is_the_obelus() {
+        assert_eq!(mark_char(false, 0.0, false), '÷');
+        assert_eq!(mark_char(false, 7.3, true), '÷');
     }
 
     #[test]
-    fn busy_holds_the_obelus_and_spins_between() {
-        assert_eq!(mark_char(true, 2.0, false), '÷');
-        assert_eq!(mark_char(true, 0.2, false), '/');
-        assert_ne!(mark_char(true, 1.05, false), '÷');
+    fn busy_spins_a_slash() {
+        let seen: Vec<char> = [0.0, 0.11, 0.21, 0.31].iter().map(|t| mark_char(true, *t, false)).collect();
+        assert_eq!(seen, vec!['/', '-', '\\', '|']);
+        assert!(!seen.contains(&'÷'), "the obelus never appears while working");
     }
 
     #[test]
-    fn no_motion_skips_the_spin() {
-        assert_eq!(mark_char(true, 1.05, true), '÷');
-        assert_eq!(mark_char(true, 0.2, true), '÷');
+    fn no_motion_holds_a_still_slash() {
+        assert_eq!(mark_char(true, 0.0, true), '/');
+        assert_eq!(mark_char(true, 0.25, true), '/');
     }
 
     #[test]
     fn dumb_terminals_get_plain_ascii() {
-        assert_eq!(mark_text(false, 0.0, false, true), "/");
-        assert_eq!(mark_text(true, 2.0, false, true), "-:-");
-        assert_eq!(mark_text(true, 2.0, false, false), "÷");
+        assert_eq!(mark_text(false, 0.0, false, true), "-:-");
+        assert_eq!(mark_text(true, 2.0, false, true), "/");
+        assert_eq!(mark_text(false, 2.0, false, false), "÷");
     }
 }
