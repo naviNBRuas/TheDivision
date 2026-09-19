@@ -66,8 +66,8 @@ mod tests {
     #[test]
     fn slash_leans_up_and_to_the_right() {
         let lines = render(&state_at(0.0), 15);
-        for row in 0..7 {
-            let left: String = lines[row].chars().take(10).collect();
+        for (row, line) in lines.iter().take(7).enumerate() {
+            let left: String = line.chars().take(10).collect();
             assert!(left.trim().is_empty(), "row {row} has ink on the left: {left:?}");
         }
         assert!(lines[1].chars().skip(15).any(|c| c != ' '), "top right should be inked");
