@@ -14,6 +14,7 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import Cairo from 'cairo';
 
 const TEAL = '#2EC4B6';
 const AMBER = '#E9A319';
@@ -37,6 +38,8 @@ const BREATH_MS = 900;
 const LEAVE_PEEK_MS = 600;
 const LEAVE_CARD_MS = 1300;
 const NOTABLE_PEEK_MS = 3800;
+const SIGNAL = [0xff / 255, 0x5a / 255, 0x1f / 255];
+const MARK_SIZE = 20;
 
 const TABS = [['overview', 'Overview'], ['goals', 'Goals'], ['pool', 'Pool'], ['agents', 'Agents'], ['usage', 'Usage']];
 
@@ -123,6 +126,20 @@ export default class SingleNotch extends Extension {
         this._scroll = null;
         this._scrollPos = 0;
         this._cancellable = new Gio.Cancellable();
+        this._frames = null;
+        this._markArea = null;
+        this._markRunning = false;
+        try {
+            const [, bytes] = Gio.File.new_for_path(`${this.path}/mark-frames.json`).load_contents(null);
+            this._frames = JSON.parse(new TextDecoder().decode(bytes));
+        } catch (e) {
+            console.warn(`divisi notch: mark-frames.json unavailable (${e.message}); using a static mark`);
+        }
+        this._addTimer(33, () => {
+            if (this._markArea?.mapped && this._markRunning)
+                this._markArea.queue_repaint();
+            return GLib.SOURCE_CONTINUE;
+        });
 
         this._root = new St.BoxLayout({
             vertical: true,
@@ -198,6 +215,8 @@ export default class SingleNotch extends Extension {
         this._snapshot = null;
         this._tipTargets = [];
         this._pulseDots = [];
+        this._frames = this._markArea = null;
+        this._markRunning = false;
     }
 
     // ---- timers -------------------------------------------------------------
@@ -505,6 +524,49 @@ export default class SingleNotch extends Extension {
 
     // ---- widgets ---------------------------------------------------------------------------
 
+    _markFrame() {
+        const f = this._frames;
+        if (!f)
+            return {a: 0, l: 32, o: 14, r: 4.6};
+        if (!this._markRunning)
+            return f.frames[0];
+        if (!St.Settings.get().enable_animations)
+            return f.frames[Math.floor(2.0 * f.fps)];
+        const t = (GLib.get_monotonic_time() / 1e6) % f.loop_secs;
+        return f.frames[Math.min(f.frames.length - 1, Math.floor(t * f.fps))];
+    }
+
+    _markWidget(running) {
+        this._markRunning = running;
+        const area = new St.DrawingArea({width: MARK_SIZE, height: MARK_SIZE, y_align: Clutter.ActorAlign.CENTER});
+        area.connect('repaint', () => {
+            const cr = area.get_context();
+            const [w, h] = area.get_surface_size();
+            const fr = this._markFrame();
+            cr.scale(Math.min(w, h) / 48, Math.min(w, h) / 48);
+            cr.setSourceRGBA(SIGNAL[0], SIGNAL[1], SIGNAL[2], 1);
+            cr.save();
+            cr.translate(24, 24);
+            cr.rotate(fr.a * Math.PI / 180);
+            cr.rectangle(-fr.l / 2, -3, fr.l, 6);
+            cr.fill();
+            cr.restore();
+            if (fr.r > 0.05) {
+                cr.arc(24, 24 - fr.o, fr.r, 0, 2 * Math.PI);
+                cr.fill();
+                cr.arc(24, 24 + fr.o, fr.r, 0, 2 * Math.PI);
+                cr.fill();
+            }
+            cr.$dispose();
+        });
+        area.connect('destroy', () => {
+            if (this._markArea === area)
+                this._markArea = null;
+        });
+        this._markArea = area;
+        return area;
+    }
+
     _dot(color, size = 8, pulse = false) {
         const d = new St.Widget({
             width: size, height: size,
@@ -628,7 +690,7 @@ export default class SingleNotch extends Extension {
     _renderCard(s, color, running) {
         const innerW = W_CARD - PAD * 2 - 2;
         const header = new St.BoxLayout({reactive: true, x_expand: true, style: 'spacing: 9px; padding: 0 0 2px 0;'});
-        header.add_child(this._dot(color, 11, running));
+        header.add_child(this._markWidget(running));
         header.add_child(this._label('divisi', {bold: true, size: 14, expand: true}));
         header.add_child(this._label(this._offline ? 'offline' : !s ? 'loading…' : `${TONE_WORD[s.tone] ?? s.tone} · ${this._pct()}%`,
             {color, bold: true, size: 12}));
