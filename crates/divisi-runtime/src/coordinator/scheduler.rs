@@ -181,7 +181,10 @@ pub fn tick_pure(
         if admitted >= global_headroom {
             break;
         }
-        let agent = match node.agent.is_empty() {
+        // A node pinned to an agent that is currently benched (rate limited, failing, or on a quota
+        // cooldown) is routed like an unpinned one instead of waiting on that agent.
+        let pinned_and_benched = !node.agent.is_empty() && health.rate_limited.contains(&node.agent);
+        let agent = match node.agent.is_empty() || pinned_and_benched {
             false => node.agent.clone(),
             true => match routing::select_agent_with_prefer_pool(table, node.kind, node.effort, health, cfg.prefer_pool) {
                 Some(a) => a,
@@ -979,6 +982,23 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn tick_pure_reroutes_a_node_pinned_to_a_benched_agent() {
+        // A node pinned to an agent on a quota cooldown used to sit "pending kiro" forever.
+        let mut n = node("s1", &[], Effort::Standard, "kiro");
+        n.kind = NodeKind::Code;
+        let g = TaskGraph { nodes: vec![n] };
+        let health = PoolHealth {
+            detected_authed: ["kiro".to_string(), "opencode".to_string()].into_iter().collect(),
+            rate_limited: ["kiro".to_string()].into_iter().collect(),
+        };
+        let a = tick_pure(&g, &cfg(6), &caps(0, &[], &[]), &budget_ok(), &RoutingTable::default(), &health);
+        match &a[0] {
+            TickAction::Dispatch { agent, .. } => assert_ne!(agent, "kiro"),
+            other => panic!("expected a Dispatch to another agent, got {other:?}"),
+        }
     }
 
     #[test]
