@@ -1,4 +1,5 @@
 pub mod app;
+pub mod chat;
 pub mod client;
 pub mod ui;
 
@@ -43,6 +44,7 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<
             || app.poll_pool()
             || app.poll_provider_key_status()
             || app.poll_goals()
+            || app.poll_chat()
         {
             continue; // redraw immediately on state change
         }
@@ -87,6 +89,11 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
         return false;
     }
 
+    // The Chat tab owns the keyboard: letters such as q, j, k and r are text there, not navigation.
+    if app.tab == Tab::Chat {
+        return handle_chat_key(app, code, modifiers);
+    }
+
     // Drilled into one workspace's tasks (Tasks tab): Esc backs out to the
     // workspace list instead of quitting the whole app — checked ahead of
     // the generic `Esc => return true` below, which still applies at the
@@ -117,6 +124,33 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
         KeyCode::Char('g') if app.tab == Tab::Mcp => app.toggle_mcp_gateway(),
         KeyCode::Char('x') if app.tab == Tab::Backup => app.begin_backup_export(),
         KeyCode::Char('i') if app.tab == Tab::Backup => app.begin_backup_import(),
+        _ => {}
+    }
+    false
+}
+
+/// Keys on the Chat tab. Returns true to quit (Ctrl+C only, so typing never quits by accident).
+fn handle_chat_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
+    let ctrl = modifiers.contains(KeyModifiers::CONTROL);
+    match code {
+        KeyCode::Char('c') if ctrl => return true,
+        KeyCode::Char('h') if ctrl => app.prev_tab(),
+        KeyCode::Char('l') if ctrl => app.next_tab(),
+        KeyCode::Tab => app.next_tab(),
+        KeyCode::BackTab => app.prev_tab(),
+        KeyCode::Enter => app.chat_submit(),
+        KeyCode::Backspace => app.chat.backspace(),
+        // Esc clears a half-typed line; on an empty line it leaves the tab instead of quitting.
+        KeyCode::Esc => {
+            if app.chat.input.is_empty() {
+                app.prev_tab();
+            } else {
+                app.chat.input.clear();
+            }
+        }
+        KeyCode::PageUp | KeyCode::Up => app.chat.scroll = app.chat.scroll.saturating_add(3),
+        KeyCode::PageDown | KeyCode::Down => app.chat.scroll = app.chat.scroll.saturating_sub(3),
+        KeyCode::Char(c) if !ctrl => app.chat.type_char(c),
         _ => {}
     }
     false

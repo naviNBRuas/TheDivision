@@ -10,6 +10,8 @@ const OK: Color = Color::Green;
 const WARN: Color = Color::Yellow;
 const BAD: Color = Color::Red;
 const MUTED: Color = Color::DarkGray;
+/// The divisi mark colour (brand signal orange, `#ff5a1f`).
+const SIGNAL: Color = Color::Rgb(0xff, 0x5a, 0x1f);
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -70,18 +72,20 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let (text, style) = match (&app.status, app.loading) {
         (Some(s), _) => (
             format!(
-                "{}  divisi  ·  profile: {}  ·  agents: {}/{} detected  ·  v{}",
-                app.mark(), s.active_profile, s.agents_detected, s.agents_known, s.version
+                "  divisi  ·  profile: {}  ·  agents: {}/{} detected  ·  v{}",
+                s.active_profile, s.agents_detected, s.agents_known, s.version
             ),
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         // Status hasn't arrived yet because the first refresh is still in
         // flight — not the same as the daemon actually being unreachable,
         // so this stays neutral instead of alarming red.
-        (None, true) => (format!("{}  divisi  ·  {} connecting…", app.mark(), app.spinner_frame()), Style::default().fg(ACCENT)),
-        (None, false) => (format!("{}  divisi  ·  runtime unreachable", app.mark()), Style::default().fg(BAD)),
+        (None, true) => (format!("  divisi  ·  {} connecting…", app.spinner_frame()), Style::default().fg(ACCENT)),
+        (None, false) => ("  divisi  ·  runtime unreachable".to_string(), Style::default().fg(BAD)),
     };
-    let header = Paragraph::new(Line::from(Span::styled(text, style)))
+    // The mark is its own span so it can be signal orange whatever colour the header text is.
+    let mark = Span::styled(app.mark(), Style::default().fg(SIGNAL).add_modifier(Modifier::BOLD));
+    let header = Paragraph::new(Line::from(vec![mark, Span::styled(text, style)]))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(ACCENT)));
     frame.render_widget(header, area);
@@ -131,6 +135,7 @@ fn draw_content(frame: &mut Frame, area: Rect, app: &App) {
     match app.tab {
         Tab::Agents => draw_agents(frame, area, app),
         Tab::Goals => draw_goals(frame, area, app),
+        Tab::Chat => draw_chat(frame, area, app),
         Tab::Tasks => match &app.task_view {
             TaskView::Workspaces => draw_workspaces(frame, area, app),
             TaskView::Tasks { .. } => draw_tasks(frame, area, app),
@@ -578,6 +583,59 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
 /// Sorted so the goals you're most likely to act on right now — anything
 /// still non-terminal, then failures — sort above old finished history,
 /// same ordering `/goals` uses in the Zed ACP bridge.
+/// The Chat tab: the shared conversation above, a `/ ` prompt below.
+fn draw_chat(frame: &mut Frame, area: Rect, app: &App) {
+    let [messages, input] = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ACCENT))
+        .title(format!(" {} Chat · the shared conversation ", app.mark()));
+    let inner = block.inner(messages);
+    let rows = app.chat.rows(inner.width as usize);
+    let height = inner.height as usize;
+    let scroll = app.chat.scroll.min(rows.len().saturating_sub(height));
+    let end = rows.len() - scroll;
+    let start = end.saturating_sub(height);
+    let lines: Vec<Line> = if rows.is_empty() {
+        vec![
+            Line::from(Span::styled("Say what you want in plain language.", Style::default().fg(MUTED))),
+            Line::from(Span::styled("  how are things?   how much have I used?   add tests for the parser", Style::default().fg(MUTED))),
+            Line::from(Span::styled("  cancel goal_…     Risky actions ask you first.", Style::default().fg(MUTED))),
+        ]
+    } else {
+        rows[start..end]
+            .iter()
+            .map(|(kind, text)| {
+                let style = match kind {
+                    crate::chat::RowKind::You => Style::default().fg(ACCENT),
+                    crate::chat::RowKind::Divisi => Style::default(),
+                    crate::chat::RowKind::Confirm => Style::default().fg(WARN).add_modifier(Modifier::BOLD),
+                    crate::chat::RowKind::Muted => Style::default().fg(MUTED),
+                    crate::chat::RowKind::Error => Style::default().fg(BAD),
+                };
+                Line::from(Span::styled(text.clone(), style))
+            })
+            .collect()
+    };
+    frame.render_widget(Paragraph::new(lines).block(block), messages);
+
+    let title = if app.chat.pending.is_some() {
+        " answer: y / n / always "
+    } else if app.chat.busy {
+        " thinking… "
+    } else {
+        " message · Enter sends · Tab switches tab · Ctrl+C quits "
+    };
+    let border = if app.chat.pending.is_some() { WARN } else { ACCENT };
+    let prompt = Line::from(vec![Span::styled("/ ", Style::default().fg(SIGNAL).add_modifier(Modifier::BOLD)), Span::raw(app.chat.input.clone())]);
+    let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(border)).title(title);
+    let inner = block.inner(input);
+    frame.render_widget(Paragraph::new(prompt).block(block), input);
+    let typed = app.chat.input.chars().count() as u16;
+    frame.set_cursor_position((inner.x + 2 + typed.min(inner.width.saturating_sub(3)), inner.y));
+}
+
 fn draw_goals(frame: &mut Frame, area: Rect, app: &App) {
     let Some(goals) = &app.goals else {
         let text = if app.goals_loading { "Loading goals…" } else { "No goal data — press 'r' to fetch" };

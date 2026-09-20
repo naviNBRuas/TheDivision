@@ -1,3 +1,4 @@
+use crate::chat::{ChatView, Submit};
 use crate::client::call;
 use divisi_core::DivisiDirs;
 use divisi_protocol::{
@@ -20,6 +21,7 @@ pub enum TaskView {
 pub enum Tab {
     Agents,
     Goals,
+    Chat,
     Tasks,
     Mcp,
     Lsp,
@@ -35,8 +37,8 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 14] = [
-        Tab::Agents, Tab::Goals, Tab::Tasks, Tab::Mcp, Tab::Lsp, Tab::Plugins, Tab::Tools, Tab::Providers, Tab::Accounts,
+    pub const ALL: [Tab; 15] = [
+        Tab::Agents, Tab::Goals, Tab::Chat, Tab::Tasks, Tab::Mcp, Tab::Lsp, Tab::Plugins, Tab::Tools, Tab::Providers, Tab::Accounts,
         Tab::Usage, Tab::Pool, Tab::Backup, Tab::Memory, Tab::Help,
     ];
 
@@ -44,6 +46,7 @@ impl Tab {
         match self {
             Tab::Agents => "Agents",
             Tab::Goals => "Goals",
+            Tab::Chat => "Chat",
             Tab::Tasks => "Tasks",
             Tab::Mcp => "MCP",
             Tab::Lsp => "LSP",
@@ -201,6 +204,15 @@ pub enum TaskDetailFlow {
     Viewing { task: TaskRecord, output: String, last_polled: Instant },
 }
 
+/// What a background chat request reports back.
+enum ChatMsg {
+    /// A send or confirm finished.
+    Outcome(divisi_protocol::ChatOutcome),
+    /// A history poll finished.
+    History(divisi_protocol::ChatOutcome),
+    Failed { message: String, was_poll: bool },
+}
+
 pub struct App {
     pub socket_path: PathBuf,
     pub dirs: DivisiDirs,
@@ -216,6 +228,12 @@ pub struct App {
     pub goals: Option<Vec<GoalSummary>>,
     pub goals_loading: bool,
     goals_rx: Option<mpsc::Receiver<Option<Vec<GoalSummary>>>>,
+    /// The Chat tab: a view of the shared conversation, fed by background sends and polls.
+    pub chat: ChatView,
+    chat_tx: mpsc::Sender<ChatMsg>,
+    chat_rx: mpsc::Receiver<ChatMsg>,
+    chat_poll_inflight: bool,
+    chat_polled_at: Instant,
     pub tasks: Vec<TaskRecord>,
     pub workspaces: Vec<WorkspaceInfo>,
     /// Which level of the Tasks tab is showing — the workspace list, or
@@ -315,6 +333,7 @@ struct RefreshBundle {
 impl App {
     pub fn new(dirs: DivisiDirs) -> Self {
         let socket_path = dirs.socket_path();
+        let (chat_tx, chat_rx) = mpsc::channel();
         let mut app = Self {
             socket_path,
             dirs,
@@ -325,6 +344,11 @@ impl App {
             goals: None,
             goals_loading: false,
             goals_rx: None,
+            chat: ChatView::default(),
+            chat_tx,
+            chat_rx,
+            chat_poll_inflight: false,
+            chat_polled_at: Instant::now(),
             tasks: Vec::new(),
             workspaces: Vec::new(),
             task_view: TaskView::Workspaces,
@@ -619,7 +643,7 @@ impl App {
             Tab::Tools => self.tools.len(),
             Tab::Providers => self.providers.len(),
             Tab::Accounts => self.accounts.len(),
-            Tab::Usage | Tab::Pool | Tab::Backup | Tab::Memory | Tab::Help => 0,
+            Tab::Usage | Tab::Chat | Tab::Pool | Tab::Backup | Tab::Memory | Tab::Help => 0,
         }
     }
 
@@ -646,6 +670,9 @@ impl App {
         if self.tab == Tab::Goals {
             self.begin_goals_fetch();
         }
+        if self.tab == Tab::Chat {
+            self.begin_chat_history();
+        }
     }
 
     pub fn prev_tab(&mut self) {
@@ -661,6 +688,9 @@ impl App {
         }
         if self.tab == Tab::Goals {
             self.begin_goals_fetch();
+        }
+        if self.tab == Tab::Chat {
+            self.begin_chat_history();
         }
     }
 
@@ -1337,6 +1367,85 @@ impl App {
             let _ = tx.send(result);
         });
         self.goals_rx = Some(rx);
+    }
+
+    /// Fetches the conversation after the last event we have, on a background thread.
+    pub fn begin_chat_history(&mut self) {
+        if self.chat_poll_inflight {
+            return;
+        }
+        self.chat_poll_inflight = true;
+        self.chat_polled_at = Instant::now();
+        let (socket_path, tx) = (self.socket_path.clone(), self.chat_tx.clone());
+        let (session, since) = (self.chat.session_id.clone(), self.chat.cursor);
+        std::thread::spawn(move || {
+            let msg = match call(&socket_path, &Request::ChatHistory { session, since_event_id: since }) {
+                Ok(Response::Ok { data: ResponseData::Chat(o) }) => ChatMsg::History(o),
+                Ok(Response::Error { message }) => ChatMsg::Failed { message, was_poll: true },
+                Ok(_) => ChatMsg::Failed { message: "unexpected response".into(), was_poll: true },
+                Err(e) => ChatMsg::Failed { message: format!("{e:#}"), was_poll: true },
+            };
+            let _ = tx.send(msg);
+        });
+    }
+
+    /// Sends what was typed (or answers a pending confirmation) on a background thread.
+    pub fn chat_submit(&mut self) {
+        let Some(submit) = self.chat.submit() else { return };
+        self.chat.busy = true;
+        let (socket_path, tx, session) = (self.socket_path.clone(), self.chat_tx.clone(), self.chat.session_id.clone());
+        std::thread::spawn(move || {
+            let request = match submit {
+                Submit::Send(text) => Request::ChatSend { session, text, surface: "tui".into(), mode: None, agent: None },
+                Submit::Confirm { approval_id, allow, remember } => Request::ChatConfirm { approval_id, allow, remember },
+            };
+            let msg = match call(&socket_path, &request) {
+                Ok(Response::Ok { data: ResponseData::Chat(o) }) => ChatMsg::Outcome(o),
+                Ok(Response::Error { message }) => ChatMsg::Failed { message, was_poll: false },
+                Ok(_) => ChatMsg::Failed { message: "unexpected response".into(), was_poll: false },
+                Err(e) => ChatMsg::Failed { message: format!("{e:#}"), was_poll: false },
+            };
+            let _ = tx.send(msg);
+        });
+    }
+
+    /// Applies finished chat requests and, while the Chat tab is showing, polls for new events
+    /// (goal progress, replies from other surfaces). Returns true if anything changed.
+    pub fn poll_chat(&mut self) -> bool {
+        let mut changed = false;
+        while let Ok(msg) = self.chat_rx.try_recv() {
+            changed = true;
+            match msg {
+                ChatMsg::Outcome(o) => {
+                    self.chat.busy = false;
+                    self.chat.apply(&o.session_id, &o.events);
+                }
+                ChatMsg::History(o) => {
+                    self.chat_poll_inflight = false;
+                    self.chat.apply(&o.session_id, &o.events);
+                }
+                ChatMsg::Failed { message, was_poll } => {
+                    if was_poll {
+                        self.chat_poll_inflight = false;
+                    } else {
+                        self.chat.busy = false;
+                    }
+                    // A poll failing while the daemon restarts is noise; a failed send is worth showing.
+                    if !was_poll {
+                        let text = if message.contains("unknown variant") {
+                            "the running daemon predates chat: restart divisid after upgrading".to_owned()
+                        } else {
+                            message
+                        };
+                        self.chat.error(text);
+                    }
+                }
+            }
+        }
+        if self.tab == Tab::Chat && !self.chat_poll_inflight && self.chat_polled_at.elapsed() >= Duration::from_millis(1500) {
+            self.begin_chat_history();
+        }
+        changed
     }
 
     /// Returns true if a new goals list arrived this tick.
