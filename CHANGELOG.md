@@ -9,6 +9,17 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+### Added
+
+- Chat with your pool in plain language from Zed, the TUI, the GNOME notch and `divisi chat`, all sharing one conversation. A message is understood by fast phrase rules first and a routed pool model for anything else; status, usage and pool questions are answered from daemon state, and work you describe becomes a goal.
+- Risky actions ask first: cancelling a goal, applying a merge, configuration changes, goals that mention push, publish, deploy, release, delete and similar, all wait for your yes or no. "Always" is offered only where it is safe, and a confirmation expires after 30 minutes (`[chat]` in `config.toml`).
+- `divisi chat` (an interactive chat with a `/` prompt), `divisi chat send`, `tail` and `confirm`. New Chat tabs in the TUI and the notch. `divisi acp` now sends plain messages to the daemon and shows confirmations as permission prompts, falling back to the old direct-goal path for a daemon without chat.
+- The obelus (÷) is now the resting logo everywhere; the working animation is a spinning slash (`/`).
+
+### Fixed
+
+- A resolved approval could act as a one-time grant for the next identical request; approvals acted on immediately are now marked used.
+
 ## [0.24.0]
 
 Renamed from SingleCLI to divisi.

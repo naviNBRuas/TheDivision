@@ -1,6 +1,6 @@
 # Conversational divisi: design
 
-Status: approved 2026-09-19. Stage 1 (core and `divisi chat`) implemented; stages 2 to 4 in progress.
+Status: approved 2026-09-19. All four stages implemented and deployed 2026-09-20 (core and `divisi chat`, Zed, TUI, notch). Deferred: executing `Config` intents (they ask, then report that nothing was changed), and the fan-out cap rule.
 Successor step: one implementation plan per delivery stage (writing-plans).
 Builds on: the divisi rename (`rebrand/divisi`, 0.24.0). Branch from it, not from `main`.
 
