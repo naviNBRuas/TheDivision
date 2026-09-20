@@ -17,13 +17,16 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Cairo from 'cairo';
 import * as Chat from './chat.js';
 
-const TEAL = '#2EC4B6';
-const AMBER = '#E9A319';
-const RED = '#E85D4C';
-const BLUE = '#7FA8D9';
-const MUTED = '#8A8A90';
-const TEXT = '#ECECEE';
-const SURFACE = 'rgba(255,255,255,0.05)';
+// divisi brand tokens (graphite / bone / signal / go / caution / fault). The names below keep
+// their old role (TEAL = ok, AMBER = warn, RED = error, BLUE = neutral info) so call sites stay put.
+const GRAPHITE = '#16181d';
+const TEAL = '#3ddc97';
+const AMBER = '#ffd23f';
+const RED = '#ff2d55';
+const BLUE = '#f2f2f0';
+const MUTED = '#7d818a';
+const TEXT = '#f2f2f0';
+const SURFACE = 'rgba(242,242,240,0.06)';
 
 const W_HIDDEN = 6;
 const W_CARD = 440;
@@ -181,8 +184,8 @@ export default class SingleNotch extends Extension {
         this._tip = new St.Label({
             opacity: 0,
             reactive: false,
-            style: 'background-color: rgba(14,15,18,0.96); color: ' + TEXT + '; border-radius: 9px; ' +
-                'border: 1px solid rgba(255,255,255,0.10); padding: 7px 11px; font-size: 12px; ' +
+            style: 'background-color: rgba(22,24,29,0.97); color: ' + TEXT + '; border-radius: 9px; ' +
+                'border: 1px solid #2c2f37; padding: 7px 11px; font-size: 12px; ' +
                 'max-width: 320px;',
         });
         this._tip.clutter_text.line_wrap = true;
@@ -263,8 +266,8 @@ export default class SingleNotch extends Extension {
     }
 
     _rootStyle(accent) {
-        return 'background-color: rgba(16,17,20,0.94); border-radius: 16px 0 0 16px; ' +
-            'border: 1px solid rgba(255,255,255,0.09); border-right-width: 0; ' +
+        return 'background-color: rgba(22,24,29,0.96); border-radius: 16px 0 0 16px; ' +
+            'border: 1px solid #2c2f37; border-right-width: 0; ' +
             `border-left: 2px solid ${accent};`;
     }
 
@@ -716,7 +719,7 @@ export default class SingleNotch extends Extension {
         if (!this._chatEntry) {
             this._chatEntry = new St.Entry({
                 can_focus: true, x_expand: true,
-                style: `color: ${TEXT}; caret-color: ${TEXT}; background-color: rgba(255,255,255,0.07); border-radius: 8px; padding: 5px 8px; font-size: 12px;`,
+                style: `color: ${TEXT}; caret-color: ${TEXT}; background-color: rgba(242,242,240,0.07); border-radius: 8px; padding: 5px 8px; font-size: 12px;`,
             });
             this._chatEntry.clutter_text.connect('activate', () => this._chatSubmit());
             this._chatEntry.clutter_text.connect('key-press-event', (_actor, event) => {
@@ -767,7 +770,7 @@ export default class SingleNotch extends Extension {
         if (entry.type === 'confirm' && entry.approvalId === this._chat.pending) {
             const buttons = new St.BoxLayout({style: 'spacing: 6px;'});
             const mk = (label, allow, remember) => {
-                const b = new St.Button({label, reactive: true, can_focus: true, style: `color: ${TEXT}; background-color: rgba(255,255,255,0.10); border-radius: 7px; padding: 3px 10px; font-size: 11px;`});
+                const b = new St.Button({label, reactive: true, can_focus: true, style: `color: ${TEXT}; background-color: rgba(242,242,240,0.10); border-radius: 7px; padding: 3px 10px; font-size: 11px;`});
                 b.connect('clicked', () => this._answer(entry.approvalId, allow, remember));
                 return b;
             };
@@ -930,7 +933,7 @@ export default class SingleNotch extends Extension {
     _ratioBar(ratio, color, width) {
         const track = new St.BoxLayout({
             width, height: 4,
-            style: 'background-color: rgba(255,255,255,0.09); border-radius: 2px;',
+            style: 'background-color: rgba(242,242,240,0.09); border-radius: 2px;',
         });
         track.add_child(new St.Widget({
             width: Math.max(0, Math.min(width, Math.round(width * ratio))), height: 4,
@@ -1092,7 +1095,7 @@ export default class SingleNotch extends Extension {
             children.forEach(ch => c.add_child(ch));
             c.connect('notify::hover', () => {
                 if (c.get_stage())
-                    c.style = style(c.hover ? 'rgba(255,255,255,0.11)' : rest);
+                    c.style = style(c.hover ? 'rgba(242,242,240,0.11)' : rest);
             });
             c.connect('button-press-event', () => {
                 this._openTab(id);
@@ -1149,7 +1152,7 @@ export default class SingleNotch extends Extension {
             const active = this._tab === id;
             const tab = new St.BoxLayout({
                 reactive: true, track_hover: true,
-                style: `spacing: 5px; padding: 4px 10px; border-radius: 9px; background-color: ${active ? 'rgba(255,255,255,0.11)' : 'transparent'};`,
+                style: `spacing: 5px; padding: 4px 10px; border-radius: 9px; background-color: ${active ? 'rgba(242,242,240,0.11)' : 'transparent'};`,
             });
             tab.add_child(this._label(name, {color: active ? TEXT : MUTED, size: 12, bold: active}));
             if (badges[id] !== null && badges[id] !== undefined) {
@@ -1158,7 +1161,7 @@ export default class SingleNotch extends Extension {
             }
             tab.connect('notify::hover', () => {
                 if (this._tab !== id && tab.get_stage())
-                    tab.style = `spacing: 5px; padding: 4px 10px; border-radius: 9px; background-color: ${tab.hover ? 'rgba(255,255,255,0.06)' : 'transparent'};`;
+                    tab.style = `spacing: 5px; padding: 4px 10px; border-radius: 9px; background-color: ${tab.hover ? 'rgba(242,242,240,0.06)' : 'transparent'};`;
             });
             tab.connect('button-press-event', () => {
                 this._selectTab(id);
@@ -1362,7 +1365,7 @@ export default class SingleNotch extends Extension {
 
     _chip(text, color) {
         const l = this._label(text, {color, size: 10, bold: true, ellipsize: false});
-        l.style += ` background-color: rgba(255,255,255,0.07); border-radius: 6px; padding: 0 6px;`;
+        l.style += ` background-color: rgba(242,242,240,0.07); border-radius: 6px; padding: 0 6px;`;
         return l;
     }
 
@@ -1380,7 +1383,7 @@ export default class SingleNotch extends Extension {
                 const slot = slotOf.get(a.name);
                 const right = slot?.rate_limited ? 'rate-limited' : slot?.running ? `${slot.running}${slot.cap ? `/${slot.cap}` : ''} running` : '';
                 body.add_child(this._row([
-                    this._dot(id === 'not_installed' ? 'rgba(138,138,144,0.45)' : color, 8, !!slot?.running),
+                    this._dot(id === 'not_installed' ? 'rgba(125,129,138,0.45)' : color, 8, !!slot?.running),
                     this._label(a.name, {expand: true, color: id === 'not_installed' ? MUTED : TEXT}),
                     this._label(shortVersion(a.version), {color: MUTED, size: 10, ellipsize: false}),
                     this._label(right, {color: slot?.rate_limited ? AMBER : TEAL, size: 10, ellipsize: false}),

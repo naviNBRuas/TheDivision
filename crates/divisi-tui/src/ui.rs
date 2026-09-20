@@ -5,12 +5,19 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Wrap};
 use ratatui::Frame;
 
-const ACCENT: Color = Color::Cyan;
-const OK: Color = Color::Green;
-const WARN: Color = Color::Yellow;
-const BAD: Color = Color::Red;
-const MUTED: Color = Color::DarkGray;
-/// The divisi mark colour (brand signal orange, `#ff5a1f`).
+// divisi brand tokens: graphite #16181d, bone #f2f2f0, signal #ff5a1f, go #3ddc97,
+// caution #ffd23f, fault #ff2d55, plus muted #7d818a and border #2c2f37.
+/// Primary text and highlights (bone).
+const ACCENT: Color = Color::Rgb(0xf2, 0xf2, 0xf0);
+const OK: Color = Color::Rgb(0x3d, 0xdc, 0x97);
+const WARN: Color = Color::Rgb(0xff, 0xd2, 0x3f);
+const BAD: Color = Color::Rgb(0xff, 0x2d, 0x55);
+const MUTED: Color = Color::Rgb(0x7d, 0x81, 0x8a);
+/// Panel borders (quiet, so Signal stays meaningful).
+const BORDER: Color = Color::Rgb(0x2c, 0x2f, 0x37);
+/// Text drawn on a bone/signal fill (graphite).
+const GRAPHITE: Color = Color::Rgb(0x16, 0x18, 0x1d);
+/// The divisi mark and active-state colour (brand signal orange, `#ff5a1f`).
 const SIGNAL: Color = Color::Rgb(0xff, 0x5a, 0x1f);
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -87,7 +94,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let mark = Span::styled(app.mark(), Style::default().fg(SIGNAL).add_modifier(Modifier::BOLD));
     let header = Paragraph::new(Line::from(vec![mark, Span::styled(text, style)]))
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(ACCENT)));
+        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(BORDER)));
     frame.render_widget(header, area);
 }
 
@@ -97,9 +104,9 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         .map(|t| {
             let label = format!(" {} ", t.title());
             if *t == app.tab {
-                Span::styled(label, Style::default().bg(ACCENT).fg(Color::Black).add_modifier(Modifier::BOLD))
+                Span::styled(label, Style::default().bg(SIGNAL).fg(GRAPHITE).add_modifier(Modifier::BOLD))
             } else {
-                Span::styled(label, Style::default().fg(Color::White))
+                Span::styled(label, Style::default().fg(ACCENT))
             }
         })
         .collect();
@@ -110,7 +117,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         }
         spans.push(span);
     }
-    let tabs = Paragraph::new(Line::from(spans)).block(Block::default().borders(Borders::ALL));
+    let tabs = Paragraph::new(Line::from(spans)).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(BORDER)));
     frame.render_widget(tabs, area);
 }
 
@@ -155,7 +162,7 @@ fn draw_content(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn selected_style() -> Style {
-    Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+    Style::default().bg(BORDER).add_modifier(Modifier::BOLD)
 }
 
 /// Keeps the selected row inside the visible window of a long list/table,
