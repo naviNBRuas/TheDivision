@@ -181,6 +181,10 @@ fn task_output(rec: &divisi_protocol::TaskRecord) -> String {
 /// escalating on the first miss.
 const BRAIN_JSON_RETRIES: u32 = 2;
 
+/// How many times a brain role waits out a rate-limited answer, and for how long each time.
+const RATE_LIMIT_WAITS: u32 = 4;
+const RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(60);
+
 /// `agent` is the routing table's first pick; each retry re-selects via
 /// `select_agent_excluding` (kind/effort/table/health), excluding every
 /// agent already tried, so a stuck agent doesn't burn the whole retry
@@ -203,7 +207,10 @@ fn run_role(
 ) -> Result<Value> {
     let mut tried: Vec<String> = Vec::new();
     let mut current = agent.to_string();
-    for _ in 0..=BRAIN_JSON_RETRIES {
+    let mut attempts_left = BRAIN_JSON_RETRIES + 1;
+    let mut rate_limit_waits = 0u32;
+    while attempts_left > 0 {
+        attempts_left -= 1;
         tried.push(current.clone());
         let rec = crate::task::run(
             conn,
@@ -229,6 +236,13 @@ fn run_role(
         let out = task_output(&rec);
         if let Some(v) = extract_first_json(&out) {
             return Ok(v);
+        }
+        // A rate-limited answer is not a bad sample: wait for the burst to clear and try again without
+        // spending an attempt (bounded), instead of blocking the goal while the pool is merely busy.
+        if divisi_core::ratelimit::looks_like_rate_limit(&out) && rate_limit_waits < RATE_LIMIT_WAITS {
+            rate_limit_waits += 1;
+            attempts_left += 1;
+            std::thread::sleep(RATE_LIMIT_BACKOFF);
         }
         current = routing::select_agent_excluding(table, kind, effort, health, &tried).unwrap_or(current);
     }
