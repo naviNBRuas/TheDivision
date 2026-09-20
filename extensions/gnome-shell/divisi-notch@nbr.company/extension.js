@@ -44,6 +44,9 @@ const MARK_SIZE = 20;
 
 const TABS = [['overview', 'Overview'], ['goals', 'Goals'], ['chat', 'Chat'], ['pool', 'Pool'], ['agents', 'Agents'], ['usage', 'Usage']];
 const SIGNAL_CSS = '#ff5a1f';
+// A keyboard grab must never be able to trap the desktop: with no typing for this long it lets go.
+const CHAT_IDLE_MS = 45000;
+const CHAT_GUARD_MS = 100;
 
 // [label, colour] per provider auth_state / agent class (see divisi_core::auth_class).
 const PROVIDER_STATES = [
@@ -139,6 +142,9 @@ export default class SingleNotch extends Extension {
         this._chatRefocus = false;
         this._chatFetching = false;
         this._chatStick = false;
+        this._chatIdleMs = CHAT_IDLE_MS;
+        this._chatLastActive = 0;
+        this._chatGuardId = 0;
         this._addTimer(1500, () => {
             if (this._root && this._state === 'card' && this._tab === 'chat')
                 this._chatFetch();
@@ -645,8 +651,49 @@ export default class SingleNotch extends Extension {
                 return;
             this._chatGrab = grab;
             this._chatFocused = true;
+            this._startChatGuard();
         }
+        this._touchChat();
         this._chatEntry.clutter_text.grab_key_focus();
+    }
+
+    _touchChat() {
+        this._chatLastActive = GLib.get_monotonic_time() / 1000;
+    }
+
+    // While the grab is held the stage-level handlers that normally close the card never see input, so
+    // the grab has to police itself: a button press outside the card, or a long silence, lets go.
+    _startChatGuard() {
+        if (this._chatGuardId)
+            return;
+        this._chatGuardId = this._addTimer(CHAT_GUARD_MS, () => {
+            if (!this._chatFocused || !this._root) {
+                this._chatGuardId = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            const [x, y, mods] = global.get_pointer();
+            const pressed = (mods & Clutter.ModifierType.BUTTON1_MASK) !== 0;
+            if (pressed && !this._contains(this._root, x, y)) {
+                this._chatGuardId = 0;
+                this._leaveChat(true);
+                return GLib.SOURCE_REMOVE;
+            }
+            if (GLib.get_monotonic_time() / 1000 - this._chatLastActive > this._chatIdleMs) {
+                this._chatGuardId = 0;
+                this._leaveChat(false);
+                return GLib.SOURCE_REMOVE;
+            }
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    // Lets go of the keyboard; with `collapse` the card closes as well.
+    _leaveChat(collapse) {
+        this._releaseChatFocus();
+        if (collapse)
+            this._setState('hidden');
+        else if (this._state === 'card')
+            this._redrawChat();
     }
 
     _releaseChatFocus() {
@@ -659,6 +706,10 @@ export default class SingleNotch extends Extension {
         }
         this._chatGrab = null;
         this._chatFocused = false;
+        if (this._chatGuardId) {
+            this._clearTimer?.(this._chatGuardId);
+            this._chatGuardId = 0;
+        }
     }
 
     _ensureChatEntry() {
@@ -668,6 +719,27 @@ export default class SingleNotch extends Extension {
                 style: `color: ${TEXT}; caret-color: ${TEXT}; background-color: rgba(255,255,255,0.07); border-radius: 8px; padding: 5px 8px; font-size: 12px;`,
             });
             this._chatEntry.clutter_text.connect('activate', () => this._chatSubmit());
+            this._chatEntry.clutter_text.connect('key-press-event', (_actor, event) => {
+                const sym = event.get_key_symbol();
+                if (sym === Clutter.KEY_Escape) {
+                    this._leaveChat(true);
+                    return Clutter.EVENT_STOP;
+                }
+                if (sym === Clutter.KEY_Tab || sym === Clutter.KEY_ISO_Left_Tab) {
+                    this._leaveChat(false);
+                    return Clutter.EVENT_STOP;
+                }
+                this._touchChat();
+                return Clutter.EVENT_PROPAGATE;
+            });
+            this._chatEntry.clutter_text.connect('key-focus-out', () => {
+                if (this._chatFocused && this._chatEntry && !this._chatEntry.clutter_text.has_key_focus())
+                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                        if (this._chatFocused && !this._chatEntry?.clutter_text.has_key_focus())
+                            this._leaveChat(false);
+                        return GLib.SOURCE_REMOVE;
+                    });
+            });
             this._chatEntry.connect('button-press-event', () => {
                 this._focusChat();
                 return Clutter.EVENT_STOP;
