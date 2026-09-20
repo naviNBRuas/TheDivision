@@ -855,6 +855,7 @@ fn print_data(data: ResponseData) {
                 }
             }
         }
+        ResponseData::AgentAuth(rows) => print_agent_auth(&rows),
         ResponseData::Chat(outcome) => {
             for e in outcome.events {
                 print_chat_event(&e.kind, &e.body);
@@ -1131,6 +1132,36 @@ pub fn print_chat_event(kind: &str, body: &str) {
         ChatRole::Divisi => println!("divisi  {}{}", l.text, if l.degraded { "  (rules only)" } else { "" }),
         ChatRole::Confirm => println!("?       {}   [divisi chat confirm {} --allow|--deny]", l.text, l.approval_id.unwrap_or_default()),
         ChatRole::Result => println!("=       {}", l.text),
+    }
+}
+
+/// The auth inventory, grouped the way it is decided: no login needed, needs one and has it
+/// (working or out of quota), needs one and lacks it, and everything else.
+pub fn print_agent_auth(rows: &[divisi_protocol::AgentAuthRow]) {
+    let groups: [(&str, &[&str]); 5] = [
+        ("NO AUTH NEEDED (works with no login at all)", &["no_auth_needed"]),
+        ("NEEDS AUTH, AUTHENTICATED", &["authed"]),
+        ("NEEDS AUTH, AUTHENTICATED BUT OUT OF QUOTA", &["exhausted"]),
+        ("NEEDS AUTH, NOT AUTHENTICATED", &["needs_login"]),
+        ("OTHER", &["unresponsive", "error", "not_dispatchable", "unverified", "provider", "not_installed"]),
+    ];
+    for (title, cats) in groups {
+        let members: Vec<_> = rows.iter().filter(|r| cats.contains(&r.category.as_str())).collect();
+        if members.is_empty() {
+            continue;
+        }
+        println!("{title} ({})", members.len());
+        for r in members {
+            let mut why = r.evidence.clone();
+            if r.category == "exhausted" {
+                if let Some(u) = r.until.as_deref().and_then(|u| chrono::DateTime::parse_from_rfc3339(u).ok()) {
+                    why = format!("back {}: {}", u.with_timezone(&chrono::Local).format("%a %b %-d %H:%M"), why);
+                }
+            }
+            let tag = if cats.len() > 1 { format!("[{}] ", r.category) } else { String::new() };
+            println!("  {:<14} {tag}{}", r.agent, why.chars().take(140).collect::<String>());
+        }
+        println!();
     }
 }
 

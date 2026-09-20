@@ -1907,6 +1907,15 @@ fn dispatch(
                 .collect();
             Ok(ResponseData::CoordinatorEvents(out))
         }
+        Request::AgentAuth { probe, deep, agents } => {
+            let conn = coordinator_db(ctx)?;
+            Ok(ResponseData::AgentAuth(crate::agent_auth::report(ctx, &conn, probe, deep, &agents)?))
+        }
+        Request::AgentCooldownClear { agent } => {
+            let conn = coordinator_db(ctx)?;
+            crate::agent_cooldown::clear(&conn, &agent)?;
+            Ok(ResponseData::Empty)
+        }
         Request::ChatSend { session, text, surface, mode, agent } => {
             let conn = coordinator_db(ctx)?;
             let mut cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);

@@ -554,6 +554,22 @@ enum AgentCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Which agents need a login, have one, need none, or are out of quota, with the evidence.
+    /// Without --probe it reports the last stored probe; --probe makes a tiny real call through each agent.
+    Auth {
+        /// Limit to these agents (default: all).
+        agents: Vec<String>,
+        /// Make a real call through each agent to check (slow: about a minute).
+        #[arg(long)]
+        probe: bool,
+        /// Also try every working agent from an empty home, to find the ones that need no login at all.
+        #[arg(long)]
+        deep: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Forget an agent's quota cooldown (when a parsed reset time was wrong).
+    CooldownClear { agent: String },
     Inspect {
         name: String,
         #[arg(long)]
@@ -1766,6 +1782,14 @@ fn main() -> anyhow::Result<()> {
             render::print(response, json);
         }
         Command::Agent { action } => match action {
+            AgentCommand::Auth { agents, probe, deep, json } => {
+                let response = client::send(&socket_path, Request::AgentAuth { probe, deep, agents })?;
+                render::print(response, json);
+            }
+            AgentCommand::CooldownClear { agent } => {
+                let response = client::send(&socket_path, Request::AgentCooldownClear { agent })?;
+                render::print(response, false);
+            }
             AgentCommand::List { json } => {
                 let response = client::send(&socket_path, Request::AgentList)?;
                 render::print(response, json);

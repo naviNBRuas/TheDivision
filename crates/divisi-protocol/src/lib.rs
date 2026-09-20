@@ -764,6 +764,22 @@ pub enum Request {
         session: Option<String>,
         since_event_id: i64,
     },
+    /// The auth inventory: for every agent, whether it needs a login, has one, needs none, or is out
+    /// of quota, with the evidence. `probe` runs a tiny real call through each agent (slow: about a
+    /// minute); without it the last stored probe is reported. `deep` also tries every working agent
+    /// from an empty home to find those that need no credentials at all. `agents` limits the set.
+    AgentAuth {
+        #[serde(default)]
+        probe: bool,
+        #[serde(default)]
+        deep: bool,
+        #[serde(default)]
+        agents: Vec<String>,
+    },
+    /// Forget an agent's quota cooldown (for when a parsed reset time was wrong).
+    AgentCooldownClear {
+        agent: String,
+    },
     /// Answer a confirmation divisi asked for (a `chat_confirm` event). The first answer wins;
     /// answering an already-resolved confirmation returns its recorded outcome.
     ChatConfirm {
@@ -911,6 +927,7 @@ pub enum ResponseData {
     Goals(Vec<GoalSummary>),
     CoordinatorEvents(Vec<CoordinatorEvent>),
     Chat(ChatOutcome),
+    AgentAuth(Vec<AgentAuthRow>),
     CoordinatorSnapshot(CoordinatorSnapshot),
 
     Empty,
@@ -982,6 +999,22 @@ pub struct CoordinatorEvent {
     pub ts: String,
     pub kind: String,
     pub body: String,
+}
+
+/// One agent's auth status with the evidence behind it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentAuthRow {
+    pub agent: String,
+    /// `no_auth_needed | authed | exhausted | needs_login | unresponsive | error | not_dispatchable |
+    /// provider | not_installed | unverified`
+    pub category: String,
+    pub evidence: String,
+    /// RFC3339 time of the probe this comes from, if any.
+    #[serde(default)]
+    pub checked_at: Option<String>,
+    /// For `exhausted`: when the agent says it works again.
+    #[serde(default)]
+    pub until: Option<String>,
 }
 
 /// What a `ChatSend` or `ChatConfirm` appended to the conversation.
@@ -2346,6 +2379,8 @@ mod tests {
             Request::ChatSend { session: Some("sess_1".into()), text: "cancel goal_1".into(), surface: "zed".into(), mode: Some("plan".into()), agent: Some("claude".into()) },
             Request::ChatConfirm { approval_id: 7, allow: true, remember: false },
             Request::ChatHistory { session: None, since_event_id: 0 },
+            Request::AgentAuth { probe: true, deep: false, agents: vec!["codex".into()] },
+            Request::AgentCooldownClear { agent: "codex".into() },
             Request::ChatHistory { session: Some("sess_1".into()), since_event_id: 12 },
             Request::CoordinatorStatus,
             Request::GoalMergeList,

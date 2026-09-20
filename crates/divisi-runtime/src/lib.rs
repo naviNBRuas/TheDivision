@@ -1,4 +1,6 @@
 pub mod accounting;
+pub mod agent_auth;
+pub mod agent_cooldown;
 pub mod assistant;
 pub mod billing;
 pub mod bootstrap;

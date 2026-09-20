@@ -4,7 +4,7 @@
 use crate::{client, render};
 use anyhow::{bail, Result};
 use clap::Subcommand;
-use divisi_protocol::{chat_line, progress_line, ChatOutcome, ChatRole, CoordinatorEvent, Request, Response, ResponseData};
+use divisi_protocol::{chat_line, progress_line, ChatOutcome, CoordinatorEvent, Request, Response, ResponseData};
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};

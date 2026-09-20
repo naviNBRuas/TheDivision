@@ -1250,7 +1250,12 @@ fn execute(
             // header, a byte count) and must not be flagged.
             let rate_limited = if treat_as_failed {
                 let combined_output = format!("{}\n{}", outcome.stdout, outcome.stderr);
-                divisi_core::ratelimit::looks_like_unavailable(&combined_output)
+                let unavailable = divisi_core::ratelimit::looks_like_unavailable(&combined_output);
+                // If the agent said when it recovers, keep routing away until then.
+                if unavailable {
+                    crate::agent_cooldown::note(conn, opts.agent, &combined_output);
+                }
+                unavailable
             } else {
                 false
             };
@@ -1300,6 +1305,9 @@ fn execute(
         Err(e) => {
             let error_text = format!("{e:#}");
             let rate_limited = divisi_core::ratelimit::looks_like_unavailable(&error_text);
+            if rate_limited {
+                crate::agent_cooldown::note(conn, opts.agent, &error_text);
+            }
             rate_limited_for_fallback = rate_limited;
             finish(
                 conn,

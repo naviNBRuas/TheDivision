@@ -272,6 +272,10 @@ impl PoolHealth {
             .unwrap_or_default();
 
         rate_limited.extend(agents_on_a_pure_failure_streak(conn, &cutoff));
+        // An agent that said when it recovers stays out until then, not just for 15 minutes.
+        if let Ok(cooling) = crate::agent_cooldown::active(conn, chrono::Utc::now()) {
+            rate_limited.extend(cooling.into_keys());
+        }
 
         Self { detected_authed, rate_limited }
     }

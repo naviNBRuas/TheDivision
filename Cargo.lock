@@ -1324,6 +1324,7 @@ dependencies = [
  "age",
  "anyhow",
  "assert_cmd",
+ "chrono",
  "clap",
  "directories",
  "divisi-agent-sdk",

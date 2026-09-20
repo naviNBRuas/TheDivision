@@ -25,6 +25,7 @@ libc.workspace = true
 divisi-agent-sdk = { path = "../divisi-agent-sdk" }
 divisi-brand = { path = "../divisi-brand" }
 divisi-core = { path = "../divisi-core" }
+chrono.workspace = true
 divisi-web = { path = "../divisi-web" }
 divisi-protocol = { path = "../divisi-protocol" }
 divisi-runtime = { path = "../divisi-runtime" }
