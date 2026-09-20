@@ -114,6 +114,7 @@ const GNOME_UUID: &str = "divisi-notch@nbr.company";
 const GNOME_EXTENSION_JS: &str = include_str!("../../../extensions/gnome-shell/divisi-notch@nbr.company/extension.js");
 const GNOME_METADATA: &str = include_str!("../../../extensions/gnome-shell/divisi-notch@nbr.company/metadata.json");
 const GNOME_FRAMES: &str = include_str!("../../../extensions/gnome-shell/divisi-notch@nbr.company/mark-frames.json");
+const GNOME_CHAT_JS: &str = include_str!("../../../extensions/gnome-shell/divisi-notch@nbr.company/chat.js");
 
 pub fn is_gnome() -> bool {
     std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.split(':').any(|p| p.eq_ignore_ascii_case("gnome")))
@@ -144,6 +145,7 @@ pub fn gnome_install() -> Result<()> {
     std::fs::write(dir.join("extension.js"), GNOME_EXTENSION_JS)?;
     std::fs::write(dir.join("metadata.json"), GNOME_METADATA)?;
     std::fs::write(dir.join("mark-frames.json"), GNOME_FRAMES)?;
+    std::fs::write(dir.join("chat.js"), GNOME_CHAT_JS)?;
     Ok(())
 }
 

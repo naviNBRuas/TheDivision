@@ -74,8 +74,8 @@ fn print_event(e: &CoordinatorEvent) {
     }
 }
 
-fn event_json(e: &CoordinatorEvent) -> String {
-    serde_json::json!({"id": e.id, "goal_id": e.goal_id, "ts": e.ts, "kind": e.kind, "body": e.body}).to_string()
+fn event_json(e: &CoordinatorEvent, session: &str) -> String {
+    serde_json::json!({"id": e.id, "goal_id": e.goal_id, "ts": e.ts, "kind": e.kind, "body": e.body, "session": session}).to_string()
 }
 
 pub fn run(socket: &Path, action: Option<ChatCommand>) -> Result<()> {
@@ -101,11 +101,11 @@ pub fn run(socket: &Path, action: Option<ChatCommand>) -> Result<()> {
             let mut session = session;
             loop {
                 let o = history(socket, session.clone(), cursor)?;
-                session = Some(o.session_id);
+                session = Some(o.session_id.clone());
                 for e in &o.events {
                     cursor = cursor.max(e.id);
                     if json {
-                        println!("{}", event_json(e));
+                        println!("{}", event_json(e, &o.session_id));
                     } else {
                         print_event(e);
                     }
@@ -284,7 +284,8 @@ mod tests {
     #[test]
     fn an_event_is_serialised_for_scripts() {
         let e = CoordinatorEvent { id: 5, goal_id: None, ts: "t".into(), kind: "chat_user".into(), body: "{}".into() };
-        let v: serde_json::Value = serde_json::from_str(&event_json(&e)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&event_json(&e, "sess_9")).unwrap();
         assert_eq!((v["id"].as_i64(), v["kind"].as_str()), (Some(5), Some("chat_user")));
+        assert_eq!(v["session"], "sess_9", "the notch needs the session id to know when the conversation changed");
     }
 }

@@ -15,6 +15,7 @@ import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Cairo from 'cairo';
+import * as Chat from './chat.js';
 
 const TEAL = '#2EC4B6';
 const AMBER = '#E9A319';
@@ -41,7 +42,8 @@ const NOTABLE_PEEK_MS = 3800;
 const SIGNAL = [0xff / 255, 0x5a / 255, 0x1f / 255];
 const MARK_SIZE = 20;
 
-const TABS = [['overview', 'Overview'], ['goals', 'Goals'], ['pool', 'Pool'], ['agents', 'Agents'], ['usage', 'Usage']];
+const TABS = [['overview', 'Overview'], ['goals', 'Goals'], ['chat', 'Chat'], ['pool', 'Pool'], ['agents', 'Agents'], ['usage', 'Usage']];
+const SIGNAL_CSS = '#ff5a1f';
 
 // [label, colour] per provider auth_state / agent class (see divisi_core::auth_class).
 const PROVIDER_STATES = [
@@ -130,6 +132,18 @@ export default class SingleNotch extends Extension {
         this._markArea = null;
         this._markRunning = false;
         this._mark = {phase: 'idle', t0: 0, exitAt: 0};
+        this._chat = Chat.newChat();
+        this._chatEntry = null;
+        this._chatGrab = null;
+        this._chatFocused = false;
+        this._chatRefocus = false;
+        this._chatFetching = false;
+        this._chatStick = false;
+        this._addTimer(1500, () => {
+            if (this._root && this._state === 'card' && this._tab === 'chat')
+                this._chatFetch();
+            return GLib.SOURCE_CONTINUE;
+        });
         try {
             const [, bytes] = Gio.File.new_for_path(`${this.path}/mark-frames.json`).load_contents(null);
             this._frames = JSON.parse(new TextDecoder().decode(bytes));
@@ -216,6 +230,9 @@ export default class SingleNotch extends Extension {
         this._snapshot = null;
         this._tipTargets = [];
         this._pulseDots = [];
+        this._releaseChatFocus();
+        this._chatEntry = null;
+        this._chat = null;
         this._frames = this._markArea = null;
         this._markRunning = false;
         this._mark = null;
@@ -372,6 +389,8 @@ export default class SingleNotch extends Extension {
             return;
         this._leaveTimer = this._addTimer(ms, () => {
             this._leaveTimer = 0;
+            if (this._chatFocused)
+                return GLib.SOURCE_REMOVE;
             if (this._root && this._state !== 'hidden') {
                 const [x, y] = global.get_pointer();
                 if (!this._contains(this._root, x, y, 1))
@@ -390,6 +409,8 @@ export default class SingleNotch extends Extension {
         if (!this._root || this._state === state)
             return;
         this._state = state;
+        if (state !== 'card')
+            this._releaseChatFocus();
         this._hideTip();
         this._cancelLeave();
         this._render(fade);
@@ -525,6 +546,204 @@ export default class SingleNotch extends Extension {
     }
 
     // ---- widgets ---------------------------------------------------------------------------
+
+    // ---- chat --------------------------------------------------------------------
+
+    // Redraw the chat and resize the card to fit, as a snapshot refresh does.
+    _redrawChat() {
+        if (!this._root || this._state !== 'card' || this._tab !== 'chat')
+            return;
+        this._render(false);
+        this._place(true);
+    }
+
+    _divisiBin() {
+        const local = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'divisi']);
+        return GLib.file_test(local, GLib.FileTest.IS_EXECUTABLE) ? local : 'divisi';
+    }
+
+    _chatRun(args, done) {
+        try {
+            const proc = Gio.Subprocess.new([this._divisiBin(), ...args],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+            proc.communicate_utf8_async(null, this._cancellable, (p, res) => {
+                if (!this._root)
+                    return;
+                try {
+                    const [, out, err] = p.communicate_utf8_finish(res);
+                    done(p.get_successful(), out ?? '', err ?? '');
+                } catch (e) {
+                    done(false, '', String(e.message ?? e));
+                }
+            });
+        } catch (e) {
+            done(false, '', String(e.message ?? e));
+        }
+    }
+
+    // Pulls conversation events newer than the cursor and redraws if there are any.
+    _chatFetch() {
+        if (this._chatFetching || !this._root)
+            return;
+        this._chatFetching = true;
+        this._chatRun(['chat', 'tail', '--json', '--after', String(this._chat.cursor)], (ok, out) => {
+            this._chatFetching = false;
+            if (!ok || !this._root)
+                return;
+            const {session, events} = Chat.parseTail(out);
+            if (session && Chat.applyEvents(this._chat, session, events)) {
+                this._chatStick = true;
+                this._redrawChat();
+            }
+        });
+    }
+
+    _chatSubmit() {
+        const action = Chat.submitInput(this._chat, this._chatEntry.get_text());
+        if (!action)
+            return;
+        this._chatEntry.set_text('');
+        this._chat.busy = true;
+        const args = action.type === 'send'
+            ? ['chat', 'send', '--surface', 'notch', '--json', '--', action.text]
+            : ['chat', 'confirm', String(action.approvalId), action.allow ? '--allow' : '--deny', ...(action.remember ? ['--remember'] : [])];
+        this._chatStick = true;
+        this._redrawChat();
+        this._chatRun(args, (ok, _out, err) => {
+            this._chat.busy = false;
+            if (!ok) {
+                const first = (err || 'that did not go through').trim().split('\n')[0];
+                this._chat.entries.push({type: 'error', text: first.slice(0, 200)});
+            }
+            this._chatFetch();
+            this._redrawChat();
+        });
+    }
+
+    _answer(approvalId, allow, remember) {
+        this._chatEntry?.set_text('');
+        this._chat.busy = true;
+        this._chatStick = true;
+        this._redrawChat();
+        this._chatRun(['chat', 'confirm', String(approvalId), allow ? '--allow' : '--deny', ...(remember ? ['--remember'] : [])], (ok, _out, err) => {
+            this._chat.busy = false;
+            if (!ok)
+                this._chat.entries.push({type: 'error', text: (err || 'that did not go through').trim().split('\n')[0].slice(0, 200)});
+            this._chatFetch();
+            this._redrawChat();
+        });
+    }
+
+    // A modal grab gives the entry the keyboard while the card is open; it is released
+    // whenever the card collapses so the desktop is never left without keyboard focus.
+    _focusChat() {
+        if (!this._chatEntry?.mapped)
+            return;
+        if (!this._chatFocused) {
+            const grab = Main.pushModal(this._chatEntry);
+            if (!grab)
+                return;
+            this._chatGrab = grab;
+            this._chatFocused = true;
+        }
+        this._chatEntry.clutter_text.grab_key_focus();
+    }
+
+    _releaseChatFocus() {
+        if (this._chatGrab) {
+            try {
+                Main.popModal(this._chatGrab);
+            } catch (e) {
+                console.warn(`divisi notch: releasing the chat grab failed (${e.message})`);
+            }
+        }
+        this._chatGrab = null;
+        this._chatFocused = false;
+    }
+
+    _ensureChatEntry() {
+        if (!this._chatEntry) {
+            this._chatEntry = new St.Entry({
+                can_focus: true, x_expand: true,
+                style: `color: ${TEXT}; caret-color: ${TEXT}; background-color: rgba(255,255,255,0.07); border-radius: 8px; padding: 5px 8px; font-size: 12px;`,
+            });
+            this._chatEntry.clutter_text.connect('activate', () => this._chatSubmit());
+            this._chatEntry.connect('button-press-event', () => {
+                this._focusChat();
+                return Clutter.EVENT_STOP;
+            });
+        }
+        this._chatEntry.hint_text = this._chat.pending !== null ? 'yes / no / always' : 'say something…';
+        return this._chatEntry;
+    }
+
+    _chatRow(entry) {
+        const styleFor = {
+            you: [BLUE, 'you'], divisi: [TEXT, 'divisi'], confirm: [AMBER, '?'],
+            result: [MUTED, '='], progress: [MUTED, '·'], error: [RED, 'error'],
+        }[entry.type] ?? [TEXT, ''];
+        const row = new St.BoxLayout({x_expand: true, style: 'spacing: 8px; padding: 2px 0;'});
+        const tag = new St.Label({text: styleFor[1], y_align: Clutter.ActorAlign.START, style: `color: ${MUTED}; font-size: 10px; min-width: 40px; padding-top: 2px;`});
+        const text = entry.type === 'divisi' && entry.degraded ? `${entry.text}  (rules only)` : entry.text;
+        const body = new St.Label({text, x_expand: true, style: `color: ${styleFor[0]}; font-size: 12px;`});
+        body.clutter_text.line_wrap = true;
+        body.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        body.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+        row.add_child(tag);
+        const col = new St.BoxLayout({vertical: true, x_expand: true, style: 'spacing: 4px;'});
+        col.add_child(body);
+        if (entry.type === 'confirm' && entry.approvalId === this._chat.pending) {
+            const buttons = new St.BoxLayout({style: 'spacing: 6px;'});
+            const mk = (label, allow, remember) => {
+                const b = new St.Button({label, reactive: true, can_focus: true, style: `color: ${TEXT}; background-color: rgba(255,255,255,0.10); border-radius: 7px; padding: 3px 10px; font-size: 11px;`});
+                b.connect('clicked', () => this._answer(entry.approvalId, allow, remember));
+                return b;
+            };
+            buttons.add_child(mk('Yes', true, false));
+            buttons.add_child(mk('No', false, false));
+            if (entry.rememberOk)
+                buttons.add_child(mk('Always', true, true));
+            col.add_child(buttons);
+        }
+        row.add_child(col);
+        return row;
+    }
+
+    _tabChat(body) {
+        if (this._offline) {
+            body.add_child(this._empty('The daemon is not answering, so there is nothing to talk to. Run `divisi daemon restart`.'));
+            return;
+        }
+        if (!this._chat.entries.length) {
+            body.add_child(this._empty('Say what you want in plain language.\nhow are things? · how much have I used? · add tests for the parser · cancel goal_…\nRisky actions ask you first.'));
+            this._chatFetch();
+        }
+        for (const entry of this._chat.entries.slice(-40))
+            body.add_child(this._chatRow(entry));
+        if (this._chat.busy)
+            body.add_child(this._label('thinking…', {color: MUTED, size: 11}));
+        const input = new St.BoxLayout({x_expand: true, style: 'spacing: 6px; padding: 8px 0 0 0;'});
+        input.add_child(this._label('/', {color: SIGNAL_CSS, bold: true, size: 14}));
+        input.add_child(this._ensureChatEntry());
+        body.add_child(input);
+        if (this._chatRefocus || this._chatFocused) {
+            this._chatRefocus = false;
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                if (this._root && this._state === 'card' && this._tab === 'chat')
+                    this._focusChat();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+        if (this._chatStick) {
+            this._chatStick = false;
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                const adj = this._vadj();
+                if (adj)
+                    adj.value = Math.max(0, adj.upper - adj.page_size);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+    }
 
     // At rest the mark is the obelus. While work runs it is a spinning slash: `enter` plays
     // once (the dots collapse as the bar spins into the slash), `spin` loops, and when work
@@ -702,6 +921,14 @@ export default class SingleNotch extends Extension {
         this._root.style = this._rootStyle(color);
         this._bar.style = `background-color: ${color}; border-radius: 3px 0 0 3px;`;
         this._bar.visible = this._state === 'hidden';
+        // The chat entry outlives the rebuild so half-typed text survives a refresh.
+        if (this._chatEntry?.get_parent()) {
+            if (this._chatFocused) {
+                this._releaseChatFocus();
+                this._chatRefocus = true;
+            }
+            this._chatEntry.get_parent().remove_child(this._chatEntry);
+        }
         this._content.destroy_all_children();
         this._content.visible = this._state !== 'hidden';
         this._content.style = `padding: ${this._state === 'peek' ? '5px 5px 5px 7px' : `${PAD}px`}; spacing: 6px;`;
@@ -755,7 +982,7 @@ export default class SingleNotch extends Extension {
         } else {
             ({overview: () => this._tabOverview(body, s), goals: () => this._tabGoals(body, s),
                 pool: () => this._tabPool(body, s, innerW), agents: () => this._tabAgents(body, s),
-                usage: () => this._tabUsage(body, s, innerW)})[this._tab]();
+                usage: () => this._tabUsage(body, s, innerW), chat: () => this._tabChat(body)})[this._tab]();
         }
 
         const maxBody = Math.round(mon.height * 0.78) - 150;
