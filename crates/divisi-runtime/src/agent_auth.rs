@@ -153,6 +153,16 @@ fn scratch_repo() -> Result<tempfile::TempDir> {
 }
 
 /// Runs one agent through a real probe. `deep` also tries it from an empty home.
+/// opencode's default model is a keyed provider's, so a bare probe measures that key rather than
+/// whether opencode itself needs a login. Pin its own free model for the probe so the answer is about opencode.
+fn free_model_env(name: &str) -> BTreeMap<String, String> {
+    let mut env = BTreeMap::new();
+    if name == "opencode" {
+        env.insert("OPENCODE_CONFIG_CONTENT".to_string(), r#"{"model":"opencode/big-pickle"}"#.to_string());
+    }
+    env
+}
+
 pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> AgentAuthRow {
     // Provider proxies and the built-in pool agent have no login of their own: their credential is a
     // pool provider key, reported by the provider table.
@@ -179,7 +189,9 @@ pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> Ag
         Ok(h) => h,
         Err(e) => return row(name, Category::Error, format!("could not prepare its isolated home: {e:#}"), None),
     };
-    let env = divisi_core::provider_keys::resolve_env_for_agent(&ctx.dirs, name);
+    let mut env = divisi_core::provider_keys::resolve_env_for_agent(&ctx.dirs, name);
+    let free_model = free_model_env(name);
+    env.extend(free_model.clone());
     let backend = ExecBackend::host_with_env(Some(&home), &env);
     let outcome = adapter.run_prompt(scratch.path(), PROBE_PROMPT, &backend, None, PROBE_TIMEOUT, None);
     let (category, evidence, until) = match &outcome {
@@ -200,8 +212,7 @@ pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> Ag
     let candidates = ["opencode", "kilocode"];
     if deep || candidates.contains(&name) {
         if let Ok(empty) = tempfile::tempdir() {
-            let no_env = BTreeMap::new();
-            let backend = ExecBackend::host_with_env(Some(empty.path()), &no_env);
+            let backend = ExecBackend::host_with_env(Some(empty.path()), &free_model);
             if let Ok(o) = adapter.run_prompt(scratch.path(), PROBE_PROMPT, &backend, None, PROBE_TIMEOUT, None) {
                 if o.success && !o.stdout.trim().is_empty() {
                     return row(name, Category::NoAuthNeeded, format!("answered from an empty home with no credentials: {}", first_line(&o.stdout)), None);
