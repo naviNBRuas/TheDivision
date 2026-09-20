@@ -145,6 +145,7 @@ pub fn chat_send(
     session: Option<&str>,
     text: &str,
     surface: &str,
+    agent: Option<&str>,
 ) -> Result<ChatOutcome> {
     let text = text.trim();
     if text.is_empty() {
@@ -185,11 +186,11 @@ pub fn chat_send(
     };
 
     let outcome = match gate::classify(&intent, cfg) {
-        Verdict::Run => Some(run(ctx, model, cfg, &session_id, &intent, &thread, &state)),
+        Verdict::Run => Some(run(ctx, model, cfg, agent, &session_id, &intent, &thread, &state)),
         Verdict::Confirm { resource, summary, remember_ok } => {
             let context = json!({"session": session_id, "intent": intent, "summary": summary, "remember_ok": remember_ok}).to_string();
             match preferences::evaluate_and_learn(&[], conn, &resource, Some(&context))? {
-                preferences::Verdict::Allow => Some(run(ctx, model, cfg, &session_id, &intent, &thread, &state)),
+                preferences::Verdict::Allow => Some(run(ctx, model, cfg, agent, &session_id, &intent, &thread, &state)),
                 preferences::Verdict::Deny => {
                     record(conn, &session_id, EventKind::ChatAssistant, json!({"text": format!("I won't {summary}: you told me to always refuse this."), "intent": intent.name(), "goal_ids": [], "degraded": degraded}), &mut out)?;
                     None
@@ -215,9 +216,9 @@ pub fn chat_send(
 }
 
 /// Runs an intent, turning a failure into a plain reply instead of an error.
-fn run(ctx: &Context, model: &dyn IntentModel, cfg: &ChatConfig, session_id: &str, intent: &Intent, thread: &[String], state: &str) -> Reply {
+fn run(ctx: &Context, model: &dyn IntentModel, cfg: &ChatConfig, agent: Option<&str>, session_id: &str, intent: &Intent, thread: &[String], state: &str) -> Reply {
     let ask = |q: &str| model::answer(model, thread, state, q);
-    actions::execute(ctx, session_id, intent, cfg, &ask).unwrap_or_else(|e| Reply { text: format!("That failed: {e:#}"), goal_ids: vec![] })
+    actions::execute(ctx, session_id, intent, cfg, agent, &ask).unwrap_or_else(|e| Reply { text: format!("That failed: {e:#}"), goal_ids: vec![] })
 }
 
 pub fn chat_confirm(ctx: &Context, conn: &Connection, model: &dyn IntentModel, cfg: &ChatConfig, approval_id: i64, allow: bool, remember: bool) -> Result<ChatOutcome> {
@@ -257,7 +258,7 @@ pub fn chat_confirm(ctx: &Context, conn: &Connection, model: &dyn IntentModel, c
         record(conn, &session_id, EventKind::ChatResult, json!({"approval_id": approval_id, "outcome": "approved"}), &mut out)?;
         let thread = thread_lines(conn, &session_id);
         let state = state_text(ctx);
-        let reply = run(ctx, model, cfg, &session_id, &intent, &thread, &state);
+        let reply = run(ctx, model, cfg, None, &session_id, &intent, &thread, &state);
         record(conn, &session_id, EventKind::ChatAssistant, reply_body(&reply, &intent, false), &mut out)?;
     } else {
         record(conn, &session_id, EventKind::ChatResult, json!({"approval_id": approval_id, "outcome": "denied"}), &mut out)?;
@@ -321,7 +322,7 @@ mod tests {
         }
     }
     fn send(e: &Env, m: &dyn IntentModel, text: &str) -> ChatOutcome {
-        chat_send(&e.ctx, &e.conn, m, &e.cfg, None, text, "tui").unwrap()
+        chat_send(&e.ctx, &e.conn, m, &e.cfg, None, text, "tui", None).unwrap()
     }
     fn confirm(e: &Env, id: i64, allow: bool, remember: bool) -> ChatOutcome {
         chat_confirm(&e.ctx, &e.conn, &none(), &e.cfg, id, allow, remember).unwrap()
@@ -500,14 +501,14 @@ mod tests {
     #[test]
     fn empty_and_oversized_messages_are_rejected() {
         let e = env();
-        assert!(chat_send(&e.ctx, &e.conn, &none(), &e.cfg, None, "   ", "cli").is_err());
-        assert!(chat_send(&e.ctx, &e.conn, &none(), &e.cfg, None, &"x".repeat(9000), "cli").is_err());
+        assert!(chat_send(&e.ctx, &e.conn, &none(), &e.cfg, None, "   ", "cli", None).is_err());
+        assert!(chat_send(&e.ctx, &e.conn, &none(), &e.cfg, None, &"x".repeat(9000), "cli", None).is_err());
     }
 
     #[test]
     fn the_daemons_public_handler_serves_chat_end_to_end() {
         let e = env();
-        let send = |text: &str| crate::handlers::handle(&e.ctx, Request::ChatSend { session: None, text: text.into(), surface: "cli".into() });
+        let send = |text: &str| crate::handlers::handle(&e.ctx, Request::ChatSend { session: None, text: text.into(), surface: "cli".into(), mode: None, agent: None });
         let Response::Ok { data: ResponseData::Chat(o) } = send("how are things?") else { panic!("ChatSend failed") };
         assert_eq!(kinds(&o), ["chat_user", "chat_assistant"]);
 

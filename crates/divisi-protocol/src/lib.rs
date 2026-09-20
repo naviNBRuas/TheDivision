@@ -749,6 +749,13 @@ pub enum Request {
         text: String,
         /// Where it was typed: `zed`, `tui`, `notch` or `cli`.
         surface: String,
+        /// Goal mode for any goal this message starts (`auto`, `plan`, `careful`, `dry`); the
+        /// configured default when absent. Zed sends its session's mode here.
+        #[serde(default)]
+        mode: Option<String>,
+        /// Pin any goal this message starts to one agent (Zed's `/agent`); normal routing when absent.
+        #[serde(default)]
+        agent: Option<String>,
     },
     /// Everything in a conversation after an event id: chat lines and the goals' own progress.
     /// `session: None` is the shared main conversation, which is how a client learns its id.
@@ -2335,8 +2342,8 @@ mod tests {
             Request::GoalResume { goal_id: "goal_1".into() },
             Request::GoalRetryNode { goal_id: "goal_1".into(), node_id: "s2".into() },
             Request::SessionEvents { session_id: "sess_1".into(), since_event_id: 4 },
-            Request::ChatSend { session: None, text: "how is the pool?".into(), surface: "tui".into() },
-            Request::ChatSend { session: Some("sess_1".into()), text: "cancel goal_1".into(), surface: "zed".into() },
+            Request::ChatSend { session: None, text: "how is the pool?".into(), surface: "tui".into(), mode: None, agent: None },
+            Request::ChatSend { session: Some("sess_1".into()), text: "cancel goal_1".into(), surface: "zed".into(), mode: Some("plan".into()), agent: Some("claude".into()) },
             Request::ChatConfirm { approval_id: 7, allow: true, remember: false },
             Request::ChatHistory { session: None, since_event_id: 0 },
             Request::ChatHistory { session: Some("sess_1".into()), since_event_id: 12 },

@@ -37,7 +37,7 @@ fn snapshot(ctx: &Context) -> Result<divisi_protocol::CoordinatorSnapshot> {
 }
 
 /// `answer` produces a model answer for a `Question`; it returns `None` when no model is reachable.
-pub fn execute(ctx: &Context, session_id: &str, intent: &Intent, cfg: &ChatConfig, answer: &dyn Fn(&str) -> Option<String>) -> Result<Reply> {
+pub fn execute(ctx: &Context, session_id: &str, intent: &Intent, cfg: &ChatConfig, agent: Option<&str>, answer: &dyn Fn(&str) -> Option<String>) -> Result<Reply> {
     Ok(match intent {
         Intent::Status => Reply::say(reply::status_text(&snapshot(ctx)?)),
         Intent::PoolQuery => {
@@ -52,7 +52,7 @@ pub fn execute(ctx: &Context, session_id: &str, intent: &Intent, cfg: &ChatConfi
             let mode = mode.clone().unwrap_or_else(|| cfg.default_mode.clone());
             let ResponseData::GoalId(id) = call(
                 ctx,
-                Request::GoalSubmit { session_id: session_id.to_owned(), text: text.clone(), mode: Some(mode.clone()), max_dispatches: None, max_minutes: None, agent: None },
+                Request::GoalSubmit { session_id: session_id.to_owned(), text: text.clone(), mode: Some(mode.clone()), max_dispatches: None, max_minutes: None, agent: agent.map(str::to_owned) },
             )?
             else {
                 bail!("unexpected response to GoalSubmit")

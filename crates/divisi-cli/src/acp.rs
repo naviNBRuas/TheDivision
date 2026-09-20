@@ -28,6 +28,50 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1200);
 /// before falling back to a plain message + `end_turn`.
 const PERMISSION_TIMEOUT: Duration = Duration::from_secs(180);
 
+/// One step of answering a chat turn, derived from the events the daemon returned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TurnAction {
+    /// Text for the Zed thread.
+    Say(String),
+    /// A risky action waiting for a yes or no.
+    Confirm { approval_id: i64, summary: String },
+    /// A goal the reply started, whose progress should stream into the thread.
+    Goal(String),
+}
+
+/// Turns the events a `ChatSend` or `ChatConfirm` appended into actions. Your own message and the
+/// bare result lines are skipped: Zed already shows the first, and the reply covers the second.
+fn plan_actions(events: &[divisi_protocol::CoordinatorEvent]) -> Vec<TurnAction> {
+    let mut out = Vec::new();
+    for e in events {
+        let Some(line) = divisi_protocol::chat_line(&e.kind, &e.body) else { continue };
+        match line.role {
+            divisi_protocol::ChatRole::Divisi => {
+                let note = if line.degraded { "\n_(rules-only mode: no model was reachable)_" } else { "" };
+                out.push(TurnAction::Say(format!("{}{note}", line.text)));
+                let v: Value = serde_json::from_str(&e.body).unwrap_or(Value::Null);
+                for g in v.get("goal_ids").and_then(|g| g.as_array()).into_iter().flatten().filter_map(|g| g.as_str()) {
+                    out.push(TurnAction::Goal(g.to_owned()));
+                }
+            }
+            divisi_protocol::ChatRole::Confirm => {
+                if let Some(approval_id) = line.approval_id {
+                    out.push(TurnAction::Confirm { approval_id, summary: line.text });
+                }
+            }
+            divisi_protocol::ChatRole::You | divisi_protocol::ChatRole::Result => {}
+        }
+    }
+    out
+}
+
+/// True when the daemon predates chat (it cannot parse `ChatSend`), so the bridge falls back to
+/// submitting a goal directly. Any other failure is a real error to show.
+fn is_unsupported(e: &anyhow::Error) -> bool {
+    let m = e.to_string();
+    m.contains("invalid request") && m.contains("unknown variant")
+}
+
 struct AcpSession {
     /// coordinator `sess_…` id this ACP session is bound to.
     coord_id: String,
@@ -280,13 +324,6 @@ impl Acp {
             return;
         }
 
-        if let Some(reply) = self.answer_status_query(acp_sid, text) {
-            self.chunk(acp_sid, &reply, "agent_message_chunk");
-            self.respond(rid, json!({ "stopReason": "end_turn" }));
-            return;
-        }
-
-        // otherwise: submit a goal and stream the coordinator's progress.
         let (coord_id, mode, agent) = {
             let map = self.sessions.lock().unwrap();
             let Some(s) = map.get(acp_sid) else {
@@ -295,6 +332,21 @@ impl Acp {
             };
             (s.coord_id.clone(), s.mode.clone(), s.agent_override.clone())
         };
+
+        // Plain language: the daemon interprets it. Only an older daemon without chat falls through
+        // to the direct path below.
+        if let Some(stop) = self.chat_turn(acp_sid, &coord_id, &mode, agent.clone(), text) {
+            self.respond(rid, json!({ "stopReason": stop }));
+            return;
+        }
+
+        if let Some(reply) = self.answer_status_query(acp_sid, text) {
+            self.chunk(acp_sid, &reply, "agent_message_chunk");
+            self.respond(rid, json!({ "stopReason": "end_turn" }));
+            return;
+        }
+
+        // otherwise: submit a goal and stream the coordinator's progress.
         self.chunk(acp_sid, "planning…\n", "agent_thought_chunk");
         // Live-verification finding (E29's `single-pool`-by-default choice,
         // reverted): `plan_goal` force-overrides EVERY node in the graph to
@@ -334,6 +386,82 @@ impl Acp {
 
         let stop = self.stream_goal(acp_sid, &coord_id, &goal_id);
         self.respond(rid, json!({ "stopReason": stop }));
+    }
+
+    /// Natural language goes to the daemon, which interprets it (rules first, a pool model for the
+    /// rest), answers questions, starts goals and asks before anything risky. Returns `None` when the
+    /// daemon predates chat, so the caller can use the direct-goal path instead.
+    fn chat_turn(&self, acp_sid: &str, coord_id: &str, mode: &str, agent: Option<String>, text: &str) -> Option<&'static str> {
+        self.chunk(acp_sid, "thinking…\n", "agent_thought_chunk");
+        let request = Request::ChatSend { session: Some(coord_id.to_owned()), text: text.to_owned(), surface: "zed".into(), mode: Some(mode.to_owned()), agent };
+        match self.socket(request) {
+            Ok(ResponseData::Chat(o)) => Some(self.apply_actions(acp_sid, coord_id, plan_actions(&o.events))),
+            Ok(_) => None,
+            Err(e) if is_unsupported(&e) => None,
+            Err(e) => {
+                self.chunk(acp_sid, &format!("[chat failed: {e}]\n"), "agent_message_chunk");
+                Some("end_turn")
+            }
+        }
+    }
+
+    /// Plays a turn's actions into the thread: text as messages, confirmations as permission
+    /// prompts (whose answer can produce more actions), goals as a live progress stream.
+    fn apply_actions(&self, acp_sid: &str, coord_id: &str, actions: Vec<TurnAction>) -> &'static str {
+        let mut stop = "end_turn";
+        let mut queue: std::collections::VecDeque<TurnAction> = actions.into();
+        while let Some(action) = queue.pop_front() {
+            match action {
+                TurnAction::Say(text) => self.chunk(acp_sid, &format!("{text}\n"), "agent_message_chunk"),
+                TurnAction::Goal(goal_id) => stop = self.stream_goal(acp_sid, coord_id, &goal_id),
+                TurnAction::Confirm { approval_id, summary } => match self.ask_confirm(acp_sid, &summary) {
+                    Some(allow) => match self.socket(Request::ChatConfirm { approval_id, allow, remember: false }) {
+                        Ok(ResponseData::Chat(o)) => {
+                            for a in plan_actions(&o.events).into_iter().rev() {
+                                queue.push_front(a);
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(e) => self.chunk(acp_sid, &format!("[confirmation failed: {e}]\n"), "agent_message_chunk"),
+                    },
+                    None => self.chunk(
+                        acp_sid,
+                        &format!("Nothing was done. The confirmation stays open for a while: `divisi chat confirm {approval_id} --allow`\n"),
+                        "agent_message_chunk",
+                    ),
+                },
+            }
+        }
+        stop
+    }
+
+    /// Asks the Zed user yes or no through ACP's permission request. `None` on timeout.
+    fn ask_confirm(&self, acp_sid: &str, summary: &str) -> Option<bool> {
+        let req_id = format!("srv-{}", self.srv_seq.fetch_add(1, Ordering::Relaxed));
+        let (tx, rx) = mpsc::channel();
+        self.pending.lock().unwrap().insert(req_id.clone(), tx);
+        self.send_raw(json!({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "method": "session/request_permission",
+            "params": {
+                "sessionId": acp_sid,
+                "toolCall": { "toolCallId": req_id.clone(), "title": format!("Confirm: {summary}") },
+                "options": [
+                    { "optionId": "allow", "name": "Yes, do it", "kind": "allow_once" },
+                    { "optionId": "deny", "name": "No", "kind": "reject_once" }
+                ]
+            }
+        }));
+        let choice = rx.recv_timeout(PERMISSION_TIMEOUT).ok().and_then(|m| {
+            m.get("result").and_then(|r| r.get("outcome")).and_then(|o| o.get("optionId").or_else(|| o.get("option"))).and_then(|v| v.as_str()).map(str::to_string)
+        });
+        self.pending.lock().unwrap().remove(&req_id);
+        match choice.as_deref() {
+            Some("allow") => Some(true),
+            Some("deny") => Some(false),
+            _ => None,
+        }
     }
 
     /// long-polls `SessionEvents` and a terminal `GoalStatus`, translating
@@ -1078,5 +1206,42 @@ mod tests {
         assert_eq!(m["currentModeId"], "plan");
         let ids: Vec<_> = m["availableModes"].as_array().unwrap().iter().map(|x| x["id"].as_str().unwrap().to_string()).collect();
         assert_eq!(ids, vec!["auto", "plan", "careful", "dry"]);
+    }
+
+    fn ev(id: i64, kind: &str, body: Value) -> divisi_protocol::CoordinatorEvent {
+        divisi_protocol::CoordinatorEvent { id, goal_id: None, ts: "t".into(), kind: kind.into(), body: body.to_string() }
+    }
+
+    #[test]
+    fn chat_events_become_turn_actions_in_order() {
+        let events = vec![
+            ev(1, "chat_user", json!({"text": "hi", "surface": "zed"})),
+            ev(2, "chat_assistant", json!({"text": "Started goal_a_1 in auto mode.", "goal_ids": ["goal_a_1"], "degraded": false})),
+        ];
+        assert_eq!(
+            plan_actions(&events),
+            vec![TurnAction::Say("Started goal_a_1 in auto mode.".into()), TurnAction::Goal("goal_a_1".into())],
+            "your own message is not echoed back into Zed"
+        );
+    }
+
+    #[test]
+    fn a_confirmation_becomes_a_prompt_and_a_degraded_reply_says_so() {
+        let events = vec![
+            ev(1, "chat_confirm", json!({"approval_id": 7, "summary": "cancel goal_a_1"})),
+            ev(2, "chat_assistant", json!({"text": "ok", "goal_ids": [], "degraded": true})),
+            ev(3, "chat_result", json!({"approval_id": 7, "outcome": "approved"})),
+        ];
+        let actions = plan_actions(&events);
+        assert_eq!(actions[0], TurnAction::Confirm { approval_id: 7, summary: "cancel goal_a_1".into() });
+        assert_eq!(actions[1], TurnAction::Say("ok\n_(rules-only mode: no model was reachable)_".into()));
+        assert_eq!(actions.len(), 2, "a result line is not repeated to the user");
+    }
+
+    #[test]
+    fn only_an_old_daemon_triggers_the_legacy_fallback() {
+        assert!(is_unsupported(&anyhow::anyhow!("invalid request: unknown variant `ChatSend`, expected one of `Status`")));
+        assert!(!is_unsupported(&anyhow::anyhow!("that message is too long (8000 characters at most)")));
+        assert!(!is_unsupported(&anyhow::anyhow!("connection refused")));
     }
 }

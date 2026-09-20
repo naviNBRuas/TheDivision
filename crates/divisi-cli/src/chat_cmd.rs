@@ -86,7 +86,7 @@ pub fn run(socket: &Path, action: Option<ChatCommand>) -> Result<()> {
             if text.trim().is_empty() {
                 bail!("say something first");
             }
-            let response = client::send(socket, Request::ChatSend { session, text, surface })?;
+            let response = client::send(socket, Request::ChatSend { session, text, surface, mode: None, agent: None })?;
             if json {
                 render::print(response, true);
             } else {
@@ -242,7 +242,7 @@ fn repl(socket: &Path) -> Result<()> {
             Some(id) if is_yes(line) => Request::ChatConfirm { approval_id: id, allow: true, remember: false },
             Some(id) if line.eq_ignore_ascii_case("always") => Request::ChatConfirm { approval_id: id, allow: true, remember: true },
             Some(id) if is_no(line) => Request::ChatConfirm { approval_id: id, allow: false, remember: false },
-            _ => Request::ChatSend { session: Some(feed.session.clone()), text: line.to_owned(), surface: "cli".into() },
+            _ => Request::ChatSend { session: Some(feed.session.clone()), text: line.to_owned(), surface: "cli".into(), mode: None, agent: None },
         };
         match client::send(socket, request).and_then(outcome) {
             Ok(_) => feed.drain(),

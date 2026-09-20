@@ -49,16 +49,20 @@ pub fn pool_text(pool: &PoolStatusInfo, snap: &CoordinatorSnapshot) -> String {
         out = out.trim_end_matches(';').to_owned();
         out.push('.');
     }
-    let agents: Vec<String> = snap
-        .pool
+    // Only the agents doing something or limited are worth listing; the rest are just counted.
+    let (busy, idle): (Vec<_>, Vec<_>) = snap.pool.iter().partition(|a| a.running > 0 || a.rate_limited);
+    let mut parts: Vec<String> = busy
         .iter()
         .map(|a| {
             let cap = a.cap.map(|c| c.to_string()).unwrap_or_else(|| "-".into());
             format!("{} {}/{}{}", a.agent, a.running, cap, if a.rate_limited { " (rate limited)" } else { "" })
         })
         .collect();
-    if !agents.is_empty() {
-        out.push_str(&format!("\nAgents: {}.", agents.join(", ")));
+    if !idle.is_empty() {
+        parts.push(format!("{} idle", idle.len()));
+    }
+    if !parts.is_empty() {
+        out.push_str(&format!("\nAgents: {}.", parts.join(", ")));
     }
     out
 }
@@ -138,7 +142,8 @@ mod tests {
         assert!(text.starts_with("Pool 75% healthy (degraded)."), "{text}");
         assert!(text.contains("groq/llama back in 3m"), "{text}");
         assert!(text.contains("opencode 1/1 (rate limited)"), "{text}");
-        assert!(text.contains("claude 0/-"), "{text}");
+        assert!(text.contains("1 idle"), "idle agents are counted, not listed: {text}");
+        assert!(!text.contains("claude 0/-"), "{text}");
     }
 
     #[test]

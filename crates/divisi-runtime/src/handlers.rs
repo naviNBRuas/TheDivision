@@ -1907,11 +1907,14 @@ fn dispatch(
                 .collect();
             Ok(ResponseData::CoordinatorEvents(out))
         }
-        Request::ChatSend { session, text, surface } => {
+        Request::ChatSend { session, text, surface, mode, agent } => {
             let conn = coordinator_db(ctx)?;
-            let cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);
+            let mut cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);
+            if let Some(m) = mode.filter(|m| ["auto", "plan", "careful", "dry"].contains(&m.as_str())) {
+                cfg.default_mode = m;
+            }
             let model = crate::assistant::chat::PoolModel { ctx, conn: &conn };
-            Ok(ResponseData::Chat(crate::assistant::chat::chat_send(ctx, &conn, &model, &cfg, session.as_deref(), &text, &surface)?))
+            Ok(ResponseData::Chat(crate::assistant::chat::chat_send(ctx, &conn, &model, &cfg, session.as_deref(), &text, &surface, agent.as_deref())?))
         }
         Request::ChatHistory { session, since_event_id } => {
             let conn = coordinator_db(ctx)?;
