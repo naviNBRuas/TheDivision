@@ -24,3 +24,4 @@ crates/divisi-cli/src/internal_lsp_manifest.rs	references a historical spec file
 crates/divisi-cli/tests/no_config_side_effects.rs	test clears the legacy SINGLE_CONFIG_DIR variable
 docs/config-format.md	describes the pre-rename config migration
 crates/divisi-core/src/secrets.rs	legacy keyring service name (keys stored before the rename)
+crates/divisi-cli/tests/bounded_latency.rs	clears the legacy config env var so the test stays isolated
