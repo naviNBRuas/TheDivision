@@ -29,7 +29,16 @@ use std::time::Duration;
 /// literals and escapes, so a `}` inside a quoted value does not close the
 /// span early. returns `None` if nothing balanced parses.
 pub fn extract_first_json(s: &str) -> Option<Value> {
+    json_candidates(s).into_iter().next()
+}
+
+/// Every balanced `{...}` / `[...]` span in `s` that parses as JSON, in order (a span inside an
+/// already-parsed one is not repeated). Models often put a stray `[1]`, an example object or a
+/// fenced snippet before the real answer, so a role should take the first candidate of its own
+/// shape (`extract_json_where`), not simply the first one.
+pub fn json_candidates(s: &str) -> Vec<Value> {
     let bytes = s.as_bytes();
+    let mut found = Vec::new();
     let mut start = 0usize;
     while start < bytes.len() {
         let open = bytes[start];
@@ -41,6 +50,7 @@ pub fn extract_first_json(s: &str) -> Option<Value> {
         let mut depth = 0i32;
         let mut in_str = false;
         let mut escaped = false;
+        let mut end = None;
         for (offset, &c) in bytes[start..].iter().enumerate() {
             if in_str {
                 if escaped {
@@ -58,19 +68,27 @@ pub fn extract_first_json(s: &str) -> Option<Value> {
                 x if x == close => {
                     depth -= 1;
                     if depth == 0 {
-                        let span = &s[start..start + offset + 1];
-                        if let Ok(v) = serde_json::from_str::<Value>(span) {
-                            return Some(v);
-                        }
-                        break; // unbalanced-looking; advance start past this opener
+                        end = Some(start + offset + 1);
+                        break;
                     }
                 }
                 _ => {}
             }
         }
-        start += 1;
+        match end.and_then(|e| serde_json::from_str::<Value>(&s[start..e]).ok().map(|v| (e, v))) {
+            Some((e, v)) => {
+                found.push(v);
+                start = e;
+            }
+            None => start += 1,
+        }
     }
-    None
+    found
+}
+
+/// The first JSON value in `s` that `accept` likes.
+pub fn extract_json_where(s: &str, accept: impl Fn(&Value) -> bool) -> Option<Value> {
+    json_candidates(s).into_iter().find(|v| accept(v))
 }
 
 /// one element of the planner's output array.
@@ -204,6 +222,7 @@ fn run_role(
     health: &PoolHealth,
     cwd: &std::path::Path,
     prompt: &str,
+    accept: &dyn Fn(&Value) -> bool,
 ) -> Result<Value> {
     let mut tried: Vec<String> = Vec::new();
     let mut current = agent.to_string();
@@ -234,7 +253,7 @@ fn run_role(
             },
         )?;
         let out = task_output(&rec);
-        if let Some(v) = extract_first_json(&out) {
+        if let Some(v) = extract_json_where(&out, |v| accept(v)) {
             return Ok(v);
         }
         // A rate-limited answer is not a bad sample: wait for the burst to clear and try again without
@@ -269,7 +288,7 @@ pub fn ask_json(
     health: &PoolHealth,
 ) -> Result<Value> {
     let agent = routing::select_agent(table, NodeKind::Plan, Effort::Quick, health).context("no agent available for the assistant")?;
-    run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Quick, table, health, cwd, prompt)
+    run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Quick, table, health, cwd, prompt, &|_| true)
 }
 
 /// planner: goal text (+ cwd context) → validated `TaskGraph`.
@@ -295,7 +314,7 @@ pub fn plan(
         pc.project_docs.join(", "),
     );
     let prompt = format!("{PLAN_INSTRUCTION}{ctx_blurb}\n\nGOAL:\n{goal_text}\n");
-    let v = run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Standard, table, health, cwd, &prompt)?;
+    let v = run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Standard, table, health, cwd, &prompt, &|v| parse_plan(v).is_ok())?;
     let specs = parse_plan(&v)?;
     Ok(specs_to_graph(&specs, table, health, prefer_pool))
 }
@@ -329,7 +348,7 @@ pub fn supervise(
         GRAPH:\n{graph_json}\n\nFAILING NODE: {failing_node_id}\nFAILURE OUTPUT:\n{}\n",
         crate::orchestrate::truncate(failing_output, 4000)
     );
-    let v = run_role(conn, ctx, &agent, NodeKind::Supervise, Effort::Standard, table, health, cwd, &prompt)?;
+    let v = run_role(conn, ctx, &agent, NodeKind::Supervise, Effort::Standard, table, health, cwd, &prompt, &|v| parse_patch_ops(v).is_ok())?;
     parse_patch_ops(&v)
 }
 
@@ -356,13 +375,34 @@ pub fn integrate(
         Fix only trivial glue (imports, a rename mismatch).\n\n\
         GOAL:\n{goal_text}\n\nSUBTASK RESULTS:{body}\n"
     );
-    let v = run_role(conn, ctx, &agent, NodeKind::Integrate, Effort::Standard, table, health, cwd, &prompt)?;
+    let v = run_role(conn, ctx, &agent, NodeKind::Integrate, Effort::Standard, table, health, cwd, &prompt, &|v| parse_integration(v).is_ok())?;
     parse_integration(&v)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_role_takes_the_first_json_of_its_own_shape_not_just_the_first_json() {
+        // A stray `[1]` and an example object precede the real answer, as free models often do.
+        let plan = "Here is step [1] of my reasoning. Example: {\"note\":\"x\"}\n[{\"id\":\"s1\",\"desc\":\"d\",\"kind\":\"code\",\"effort\":\"quick\"},{\"id\":\"s2\",\"desc\":\"e\",\"kind\":\"docs\",\"effort\":\"quick\",\"depends_on\":[\"s1\"]}]";
+        let v = extract_json_where(plan, |v| parse_plan(v).is_ok()).expect("the plan array is found");
+        assert_eq!(parse_plan(&v).unwrap().len(), 2);
+
+        let patch = "I considered {\"a\":1} first.\n{\"ops\":[]}";
+        assert!(extract_json_where(patch, |v| parse_patch_ops(v).is_ok()).is_some());
+
+        let done = "```json\n{\"summary\":\"ok\",\"checks_pass\":true}\n```";
+        assert!(extract_json_where(done, |v| parse_integration(v).is_ok()).is_some());
+    }
+
+    #[test]
+    fn json_candidates_lists_each_top_level_value_once() {
+        let v = json_candidates(r#"a {"x":[1,2]} b [3] c"#);
+        assert_eq!(v.len(), 2);
+        assert!(extract_json_where("only [prose", |_| true).is_none());
+    }
 
     #[test]
     fn extracts_json_object_from_surrounding_prose() {
