@@ -23,3 +23,4 @@ crates/divisi-cli/src/internal_lsp_manifest.rs	references a historical spec file
 .cargo/config.toml	comment explains the legacy config directory migration
 crates/divisi-cli/tests/no_config_side_effects.rs	test clears the legacy SINGLE_CONFIG_DIR variable
 docs/config-format.md	describes the pre-rename config migration
+crates/divisi-core/src/secrets.rs	legacy keyring service name (keys stored before the rename)
