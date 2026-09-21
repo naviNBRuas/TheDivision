@@ -256,6 +256,32 @@ fn run_role(
         if let Some(v) = extract_json_where(&out, |v| accept(v)) {
             return Ok(v);
         }
+        // The reply is prose, truncated or the wrong shape: ask the same agent once to re-emit it as the JSON
+        // the instructions required. Cheaper and far likelier to work than a fresh sample from scratch.
+        if !out.trim().is_empty() && !divisi_core::ratelimit::looks_like_unavailable(&out) {
+            let fix_prompt = repair_prompt(prompt, &out);
+            if let Ok(rec) = crate::task::run(
+                conn,
+                ctx,
+                crate::task::RunTaskOptions {
+                    description: &fix_prompt,
+                    agent: &current,
+                    cwd,
+                    use_worktree: false,
+                    account: None,
+                    real_home: false,
+                    no_memory_context: true,
+                    timeout: Duration::from_secs(180),
+                    allow_fallback: true,
+                    usage_json: false,
+                    require_structured_output: true,
+                },
+            ) {
+                if let Some(v) = extract_json_where(&task_output(&rec), |v| accept(v)) {
+                    return Ok(v);
+                }
+            }
+        }
         // A rate-limited answer is not a bad sample: wait for the burst to clear and try again without
         // spending an attempt (bounded), instead of blocking the goal while the pool is merely busy.
         if divisi_core::ratelimit::looks_like_rate_limit(&out) && rate_limit_waits < RATE_LIMIT_WAITS {
@@ -266,6 +292,28 @@ fn run_role(
         current = routing::select_agent_excluding(table, kind, effort, health, &tried).unwrap_or(current);
     }
     bail!("brain role produced no parseable JSON after {} attempt(s) across {} agent(s): {}", BRAIN_JSON_RETRIES + 1, tried.len(), tried.join(", "))
+}
+
+/// The prompt for the repair pass: the original instructions (their tail, where the output format is
+/// stated) plus the reply that could not be parsed.
+pub fn repair_prompt(original: &str, bad_reply: &str) -> String {
+    fn tail(s: &str, n: usize) -> &str {
+        let start = s.len().saturating_sub(n);
+        let start = (start..s.len()).find(|i| s.is_char_boundary(*i)).unwrap_or(s.len());
+        &s[start..]
+    }
+    fn head(s: &str, n: usize) -> &str {
+        let end = s.len().min(n);
+        let end = (0..=end).rev().find(|i| s.is_char_boundary(*i)).unwrap_or(0);
+        &s[..end]
+    }
+    format!(
+        "Your previous reply could not be parsed. The instructions you were given end with:\n---\n{}\n---\n\
+         Your previous reply was:\n---\n{}\n---\n\
+         Reply again with ONLY the corrected JSON, exactly in the format the instructions require: no prose, no code fence, no comments.",
+        tail(original, 2500),
+        head(bad_reply, 6000)
+    )
 }
 
 const PLAN_INSTRUCTION: &str = "\
@@ -382,6 +430,17 @@ pub fn integrate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_repair_prompt_carries_the_format_instructions_and_the_bad_reply() {
+        let original = format!("{}Output ONLY a JSON array of nodes.", "x".repeat(5000));
+        let p = repair_prompt(&original, "Sure! Here is the plan: first do a, then b");
+        assert!(p.contains("Output ONLY a JSON array of nodes."), "the end of the original prompt, where the format is, is kept");
+        assert!(p.contains("Here is the plan"));
+        assert!(p.len() < 10_000);
+        // multi-byte text never splits mid-character
+        let _ = repair_prompt(&"é".repeat(4000), &"ü".repeat(9000));
+    }
 
     #[test]
     fn a_role_takes_the_first_json_of_its_own_shape_not_just_the_first_json() {

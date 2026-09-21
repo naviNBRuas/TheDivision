@@ -14,7 +14,37 @@ pub fn run(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig, report: &mut 
     run_step(conn, report, Category::Infra, "stale_worktrees", || stale_worktrees(ctx, conn, cfg));
     run_step(conn, report, Category::Infra, "dead_agent_binaries", || dead_agent_binaries(ctx));
     run_step(conn, report, Category::Infra, "cooldown_probe", || cooldown_probe(conn));
+    run_step(conn, report, Category::Infra, "agent_recovery", || agent_recovery(ctx, conn));
     Ok(())
+}
+
+/// Most agents probed in one pass (each probe is a real call and can take a minute).
+const RECOVERY_PROBES_PER_PASS: usize = 2;
+
+/// Brings an agent back by itself once its quota reset time (or backoff) has passed: a tiny real call
+/// confirms it works (then it is simply routable again, strikes cleared) or benches it again with a longer
+/// wait. This is what makes grok, agy, codex, claude and the rest rejoin routing without anyone noticing
+/// they left.
+fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
+    let due = crate::agent_cooldown::needing_verification(conn, chrono::Utc::now())?;
+    if due.is_empty() {
+        return Ok("no agent is waiting to be re-verified".into());
+    }
+    let mut back = Vec::new();
+    let mut still = Vec::new();
+    for name in due.iter().take(RECOVERY_PROBES_PER_PASS) {
+        let row = crate::agent_auth::probe_one(ctx, conn, name, false);
+        match row.category.as_str() {
+            "authed" | "no_auth_needed" => back.push(name.clone()),
+            // exhausted / needs_login were re-benched by the probe itself; anything else is benched here
+            "exhausted" | "needs_login" => still.push(name.clone()),
+            other => {
+                crate::agent_cooldown::rebench(conn, name, &format!("recovery probe: {other}: {}", row.evidence));
+                still.push(name.clone());
+            }
+        }
+    }
+    Ok(format!("back in routing: [{}]; still unavailable: [{}]; waiting for a later pass: {}", back.join(", "), still.join(", "), due.len().saturating_sub(RECOVERY_PROBES_PER_PASS)))
 }
 
 /// Removes `state/worktrees/task-<id>` worktrees whose task is no longer
@@ -411,6 +441,19 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_whose_cooldown_passed_is_probed_and_rebenched_if_it_still_cannot_work() {
+        let conn = Connection::open_in_memory().unwrap();
+        let ctx = test_ctx(&tempfile::tempdir().unwrap().keep());
+        // an agent name the registry has no adapter for: the probe cannot succeed, so it must go back on the bench
+        crate::agent_cooldown::record(&conn, "no-such-agent", chrono::Utc::now() - chrono::Duration::minutes(1), "usage limit").unwrap();
+        let detail = agent_recovery(&ctx, &conn).unwrap();
+        assert!(detail.contains("still unavailable: [no-such-agent]"), "{detail}");
+        assert!(crate::agent_cooldown::active(&conn, chrono::Utc::now()).unwrap().contains_key("no-such-agent"));
+        // nothing due now
+        assert!(agent_recovery(&ctx, &conn).unwrap().contains("no agent is waiting"));
+    }
+
+    #[test]
     fn stale_socket_removed_when_no_live_pid() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test_ctx(tmp.path());
@@ -541,11 +584,11 @@ mod tests {
         let cfg = crate::self_heal::SelfHealConfig { categories: Categories::default(), ..crate::self_heal::SelfHealConfig::load(&ctx.dirs) };
         let mut report = PassReport::default();
         run(&ctx, &conn, &cfg, &mut report, true).unwrap();
-        assert_eq!(report.actions.len(), 7, "expected all 7 infra substeps to run: {report:?}");
+        assert_eq!(report.actions.len(), 8, "expected all 8 infra substeps to run: {report:?}");
         assert!(report.actions.iter().all(|a| a.ok), "a clean tempdir/fresh db should have nothing to repair: {report:?}");
 
         let events = crate::self_heal::recent_events(&conn, 20).unwrap();
-        assert_eq!(events.len(), 7);
+        assert_eq!(events.len(), 8);
     }
 
     #[test]

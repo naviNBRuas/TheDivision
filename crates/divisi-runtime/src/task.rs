@@ -1238,6 +1238,9 @@ fn execute(
             } else {
                 TaskStatus::Completed
             };
+            if status == TaskStatus::Completed {
+                crate::agent_cooldown::succeeded(conn, opts.agent);
+            }
             let summary = if hollow_success {
                 format!("agent exited 0 but produced no output and its stderr looks like a quota/rate limit: {}", outcome.stderr.trim())
             } else {

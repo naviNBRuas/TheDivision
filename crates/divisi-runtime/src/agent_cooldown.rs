@@ -1,10 +1,19 @@
-//! Remembers *until when* an agent said it is out of quota, so routing stops sending it work
-//! until then instead of retrying every 15 minutes for days. The time is read from the agent's
-//! own message (`divisi_core::ratelimit::reset_time`); a message with no time records nothing and
-//! the old short exclusion window still applies.
+//! Remembers *until when* an agent is unavailable, so routing stops sending it work until then
+//! instead of retrying every 15 minutes for days, and brings it back by itself afterwards.
+//!
+//! - Out of quota and the agent says when it resets (`divisi_core::ratelimit::reset_time`): benched
+//!   until exactly then.
+//! - Out of quota with no time given: benched with a growing wait (30 min, 1 h, 2 h ... 12 h), one
+//!   strike per failure; a successful run clears the strikes.
+//! - Not logged in / auth rejected: benched for a long while, since retrying cannot help until a person
+//!   logs in; the recovery probe notices when it starts working.
+//! - Once a cooldown has passed, the self-heal pass probes the agent with a tiny real call
+//!   (`needing_verification`) so it is confirmed, or benched again with a longer wait, within minutes.
+//!
+//! Provider-backed `single-*` agents are exempt: the pool keeps its own per-key ledger for them.
 
 use anyhow::Result;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Duration, Local, Utc};
 use rusqlite::{params, Connection};
 use std::collections::BTreeMap;
 
@@ -18,7 +27,23 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         )",
         (),
     )?;
+    // Older databases lack these columns.
+    crate::task::add_column_if_missing(conn, "agent_cooldowns", "strikes", "INTEGER NOT NULL DEFAULT 0")?;
+    crate::task::add_column_if_missing(conn, "agent_cooldowns", "kind", "TEXT NOT NULL DEFAULT 'quota'")?;
+    crate::task::add_column_if_missing(conn, "agent_cooldowns", "verified_at", "TEXT")?;
     Ok(())
+}
+
+/// Wait after the `strikes`-th quota failure with no stated reset time: 30 min, doubling, capped at 12 h.
+pub fn backoff(strikes: u32) -> Duration {
+    Duration::minutes((30i64 << strikes.min(5)).min(12 * 60))
+}
+
+/// How long a not-logged-in agent stays benched between recovery probes.
+pub const AUTH_BENCH: Duration = Duration::hours(6);
+
+fn strikes_of(conn: &Connection, agent: &str) -> u32 {
+    conn.query_row("SELECT strikes FROM agent_cooldowns WHERE agent = ?1", [agent], |r| r.get::<_, u32>(0)).unwrap_or(0)
 }
 
 /// Records that `agent` is unavailable until `until`. A later time replaces an earlier one; an
@@ -37,12 +62,75 @@ pub fn record(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str
     Ok(())
 }
 
-/// Reads a reset time out of a failed run's output and records it. Returns whether one was found.
+/// Provider-backed `single-*` agents are rate limited per key by the pool, not per agent.
+fn exempt(agent: &str) -> bool {
+    agent.starts_with("single-")
+}
+
+/// Benches `agent` for a failed run's `output`: until the stated reset, else with a growing wait for a
+/// quota failure, else for `AUTH_BENCH` for a login failure. Returns whether a cooldown was recorded.
 pub fn note(conn: &Connection, agent: &str, output: &str) -> bool {
-    match divisi_core::ratelimit::reset_time(output, Local::now()) {
-        Some(until) => record(conn, agent, until, output).is_ok(),
-        None => false,
+    if exempt(agent) || ensure_schema(conn).is_err() {
+        return false;
     }
+    let now = Utc::now();
+    if let Some(until) = divisi_core::ratelimit::reset_time(output, Local::now()) {
+        return record(conn, agent, until, output).is_ok();
+    }
+    if divisi_core::ratelimit::looks_like_rate_limit(output) {
+        let strikes = strikes_of(conn, agent);
+        return record_with(conn, agent, now + backoff(strikes), output, strikes + 1, "quota").is_ok();
+    }
+    if divisi_core::ratelimit::looks_like_unavailable(output) {
+        return record_with(conn, agent, now + AUTH_BENCH, output, strikes_of(conn, agent), "auth").is_ok();
+    }
+    false
+}
+
+fn record_with(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str, strikes: u32, kind: &str) -> Result<()> {
+    record(conn, agent, until, reason)?;
+    conn.execute("UPDATE agent_cooldowns SET strikes = ?2, kind = ?3, verified_at = NULL WHERE agent = ?1", params![agent, strikes, kind])?;
+    Ok(())
+}
+
+/// A run succeeded: forget the strikes so the next quota failure starts from the short wait again.
+pub fn succeeded(conn: &Connection, agent: &str) {
+    if exempt(agent) || ensure_schema(conn).is_err() {
+        return;
+    }
+    let _ = conn.execute("UPDATE agent_cooldowns SET strikes = 0, verified_at = ?2 WHERE agent = ?1", params![agent, Utc::now().to_rfc3339()]);
+}
+
+/// Agents whose cooldown has passed but that nothing has confirmed working since: the recovery probe's worklist.
+pub fn needing_verification(conn: &Connection, now: DateTime<Utc>) -> Result<Vec<String>> {
+    ensure_schema(conn)?;
+    let mut stmt = conn.prepare("SELECT agent, until, verified_at FROM agent_cooldowns")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)))?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (agent, until, verified) = row?;
+        let Ok(until) = DateTime::parse_from_rfc3339(&until).map(|t| t.with_timezone(&Utc)) else { continue };
+        let confirmed = verified.and_then(|v| DateTime::parse_from_rfc3339(&v).ok()).is_some_and(|v| v.with_timezone(&Utc) >= until);
+        if until <= now && !confirmed {
+            out.push(agent);
+        }
+    }
+    Ok(out)
+}
+
+/// The recovery probe reached the agent but it still could not do the work (no stated reset time): bench
+/// it again with the next, longer wait rather than probing it every pass.
+pub fn rebench(conn: &Connection, agent: &str, why: &str) {
+    if exempt(agent) || ensure_schema(conn).is_err() {
+        return;
+    }
+    let strikes = strikes_of(conn, agent);
+    let _ = record_with(conn, agent, Utc::now() + backoff(strikes), why, strikes + 1, "probe");
+}
+
+/// The probe found `agent` working: it is confirmed and its strikes are gone.
+pub fn mark_verified(conn: &Connection, agent: &str) {
+    succeeded(conn, agent);
 }
 
 /// Agents whose cooldown has not passed yet, with when it ends.
@@ -107,8 +195,53 @@ mod tests {
         // day suffixes like "22nd" are how codex writes it; the parser accepts them and plain days alike
         assert!(note(&conn, "codex", &format!("ERROR: You've hit your usage limit. try again at {tomorrow}")));
         assert!(active(&conn, Utc::now()).unwrap().contains_key("codex"));
-        assert!(!note(&conn, "grok", "Rate limit exceeded"), "no time in the message records nothing");
-        assert!(!active(&conn, Utc::now()).unwrap().contains_key("grok"));
+    }
+
+    #[test]
+    fn a_quota_failure_with_no_stated_time_backs_off_and_doubles() {
+        let conn = db();
+        assert!(note(&conn, "grok", "Error: You reached your free usage limit for now, try again later"));
+        let first = active(&conn, Utc::now()).unwrap()["grok"] - Utc::now();
+        assert!(first > Duration::minutes(29) && first <= Duration::minutes(30), "first strike waits 30 minutes, got {first}");
+        // a second failure while still benched cannot shorten it, and the strike count advances
+        assert!(note(&conn, "grok", "Error: You reached your free usage limit for now, try again later"));
+        assert_eq!(strikes_of(&conn, "grok"), 2);
+        assert_eq!(backoff(0), Duration::minutes(30));
+        assert_eq!(backoff(1), Duration::hours(1));
+        assert_eq!(backoff(9), Duration::hours(12), "capped");
+    }
+
+    #[test]
+    fn a_login_failure_benches_for_hours_and_a_success_clears_the_strikes() {
+        let conn = db();
+        assert!(note(&conn, "claude", "Not logged in · Please run /login"));
+        let wait = active(&conn, Utc::now()).unwrap()["claude"] - Utc::now();
+        assert!(wait > Duration::hours(5), "{wait}");
+        note(&conn, "grok", "Rate limit exceeded, try again later");
+        assert_eq!(strikes_of(&conn, "grok"), 1);
+        succeeded(&conn, "grok");
+        assert_eq!(strikes_of(&conn, "grok"), 0);
+    }
+
+    #[test]
+    fn provider_backed_agents_are_never_benched_here() {
+        let conn = db();
+        assert!(!note(&conn, "single-google", "Provider error (429 Too Many Requests)"));
+        assert!(active(&conn, Utc::now()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_expired_cooldown_is_probed_until_something_confirms_the_agent() {
+        let conn = db();
+        let now = Utc::now();
+        record(&conn, "codex", now - Duration::minutes(5), "usage limit").unwrap();
+        record(&conn, "cursor", now + Duration::hours(3), "usage limit").unwrap();
+        assert_eq!(needing_verification(&conn, now).unwrap(), vec!["codex".to_string()], "only the one whose time has passed");
+        mark_verified(&conn, "codex");
+        assert!(needing_verification(&conn, now).unwrap().is_empty(), "confirmed working");
+        // a fresh failure after that is benched and needs verifying again
+        note(&conn, "codex", "You've hit your usage limit, try again later");
+        assert!(needing_verification(&conn, now + Duration::hours(2)).unwrap().contains(&"codex".to_string()));
     }
 
     #[test]

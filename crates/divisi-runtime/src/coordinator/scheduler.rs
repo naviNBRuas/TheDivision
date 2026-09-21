@@ -321,18 +321,31 @@ pub fn reconcile(conn: &Connection) -> Result<usize> {
 /// counts running coordinator nodes across every goal, per agent and
 /// globally, and derives per-agent caps from the registry's
 /// `max_concurrency`.
-fn build_capacity(conn: &Connection, ctx: &Context) -> Result<Capacity> {
+fn build_capacity(conn: &Connection, ctx: &Context, cfg: &CoordinatorConfig) -> Result<Capacity> {
     let mut stmt = conn.prepare("SELECT agent, COUNT(*) FROM graph_nodes WHERE status = 'running' GROUP BY agent")?;
     let per_agent_running: BTreeMap<String, usize> = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))?
         .collect::<rusqlite::Result<_>>()?;
     let global_running = per_agent_running.values().sum();
-    let per_agent_cap = ctx
-        .registry
-        .iter()
-        .filter_map(|a| a.max_concurrency.map(|c| (a.name.clone(), c as usize)))
-        .collect();
+    let per_agent_cap = agent_caps(ctx.registry.iter().map(|a| (a.name.as_str(), a.max_concurrency.map(|c| c as usize))), cfg);
     Ok(Capacity { global_running, per_agent_running, per_agent_cap })
+}
+
+/// Concurrency cap per agent: the registry's own cap, else a default for provider-backed `single-*` agents
+/// and `single-pool`; `[agent_concurrency]` in `coordinator.toml` overrides any of them.
+pub fn agent_caps<'a>(agents: impl Iterator<Item = (&'a str, Option<usize>)>, cfg: &CoordinatorConfig) -> BTreeMap<String, usize> {
+    let mut caps: BTreeMap<String, usize> = agents
+        .filter_map(|(name, own)| match (own, name) {
+            (Some(c), _) => Some((name.to_string(), c)),
+            (None, "single-pool") => Some((name.to_string(), cfg.pool_concurrency)),
+            (None, n) if n.starts_with("single-") => Some((name.to_string(), cfg.provider_agent_concurrency)),
+            _ => None,
+        })
+        .collect();
+    for (name, cap) in &cfg.agent_concurrency {
+        caps.insert(name.clone(), *cap);
+    }
+    caps
 }
 
 fn goal_budget(goal: &Goal, cfg: &CoordinatorConfig) -> GoalBudget {
@@ -383,7 +396,7 @@ pub fn tick(
             goal::set_status(conn, &goal.id, GoalStatus::Running)?;
         }
 
-        let cap = build_capacity(conn, ctx)?;
+        let cap = build_capacity(conn, ctx, cfg)?;
         let budget = goal_budget(&goal, cfg);
         let actions = tick_pure(&graph, cfg, &cap, &budget, table, health);
 
@@ -982,6 +995,18 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn provider_agents_and_the_pool_get_default_concurrency_caps_that_config_can_override() {
+        let cfg = CoordinatorConfig { agent_concurrency: [("single-google".to_string(), 5)].into_iter().collect(), ..CoordinatorConfig::default() };
+        let agents = vec![("opencode", Some(3)), ("grok", None), ("single-pool", None), ("single-nvidia", None), ("single-google", None)];
+        let caps = agent_caps(agents.into_iter(), &cfg);
+        assert_eq!(caps["opencode"], 3, "the registry's own cap is kept");
+        assert!(!caps.contains_key("grok"), "an uncapped CLI agent stays uncapped");
+        assert_eq!(caps["single-pool"], cfg.pool_concurrency);
+        assert_eq!(caps["single-nvidia"], cfg.provider_agent_concurrency);
+        assert_eq!(caps["single-google"], 5, "config overrides the default");
     }
 
     #[test]

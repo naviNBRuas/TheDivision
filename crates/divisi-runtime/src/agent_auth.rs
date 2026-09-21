@@ -205,11 +205,14 @@ pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> Ag
         Ok(o) => classify(o.success, o.timed_out, &o.stdout, &o.stderr, Local::now()),
         Err(e) => (Category::Error, first_line(&format!("{e:#}")), None),
     };
-    if category == Category::Exhausted {
-        // Remember when it recovers so routing stops sending it work until then.
-        if let (Some(until), Ok(o)) = (until, &outcome) {
-            let _ = crate::agent_cooldown::record(conn, name, until, &format!("{}\n{}", o.stdout, o.stderr));
+    match (&category, &outcome) {
+        // Bench it (until the stated reset, or with a growing wait / for a login) so routing stops using it.
+        (Category::Exhausted | Category::NeedsLogin, Ok(o)) => {
+            crate::agent_cooldown::note(conn, name, &format!("{}\n{}", o.stdout, o.stderr));
         }
+        // It answered: any cooldown on it is over.
+        (Category::Authed | Category::NoAuthNeeded, _) => crate::agent_cooldown::mark_verified(conn, name),
+        _ => {}
     }
     if category != Category::Authed {
         return row(name, category, evidence, until);

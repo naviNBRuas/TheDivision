@@ -54,6 +54,23 @@ pub struct CoordinatorConfig {
     /// giving up to `Blocked`, independent of `max_capacity_waits_per_goal`.
     #[serde(default = "default_max_capacity_wait_minutes")]
     pub max_capacity_wait_minutes: u32,
+    /// Concurrent nodes allowed on each provider-backed `single-<provider>` agent that has no cap of its
+    /// own. Free tiers rate limit per key, so a few at a time beats a burst of 429s.
+    #[serde(default = "default_provider_agent_concurrency")]
+    pub provider_agent_concurrency: usize,
+    /// Concurrent nodes allowed on `single-pool` itself (it fans out over many providers internally).
+    #[serde(default = "default_pool_concurrency")]
+    pub pool_concurrency: usize,
+    /// Per-agent overrides, e.g. `single-google = 4` under `[agent_concurrency]`. Wins over the defaults above.
+    #[serde(default)]
+    pub agent_concurrency: std::collections::BTreeMap<String, usize>,
+}
+
+fn default_provider_agent_concurrency() -> usize {
+    2
+}
+fn default_pool_concurrency() -> usize {
+    8
 }
 
 fn default_max_capacity_waits_per_goal() -> u32 {
@@ -75,6 +92,9 @@ impl Default for CoordinatorConfig {
             prefer_pool: false,
             max_capacity_waits_per_goal: default_max_capacity_waits_per_goal(),
             max_capacity_wait_minutes: default_max_capacity_wait_minutes(),
+            provider_agent_concurrency: default_provider_agent_concurrency(),
+            pool_concurrency: default_pool_concurrency(),
+            agent_concurrency: Default::default(),
         }
     }
 }

@@ -11,6 +11,11 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Added
 
+- Agents that run out of quota or lose their login now leave routing by themselves and come back by themselves. A quota failure with no stated reset time benches the agent for 30 minutes, doubling up to 12 hours per repeat, and a stated reset time is honoured exactly; a login failure benches it for six hours. When the time passes, the self-heal pass makes a tiny real call to confirm the agent works (or benches it again for longer), and a successful run clears the strikes. Provider-backed `single-*` agents are exempt because the pool tracks their keys itself.
+- Per-provider concurrency: each `single-<provider>` agent runs at most 2 nodes at once and `single-pool` at most 8 (`provider_agent_concurrency`, `pool_concurrency`, and per-agent `[agent_concurrency]` overrides in `coordinator.toml`).
+- Planner, supervisor and integrator replies that cannot be parsed get one repair pass, asking the same agent to re-emit the JSON, before an attempt is spent.
+- The TUI draws on a graphite ground with brand-coloured panel borders.
+
 - Blocked goals now heal themselves. The self-heal pass sorts each block into transient (rate limits, a busy pool, a bad planner answer, a timeout), budget (a spent dispatch or time cap) or needs-a-person. Transient blocks are retried with a doubling wait (10 minutes, then 20, 40, ...) up to six times, and a spent budget is raised. Only when divisi has run out of options, or the block names an approval, login or decision, does the goal move to the new `waiting_input` status with the question in `goal list` and `goal status`. Answer it with `divisi goal amend <id> "<answer>"` (or `goal resume`); the TUI lists such goals first.
 - A planner or supervisor answer that was rate limited is now waited out (up to four one-minute waits) instead of blocking the goal, and a node pinned to a benched agent is routed to another one.
 - `divisi agent auth [--probe] [--deep]`: which agents need a login, have one, need none or are out of quota, with the evidence; `divisi agent cooldown-clear`. Agents that report when their quota resets are left out of routing until then.
