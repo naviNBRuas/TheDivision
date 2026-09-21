@@ -1257,6 +1257,8 @@ fn execute(
                 // If the agent said when it recovers, keep routing away until then.
                 if unavailable {
                     crate::agent_cooldown::note(conn, opts.agent, &combined_output);
+                } else {
+                    crate::agent_cooldown::note_failure_streak(conn, opts.agent);
                 }
                 unavailable
             } else {

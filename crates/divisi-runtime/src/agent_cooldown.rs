@@ -118,6 +118,27 @@ pub fn needing_verification(conn: &Connection, now: DateTime<Utc>) -> Result<Vec
     Ok(out)
 }
 
+/// How many finished runs in a row must fail (with no quota or login message) before the agent is benched.
+const FAILURE_STREAK: usize = 3;
+
+/// A run failed for a reason that is neither quota nor login (a backend error, a crash): if the agent's
+/// last few finished runs all failed, bench it with the growing wait instead of feeding it more work.
+/// One success anywhere in the streak keeps it in routing. Returns whether it was benched.
+pub fn note_failure_streak(conn: &Connection, agent: &str) -> bool {
+    if exempt(agent) || ensure_schema(conn).is_err() {
+        return false;
+    }
+    let statuses: Vec<String> = conn
+        .prepare("SELECT status FROM tasks WHERE agent = ?1 AND status IN ('failed','completed','cancelled') ORDER BY id DESC LIMIT ?2")
+        .and_then(|mut q| q.query_map(params![agent, FAILURE_STREAK as i64], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>())
+        .unwrap_or_default();
+    if statuses.len() < FAILURE_STREAK || !statuses.iter().all(|s| s == "failed") {
+        return false;
+    }
+    rebench(conn, agent, &format!("{FAILURE_STREAK} failed runs in a row"));
+    true
+}
+
 /// The recovery probe reached the agent but it still could not do the work (no stated reset time): bench
 /// it again with the next, longer wait rather than probing it every pass.
 pub fn rebench(conn: &Connection, agent: &str, why: &str) {
@@ -221,6 +242,31 @@ mod tests {
         assert_eq!(strikes_of(&conn, "grok"), 1);
         succeeded(&conn, "grok");
         assert_eq!(strikes_of(&conn, "grok"), 0);
+    }
+
+    #[test]
+    fn an_agent_whose_last_runs_all_failed_is_benched_and_one_success_prevents_it() {
+        let conn = db();
+        crate::task::ensure_schema(&conn).unwrap();
+        let add = |agent: &str, status: &str| {
+            conn.execute(
+                "INSERT INTO tasks (agent, description, status, created_at, updated_at) VALUES (?1, 'd', ?2, ?3, ?3)",
+                params![agent, status, Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        };
+        for _ in 0..2 {
+            add("mistral-vibe", "failed");
+        }
+        assert!(!note_failure_streak(&conn, "mistral-vibe"), "two failures is not a streak");
+        add("mistral-vibe", "failed");
+        assert!(note_failure_streak(&conn, "mistral-vibe"));
+        assert!(active(&conn, Utc::now()).unwrap().contains_key("mistral-vibe"));
+
+        for s in ["failed", "completed", "failed"] {
+            add("grok", s);
+        }
+        assert!(!note_failure_streak(&conn, "grok"), "a success inside the window keeps it in routing");
     }
 
     #[test]

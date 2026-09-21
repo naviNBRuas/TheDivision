@@ -211,6 +211,10 @@ fn relative(lower: &str, now: DateTime<Local>) -> Option<DateTime<Utc>> {
     }
     let words: Vec<&str> = lower.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
     let start = words.iter().position(|w| *w == "in" || *w == "after")? + 1;
+    // Compact form, as agy writes it: "Resets in 55h7m23s".
+    if let Some(total) = words.get(start).and_then(|w| compact_duration(w)) {
+        return Some(n + total);
+    }
     let mut total = Duration::zero();
     let mut i = start;
     let mut any = false;
@@ -235,6 +239,31 @@ fn relative(lower: &str, now: DateTime<Local>) -> Option<DateTime<Utc>> {
     any.then_some(n + total)
 }
 
+/// `55h7m23s`, `2d4h`, `90m`: digit runs each followed by one of d, h, m, s. `None` for anything else.
+fn compact_duration(word: &str) -> Option<Duration> {
+    let mut total = Duration::zero();
+    let mut digits = String::new();
+    let mut any = false;
+    for c in word.chars() {
+        if c.is_ascii_digit() {
+            digits.push(c);
+            continue;
+        }
+        let qty: i64 = digits.parse().ok()?;
+        digits.clear();
+        total = total
+            + match c {
+                'd' => Duration::days(qty),
+                'h' => Duration::hours(qty),
+                'm' => Duration::minutes(qty),
+                's' => Duration::seconds(qty),
+                _ => return None,
+            };
+        any = true;
+    }
+    (digits.is_empty() && any).then_some(total)
+}
+
 /// When a rate-limited agent says it will work again, read from its own message. `None` when it
 /// gives no usable time (the caller keeps its default short cooldown) or the time is in the past or
 /// implausibly far away. Handles the phrasings verified live: codex ("try again at Sep 22nd, 2026
@@ -250,6 +279,17 @@ pub fn reset_time(text: &str, now: DateTime<Local>) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_compact_durations_like_agys() {
+        let n = now().with_timezone(&Utc);
+        let msg = r#"AGY_ERROR: {"short_error":"RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 55h7m23s."}"#;
+        assert_eq!(reset_time(msg, now()), Some(n + Duration::hours(55) + Duration::minutes(7) + Duration::seconds(23)));
+        assert_eq!(compact_duration("2d4h"), Some(Duration::hours(52)));
+        assert_eq!(compact_duration("90m"), Some(Duration::minutes(90)));
+        assert_eq!(compact_duration("soon"), None);
+        assert_eq!(compact_duration("12"), None, "digits with no unit are not a duration");
+    }
 
     #[test]
     fn detects_common_rate_limit_phrasing_case_insensitively() {
