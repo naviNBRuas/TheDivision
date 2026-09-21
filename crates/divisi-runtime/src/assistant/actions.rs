@@ -53,7 +53,8 @@ pub fn execute(ctx: &Context, session_id: &str, intent: &Intent, cfg: &ChatConfi
             let ResponseData::GoalId(id) = call(
                 ctx,
                 Request::GoalSubmit { session_id: session_id.to_owned(), text: text.clone(), mode: Some(mode.clone()), max_dispatches: None, max_minutes: None, agent: agent.map(str::to_owned) },
-            )? else {
+            )?
+            else {
                 bail!("unexpected response to GoalSubmit")
             };
             Reply::about(format!("Started {id} in {mode} mode. Progress will show up here."), &id)
@@ -86,72 +87,10 @@ pub fn execute(ctx: &Context, session_id: &str, intent: &Intent, cfg: &ChatConfi
         }
         // Approved, but changing configuration from chat is not wired up yet. Say so plainly
         // instead of pretending, so nothing is silently skipped.
-        Intent::Config { what } => {
-            // Simple static parser: split into words
-            let mut words = what.split_whitespace();
-            match words.next() {
-                Some("enable") => match words.next() {
-                    Some("mcp") => match words.next() {
-                        Some(name) => {
-                            // ignore rest
-                            call(ctx, Request::McpEnable { name: name.to_owned() })?;
-                            Reply::say(format!("Enabled MCP {name}.") )
-                        }
-                        None => Reply::say("Specify MCP name to enable."),
-                    },
-                    _ => Reply::say("Unsupported enable command."),
-                },
-                Some("disable") => match words.next() {
-                    Some("mcp") => match words.next() {
-                        Some(name) => {
-                            call(ctx, Request::McpDisable { name: name.to_owned() })?;
-                            Reply::say(format!("Disabled MCP {name}.") )
-                        }
-                        None => Reply::say("Specify MCP name to disable."),
-                    },
-                    _ => Reply::say("Unsupported disable command."),
-                },
-                Some("remove") => match words.next() {
-                    Some("mcp") => match words.next() {
-                        Some(name) => {
-                            call(ctx, Request::McpRemove { name: name.to_owned() })?;
-                            Reply::say(format!("Removed MCP {name}.") )
-                        }
-                        None => Reply::say("Specify MCP name to remove."),
-                    },
-                    _ => Reply::say("Unsupported remove command."),
-                },
-                Some("set") => match words.next() {
-                    Some("provider") => {
-                        let name = words.next().unwrap_or("");
-                        match words.next() {
-                            Some("key") => {
-                                let value = words.collect::<Vec<_>>().join(" ") ;
-                                if !value.is_empty() {
-                                    call(ctx, Request::ProviderSetKey { name: name.to_owned(), value: value.clone() })?;
-                                    Reply::say(format!("Set provider key for {name}.") )
-                                } else {
-                                    Reply::say("Specify key value.")
-                                }
-                            }
-                            _ => Reply::say("Unsupported provider set command."),
-                        }
-                    }
-                    _ => Reply::say("Unsupported set command."),
-                },
-                Some("add") => match words.next() {
-                    Some("mcp") => {
-                        // For brevity, ignore this
-                        Reply::say("MCP add not implemented yet.")
-                    }
-                    _ => Reply::say("Unsupported add command."),
-                },
-                _ => Reply::say(format!("Unsupported config action: {what}")),
-            }
-        }
+        Intent::Config { what } => Reply::say(format!("Approved, but changing configuration from chat is not available yet, so I changed nothing. Use the CLI for: {what}")),
         Intent::Question { text } => match answer(text) {
             Some(a) => Reply::say(a),
-            None => Reply::say("I can’t answer that without a model right now. I can still report status, usage and pool health."),
+            None => Reply::say("I can't answer that without a model right now. I can still report status, usage and pool health."),
         },
         Intent::Clarify { what } => Reply::say(what.clone()),
     })
