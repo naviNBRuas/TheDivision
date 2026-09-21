@@ -1811,6 +1811,10 @@ fn dispatch(
             // this goal — self-heal's coordinator category checks this
             // before auto-editing it.
             crate::coordinator::goal::mark_human_edited(&conn, &goal_id)?;
+            // An answer to a goal parked for input is what it was waiting for: pick it back up.
+            if g.status == crate::coordinator::graph::GoalStatus::WaitingInput {
+                crate::coordinator::resume_goal(ctx, &mut conn, &goal_id)?;
+            }
             let _ = crate::coordinator::drive(ctx, &mut conn, registry);
             Ok(ResponseData::Empty)
         }

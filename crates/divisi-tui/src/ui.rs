@@ -655,6 +655,7 @@ fn draw_goals(frame: &mut Frame, area: Rect, app: &App) {
             "running" => 0,
             "waiting_on_capacity" => 1,
             "queued" | "planning" => 2,
+            "waiting_input" => 0, // needs you: first
             "blocked" => 3,
             "failed" => 4,
             "paused" => 5,
@@ -673,6 +674,7 @@ fn draw_goals(frame: &mut Frame, area: Rect, app: &App) {
             let (dot, color) = match g.status.as_str() {
                 "running" => ("●", OK),
                 "queued" | "planning" | "waiting_on_capacity" | "paused" => ("●", WARN),
+                "waiting_input" => ("◆", SIGNAL),
                 "failed" => ("●", BAD),
                 "blocked" => ("●", BAD),
                 _ => ("○", MUTED), // done, cancelled

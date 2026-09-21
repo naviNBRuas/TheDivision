@@ -353,6 +353,17 @@ pub fn set_blocked(conn: &Connection, id: &str, reason: &str) -> Result<()> {
     Ok(())
 }
 
+/// Parks a goal until a person answers: `reason` is the question shown in `goal list`/`goal status`.
+/// Never ticked (not in `active`), never retried by self-heal; `goal amend` with an answer, or
+/// `goal resume`, brings it back.
+pub fn wait_for_input(conn: &Connection, id: &str, question: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE goals SET status = 'waiting_input', blocked_reason = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, question, now()],
+    )?;
+    Ok(())
+}
+
 /// E28 spec §8: moves a goal into `waiting_on_capacity`, recording why and
 /// the earliest recovery time, and bumps the `capacity_waits` counter the
 /// resume budget is checked against. Never touches node status — the
@@ -606,6 +617,21 @@ mod tests {
             output_ref: None,
             earliest_retry_at_ms: None,
         }
+    }
+
+    #[test]
+    fn a_goal_waiting_for_input_keeps_its_question_and_is_never_ticked() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        let s = crate::coordinator::session::new_session(&conn, std::path::Path::new("/tmp")).unwrap();
+        let g = create(&conn, &s.id, "g", GoalMode::Auto, 25, 60).unwrap();
+        wait_for_input(&conn, &g.id, "approve the release?").unwrap();
+        let got = get(&conn, &g.id).unwrap().unwrap();
+        assert_eq!(got.status, GoalStatus::WaitingInput);
+        assert_eq!(got.blocked_reason.as_deref(), Some("approve the release?"));
+        assert!(active(&conn).unwrap().iter().all(|a| a.id != g.id));
+        resume_status(&conn, &g.id).unwrap();
+        assert_eq!(get(&conn, &g.id).unwrap().unwrap().status, GoalStatus::Running);
     }
 
     #[test]

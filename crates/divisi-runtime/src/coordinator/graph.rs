@@ -50,6 +50,9 @@ str_enum!(GoalStatus {
     // from a crash (leaves rows `Running`, caught by the existing
     // PID-check `scheduler::reconcile`).
     Paused => "paused",
+    // divisi has done what it can on its own and needs a person: the question is in
+    // `blocked_reason`. `divisi goal amend <id> "<answer>"` (or `goal resume`) continues it.
+    WaitingInput => "waiting_input",
 });
 
 impl NodeKind {

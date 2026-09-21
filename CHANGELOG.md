@@ -11,6 +11,10 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Added
 
+- Blocked goals now heal themselves. The self-heal pass sorts each block into transient (rate limits, a busy pool, a bad planner answer, a timeout), budget (a spent dispatch or time cap) or needs-a-person. Transient blocks are retried with a doubling wait (10 minutes, then 20, 40, ...) up to six times, and a spent budget is raised. Only when divisi has run out of options, or the block names an approval, login or decision, does the goal move to the new `waiting_input` status with the question in `goal list` and `goal status`. Answer it with `divisi goal amend <id> "<answer>"` (or `goal resume`); the TUI lists such goals first.
+- A planner or supervisor answer that was rate limited is now waited out (up to four one-minute waits) instead of blocking the goal, and a node pinned to a benched agent is routed to another one.
+- `divisi agent auth [--probe] [--deep]`: which agents need a login, have one, need none or are out of quota, with the evidence; `divisi agent cooldown-clear`. Agents that report when their quota resets are left out of routing until then.
+
 - Chat with your pool in plain language from Zed, the TUI, the GNOME notch and `divisi chat`, all sharing one conversation. A message is understood by fast phrase rules first and a routed pool model for anything else; status, usage and pool questions are answered from daemon state, and work you describe becomes a goal.
 - Risky actions ask first: cancelling a goal, applying a merge, configuration changes, goals that mention push, publish, deploy, release, delete and similar, all wait for your yes or no. "Always" is offered only where it is safe, and a confirmation expires after 30 minutes (`[chat]` in `config.toml`).
 - `divisi chat` (an interactive chat with a `/` prompt), `divisi chat send`, `tail` and `confirm`. New Chat tabs in the TUI and the notch. `divisi acp` now sends plain messages to the daemon and shows confirmations as permission prompts, falling back to the old direct-goal path for a daemon without chat.

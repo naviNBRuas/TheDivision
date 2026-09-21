@@ -86,8 +86,8 @@ impl Default for SelfHealConfig {
             categories: Categories::default(),
             self_heal_interval_secs: 300,
             db_backup_interval_secs: 3600,
-            blocked_reeval_minutes: 30,
-            max_auto_reevals_per_goal: 3,
+            blocked_reeval_minutes: 10,
+            max_auto_reevals_per_goal: 6,
             provider_key_grace_hours: 24,
             worktree_retention_hours: 24,
         }

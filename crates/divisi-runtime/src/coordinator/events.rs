@@ -54,6 +54,8 @@ pub enum EventKind {
     ChatConfirm,
     /// How a confirmation ended (`{approval_id, outcome}`: approved, denied or expired).
     ChatResult,
+    /// divisi ran out of automatic options on a goal and is waiting for you (body: the question).
+    NeedsInput,
 }
 
 impl EventKind {
@@ -80,6 +82,7 @@ impl EventKind {
             EventKind::ChatAssistant => "chat_assistant",
             EventKind::ChatConfirm => "chat_confirm",
             EventKind::ChatResult => "chat_result",
+            EventKind::NeedsInput => "needs_input",
         }
     }
 }
