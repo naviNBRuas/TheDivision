@@ -1090,7 +1090,7 @@ export default class SingleNotch extends Extension {
         const strip = new St.BoxLayout({vertical: true, style: 'spacing: 2px;'});
         const chip = (id, children, tip) => {
             // Marks the section a background click would reopen.
-            const rest = id === this._tab ? 'rgba(255,255,255,0.05)' : 'transparent';
+            const rest = id === this._tab ? 'rgba(242,242,240,0.05)' : 'transparent';
             const c = new St.BoxLayout({reactive: true, track_hover: true, x_expand: true, style: style(rest)});
             children.forEach(ch => c.add_child(ch));
             c.connect('notify::hover', () => {

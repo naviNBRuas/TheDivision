@@ -933,8 +933,8 @@ mod home_requirement_tests {
     }
 
     #[test]
-    fn opencode_has_a_concurrency_limit_of_one() {
-        assert_eq!(find("opencode").max_concurrency, Some(1));
+    fn opencode_has_a_concurrency_limit_of_three() {
+        assert_eq!(find("opencode").max_concurrency, Some(3));
     }
 
     #[test]

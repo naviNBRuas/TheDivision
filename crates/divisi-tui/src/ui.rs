@@ -20,8 +20,15 @@ const GRAPHITE: Color = Color::Rgb(0x16, 0x18, 0x1d);
 /// The divisi mark and active-state colour (brand signal orange, `#ff5a1f`).
 const SIGNAL: Color = Color::Rgb(0xff, 0x5a, 0x1f);
 
+/// A bordered panel in the brand's quiet border colour, so Signal stays reserved for the mark and active states.
+fn panel() -> Block<'static> {
+    Block::default().borders(Borders::ALL).border_style(Style::default().fg(BORDER))
+}
+
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
+    // Graphite ground with bone text, so every unstyled cell is on-brand too.
+    frame.render_widget(Block::default().style(Style::default().bg(GRAPHITE).fg(ACCENT)), area);
     let chunks = Layout::vertical([
         Constraint::Length(3), // header
         Constraint::Length(3), // tab bar
@@ -94,7 +101,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let mark = Span::styled(app.mark(), Style::default().fg(SIGNAL).add_modifier(Modifier::BOLD));
     let header = Paragraph::new(Line::from(vec![mark, Span::styled(text, style)]))
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(BORDER)));
+        .block(panel().border_style(Style::default().fg(BORDER)));
     frame.render_widget(header, area);
 }
 
@@ -117,7 +124,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         }
         spans.push(span);
     }
-    let tabs = Paragraph::new(Line::from(spans)).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(BORDER)));
+    let tabs = Paragraph::new(Line::from(spans)).block(panel().border_style(Style::default().fg(BORDER)));
     frame.render_widget(tabs, area);
 }
 
@@ -130,7 +137,7 @@ fn draw_loading(frame: &mut Frame, area: Rect, app: &App) {
     let text = format!("{} loading…", app.spinner_frame());
     let p = Paragraph::new(Line::from(Span::styled(text, Style::default().fg(ACCENT))))
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL));
+        .block(panel());
     frame.render_widget(p, area);
 }
 
@@ -248,7 +255,7 @@ fn draw_agents(frame: &mut Frame, area: Rect, app: &App) {
         ],
     )
     .header(Row::new(vec!["", "Agent", "Version", "Auth", "Capabilities", ""]).style(Style::default().add_modifier(Modifier::BOLD)))
-    .block(Block::default().borders(Borders::ALL).title(with_scroll_indicator(" Agents — [i] install selected, [enter] inspect ".to_string(), app.agents.len(), &window)));
+    .block(panel().title(with_scroll_indicator(" Agents — [i] install selected, [enter] inspect ".to_string(), app.agents.len(), &window)));
     frame.render_widget(table, area);
 }
 
@@ -275,7 +282,7 @@ fn draw_workspaces(frame: &mut Frame, area: Rect, app: &App) {
     let title = if app.workspaces.is_empty() { " Tasks — no workspaces yet; [n] new task ".to_string() } else { " Workspaces — [enter] open  [n] new task ".to_string() };
     let table = Table::new(rows, [Constraint::Length(20), Constraint::Length(8), Constraint::Length(25), Constraint::Min(20)])
         .header(Row::new(vec!["Workspace", "Tasks", "Last Active", "Path"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(with_scroll_indicator(title, app.workspaces.len(), &window)));
+        .block(panel().title(with_scroll_indicator(title, app.workspaces.len(), &window)));
     frame.render_widget(table, area);
 }
 
@@ -310,7 +317,7 @@ fn draw_tasks(frame: &mut Frame, area: Rect, app: &App) {
     let title = with_scroll_indicator(" Tasks — [esc] back to workspaces  [n] new task  [enter] view output  [c] cancel running ".to_string(), tasks.len(), &window);
     let table = Table::new(rows, [Constraint::Length(6), Constraint::Length(12), Constraint::Length(12), Constraint::Min(20)])
         .header(Row::new(vec!["ID", "Status", "Agent", "Description"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -339,7 +346,7 @@ fn draw_mcp(frame: &mut Frame, area: Rect, app: &App) {
     );
     let table = Table::new(rows, [Constraint::Length(20), Constraint::Min(20), Constraint::Length(10)])
         .header(Row::new(vec!["Name", "Command", "Status"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -364,7 +371,7 @@ fn draw_lsp(frame: &mut Frame, area: Rect, app: &App) {
     let title = with_scroll_indicator(" LSP servers — [a] add  [d] remove ".to_string(), app.lsp_servers.len(), &window);
     let table = Table::new(rows, [Constraint::Length(18), Constraint::Length(26), Constraint::Min(16), Constraint::Length(10)])
         .header(Row::new(vec!["Name", "Command", "Extensions", "Status"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -387,7 +394,7 @@ fn draw_plugins(frame: &mut Frame, area: Rect, app: &App) {
     let title = with_scroll_indicator(" Plugins — [a] add  [s] sync to all agents  [d] remove ".to_string(), app.plugins.len(), &window);
     let table = Table::new(rows, [Constraint::Length(20), Constraint::Length(30), Constraint::Min(16)])
         .header(Row::new(vec!["Name", "Target", "OpenCode Module"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -417,7 +424,7 @@ fn draw_tools(frame: &mut Frame, area: Rect, app: &App) {
     let title = with_scroll_indicator(" Tools — [a] add  [e] enable/disable ".to_string(), app.tools.len(), &window);
     let table = Table::new(rows, [Constraint::Length(18), Constraint::Min(20), Constraint::Length(10), Constraint::Length(10)])
         .header(Row::new(vec!["Name", "Description", "Risk", "Status"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -427,7 +434,7 @@ fn draw_providers(frame: &mut Frame, area: Rect, app: &App) {
             "(no providers configured yet — press [a] to add one from the full preset catalog)",
             Style::default().fg(MUTED),
         ))
-        .block(Block::default().borders(Borders::ALL).title(" Providers (configured) — [a] add "));
+        .block(panel().title(" Providers (configured) — [a] add "));
         frame.render_widget(p, area);
         return;
     }
@@ -456,7 +463,7 @@ fn draw_providers(frame: &mut Frame, area: Rect, app: &App) {
     let title = with_scroll_indicator(" Providers (configured) — [a] add ".to_string(), app.providers.len(), &window);
     let table = Table::new(rows, [Constraint::Length(18), Constraint::Length(9), Constraint::Length(24), Constraint::Min(16)])
         .header(Row::new(vec!["Name", "Key", "Env Var", "Base URL"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -491,7 +498,7 @@ fn draw_accounts(frame: &mut Frame, area: Rect, app: &App) {
         [Constraint::Length(12), Constraint::Length(16), Constraint::Length(24), Constraint::Length(14), Constraint::Min(20)],
     )
     .header(Row::new(vec!["Agent", "Name", "Label", "Status", "Captured At"]).style(Style::default().add_modifier(Modifier::BOLD)))
-    .block(Block::default().borders(Borders::ALL).title(title));
+    .block(panel().title(title));
     frame.render_widget(table, area);
 }
 
@@ -500,7 +507,7 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
 
     let Some(usage) = &app.usage else {
         let text = if app.usage_loading { "Loading usage…" } else { "No usage data yet — press 'r' to fetch" };
-        let p = Paragraph::new(text).block(Block::default().borders(Borders::ALL).title(" Usage "));
+        let p = Paragraph::new(text).block(panel().title(" Usage "));
         frame.render_widget(p, area);
         return;
     };
@@ -526,7 +533,7 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
     );
     let table = Table::new(rows, widths)
         .header(Row::new(vec!["provider", "key", "agent", "cost", "period"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .block(panel().title(title));
     frame.render_widget(table, chunks[0]);
 
     // Pool providers: requests counted by single's own ledger. Only providers
@@ -553,7 +560,7 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
     let table = Table::new(pool_rows, [Constraint::Length(14), Constraint::Length(9), Constraint::Min(20)])
         .header(Row::new(vec!["Provider", "Keys", "Today (counted by single)"]).style(Style::default().add_modifier(Modifier::BOLD)))
-        .block(Block::default().borders(Borders::ALL).title(" Pool usage — requests counted locally; limits only where published "));
+        .block(panel().title(" Pool usage — requests counted locally; limits only where published "));
     frame.render_widget(table, chunks[1]);
 
     let fmt_tok = |n: u64| if n >= 1_000_000 { format!("{:.1}M", n as f64 / 1e6) } else if n >= 1_000 { format!("{:.1}K", n as f64 / 1e3) } else { n.to_string() };
@@ -579,7 +586,7 @@ fn draw_usage(frame: &mut Frame, area: Rect, app: &App) {
         [Constraint::Length(20), Constraint::Length(7), Constraint::Length(7), Constraint::Length(10), Constraint::Length(9), Constraint::Length(10), Constraint::Min(20)],
     )
     .header(Row::new(vec!["Agent", "Runs", "7d", "Tokens 7d", "Limited", "Avg", "Last Run"]).style(Style::default().add_modifier(Modifier::BOLD)))
-    .block(Block::default().borders(Borders::ALL).title(" Agents — local stats; ~ = estimated tokens; no subscription limits are known "));
+    .block(panel().title(" Agents — local stats; ~ = estimated tokens; no subscription limits are known "));
     frame.render_widget(table, chunks[2]);
 }
 
@@ -636,7 +643,7 @@ fn draw_chat(frame: &mut Frame, area: Rect, app: &App) {
     };
     let border = if app.chat.pending.is_some() { WARN } else { ACCENT };
     let prompt = Line::from(vec![Span::styled("/ ", Style::default().fg(SIGNAL).add_modifier(Modifier::BOLD)), Span::raw(app.chat.input.clone())]);
-    let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(border)).title(title);
+    let block = panel().border_style(Style::default().fg(border)).title(title);
     let inner = block.inner(input);
     frame.render_widget(Paragraph::new(prompt).block(block), input);
     let typed = app.chat.input.chars().count() as u16;
@@ -646,7 +653,7 @@ fn draw_chat(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_goals(frame: &mut Frame, area: Rect, app: &App) {
     let Some(goals) = &app.goals else {
         let text = if app.goals_loading { "Loading goals…" } else { "No goal data — press 'r' to fetch" };
-        frame.render_widget(Paragraph::new(text).block(Block::default().borders(Borders::ALL).title(" Goals ")), area);
+        frame.render_widget(Paragraph::new(text).block(panel().title(" Goals ")), area);
         return;
     };
 
@@ -700,7 +707,7 @@ fn draw_goals(frame: &mut Frame, area: Rect, app: &App) {
         [Constraint::Length(2), Constraint::Length(10), Constraint::Length(18), Constraint::Length(9), Constraint::Min(20)],
     )
     .header(Row::new(vec!["", "Goal", "Status", "Dispatches", "Text"]).style(Style::default().add_modifier(Modifier::BOLD)))
-    .block(Block::default().borders(Borders::ALL).title(with_scroll_indicator(" Goals — running/queued/failed sort to the top ".to_string(), sorted.len(), &window)));
+    .block(panel().title(with_scroll_indicator(" Goals — running/queued/failed sort to the top ".to_string(), sorted.len(), &window)));
     frame.render_widget(table, area);
 }
 
@@ -768,7 +775,7 @@ fn draw_pool(frame: &mut Frame, area: Rect, app: &App) {
             Row::new(vec!["platform", "auth", "cooldown", "usage", "note"])
                 .style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .block(Block::default().borders(Borders::ALL).title(format!(" Pool — {} ", status_text)));
+        .block(panel().title(format!(" Pool — {} ", status_text)));
     frame.render_widget(table, area);
 }
 
@@ -791,7 +798,7 @@ fn draw_backup(frame: &mut Frame, area: Rect, _app: &App) {
             Style::default().fg(MUTED),
         )),
     ];
-    let p = Paragraph::new(lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(" Backup "));
+    let p = Paragraph::new(lines).wrap(Wrap { trim: false }).block(panel().title(" Backup "));
     frame.render_widget(p, area);
 }
 
@@ -807,7 +814,7 @@ fn draw_memory(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(Line::from(Span::styled("Qdrant vector store", Style::default().add_modifier(Modifier::BOLD))));
     lines.push(status_line(app.vector_configured, app.vector_reachable, "DIVISI_QDRANT_URL"));
 
-    let p = Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Memory "));
+    let p = Paragraph::new(lines).block(panel().title(" Memory "));
     frame.render_widget(p, area);
 }
 
@@ -860,7 +867,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::from("  Use the `divisi` CLI for actions not yet in the TUI: mcp add, provider add/sync,"),
         Line::from("  account capture/use, task run, memory graph/cache/vector — see `divisi --help`."),
     ];
-    let p = Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Help "));
+    let p = Paragraph::new(lines).block(panel().title(" Help "));
     frame.render_widget(p, area);
 }
 
@@ -948,7 +955,7 @@ fn draw_provider_add_modal(frame: &mut Frame, area: Rect, app: &App) {
         ProviderAddFlow::Idle => (" ", vec![]),
     };
 
-    let block = Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(ACCENT));
+    let block = panel().title(title).border_style(Style::default().fg(ACCENT));
     frame.render_widget(Paragraph::new(lines).block(block), modal_area);
 }
 
@@ -1024,7 +1031,7 @@ fn draw_backup_modal(frame: &mut Frame, area: Rect, app: &App) {
         BackupFlow::Idle => (" ", vec![]),
     };
 
-    let block = Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(ACCENT));
+    let block = panel().title(title).border_style(Style::default().fg(ACCENT));
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(block), modal_area);
 }
 
@@ -1067,7 +1074,7 @@ fn draw_task_detail_modal(frame: &mut Frame, area: Rect, app: &App) {
     }
     frame.render_widget(Paragraph::new(header_lines).wrap(Wrap { trim: false }), sections[0]);
 
-    let output_block = Block::default().borders(Borders::ALL).title(if task.status == divisi_protocol::TaskStatus::Running {
+    let output_block = panel().title(if task.status == divisi_protocol::TaskStatus::Running {
         " live output (auto-refreshing) "
     } else {
         " output "
@@ -1154,7 +1161,7 @@ fn draw_task_add_modal(frame: &mut Frame, area: Rect, app: &App) {
         TaskAddFlow::Idle => (" ", vec![]),
     };
 
-    let block = Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(ACCENT));
+    let block = panel().title(title).border_style(Style::default().fg(ACCENT));
     frame.render_widget(Paragraph::new(lines).block(block), modal_area);
 }
 
@@ -1191,7 +1198,7 @@ fn draw_quick_add_modal(frame: &mut Frame, area: Rect, app: &App) {
         QuickAddFlow::Idle => (" ".to_string(), vec![]),
     };
 
-    let block = Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(ACCENT));
+    let block = panel().title(title).border_style(Style::default().fg(ACCENT));
     frame.render_widget(Paragraph::new(lines).block(block), modal_area);
 }
 
@@ -1246,7 +1253,7 @@ fn draw_install_modal(frame: &mut Frame, area: Rect, app: &App) {
         InstallFlow::Idle => (" ", vec![]),
     };
 
-    let block = Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(ACCENT));
+    let block = panel().title(title).border_style(Style::default().fg(ACCENT));
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, modal_area);
 }
