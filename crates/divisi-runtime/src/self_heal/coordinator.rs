@@ -54,6 +54,8 @@ const MAX_REPLANS_PER_PASS: usize = 3;
 /// Caps a budget-blocked goal is raised to.
 const RAISED_DISPATCHES: u32 = 200;
 const RAISED_MINUTES: u32 = 10_080;
+/// How long a capacity-blocked goal may keep waiting for the pool after a self-heal retry.
+const CAPACITY_WINDOW_MINUTES: u32 = 1_440;
 
 /// Deals with every `Blocked` goal on its own, and only asks a person when it must:
 /// - transient blocks (capacity, supervisor, planner/integrator output, rate limits) are retried with a
@@ -97,6 +99,9 @@ fn reeval_blocked_goals(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) 
             goal::reevaluate_blocked(conn, &g.id)?;
             raised.push(g.id);
             continue;
+        }
+        if reason.contains("capacity") {
+            goal::reset_capacity_allowance(conn, &g.id, CAPACITY_WINDOW_MINUTES)?;
         }
         if goal::load_graph(conn, &g.id)?.nodes.is_empty() {
             // The planner never produced a graph: plan again (what `goal resume` does).
@@ -326,6 +331,7 @@ mod tests {
         let reloaded = goal::get(&conn, &g.id).unwrap().unwrap();
         assert_eq!(reloaded.status, GoalStatus::Running);
         assert_eq!(reloaded.auto_reevals, 1);
+        assert_eq!(reloaded.capacity_waits, 0, "a capacity retry starts with a fresh wait allowance");
     }
 
     #[test]

@@ -353,6 +353,19 @@ pub fn set_blocked(conn: &Connection, id: &str, reason: &str) -> Result<()> {
     Ok(())
 }
 
+/// Gives a goal that ran out of capacity waits a fresh allowance: zero waits used, and a wait window
+/// that ends `extra_minutes` from now. Self-heal calls this before retrying a capacity block, otherwise
+/// the goal re-blocks on its very next dispatch.
+pub fn reset_capacity_allowance(conn: &Connection, id: &str, extra_minutes: u32) -> Result<()> {
+    let created: String = conn.query_row("SELECT created_at FROM goals WHERE id = ?1", [id], |r| r.get(0))?;
+    let elapsed = (chrono::Utc::now() - created.parse().unwrap_or_else(|_| chrono::Utc::now())).num_minutes().max(0) as u32;
+    conn.execute(
+        "UPDATE goals SET capacity_waits = 0, capacity_wait_minutes_override = ?2, earliest_retry_at_ms = NULL, capacity_reason = NULL WHERE id = ?1",
+        params![id, elapsed + extra_minutes],
+    )?;
+    Ok(())
+}
+
 /// Parks a goal until a person answers: `reason` is the question shown in `goal list`/`goal status`.
 /// Never ticked (not in `active`), never retried by self-heal; `goal amend` with an answer, or
 /// `goal resume`, brings it back.
