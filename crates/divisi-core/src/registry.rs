@@ -126,8 +126,10 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
                 source: "https://opencode.ai/docs/".into(),
             }),
             unverified: false,
-            home_requirement: HomeRequirement::RealRequired,
-            max_concurrency: Some(1),
+            // Verified 2026-09-21: works from the isolated home on its own free models (no login), which
+            // keeps it off the real home's keyed default model.
+            home_requirement: HomeRequirement::Either,
+            max_concurrency: Some(3),
             capabilities: CapabilityFlags {
                 streaming: true,
                 mcp: true, // observed "mcp" key in opencode.jsonc
@@ -903,7 +905,7 @@ mod home_requirement_tests {
     #[test]
     fn copilot_and_opencode_require_real_home() {
         assert_eq!(find("copilot").home_requirement, HomeRequirement::RealRequired);
-        assert_eq!(find("opencode").home_requirement, HomeRequirement::RealRequired);
+        assert_eq!(find("opencode").home_requirement, HomeRequirement::Either);
     }
 
     #[test]

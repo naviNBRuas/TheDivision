@@ -184,15 +184,22 @@ pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> Ag
     };
 
     // 1. The way the pool runs it: an isolated home plus the provider keys divisi holds for it.
+    // An agent that only authenticates against the real environment (codex and cursor keep their login in
+    // the OS keyring) is run there, exactly as the pool runs it; an isolated home would always look logged out.
+    let real_required = ctx.registry.iter().find(|a| a.name == name).is_some_and(|a| a.home_requirement == divisi_protocol::HomeRequirement::RealRequired);
     let real = divisi_core::paths::real_home_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-    let home = match divisi_core::agent_home::ensure_bootstrapped(&ctx.dirs.homes_dir(), &real, name) {
-        Ok(h) => h,
-        Err(e) => return row(name, Category::Error, format!("could not prepare its isolated home: {e:#}"), None),
+    let home = if real_required {
+        None
+    } else {
+        match divisi_core::agent_home::ensure_bootstrapped(&ctx.dirs.homes_dir(), &real, name) {
+            Ok(h) => Some(h),
+            Err(e) => return row(name, Category::Error, format!("could not prepare its isolated home: {e:#}"), None),
+        }
     };
     let mut env = divisi_core::provider_keys::resolve_env_for_agent(&ctx.dirs, name);
     let free_model = free_model_env(name);
     env.extend(free_model.clone());
-    let backend = ExecBackend::host_with_env(Some(&home), &env);
+    let backend = ExecBackend::host_with_env(home.as_deref(), &env);
     let outcome = adapter.run_prompt(scratch.path(), PROBE_PROMPT, &backend, None, PROBE_TIMEOUT, None);
     let (category, evidence, until) = match &outcome {
         Ok(o) => classify(o.success, o.timed_out, &o.stdout, &o.stderr, Local::now()),
