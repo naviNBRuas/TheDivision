@@ -1833,9 +1833,9 @@ fn dispatch(
             let _ = crate::coordinator::drive(ctx, &mut conn, registry);
             Ok(ResponseData::Empty)
         }
-        Request::GoalRetryNode { goal_id, node_id } => {
+        Request::GoalRetryNode { goal_id, node_id, agent } => {
             let mut conn = coordinator_db(ctx)?;
-            crate::coordinator::retry_node(ctx, &mut conn, registry, &goal_id, &node_id)?;
+            crate::coordinator::retry_node(ctx, &mut conn, registry, &goal_id, &node_id, agent.as_deref())?;
             Ok(ResponseData::Empty)
         }
         Request::GoalMergeList => {

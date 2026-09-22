@@ -250,8 +250,8 @@ pub fn resume_goal(ctx: &Context, conn: &mut Connection, goal_id: &str) -> Resul
 /// doesn't exist; deliberately does *not* require the node to currently
 /// be `blocked` -- a human retrying a `failed` node they've judged
 /// recoverable is the same action, not a different one.
-pub fn retry_node(ctx: &Context, conn: &mut Connection, registry: &crate::registry::TaskRegistry, goal_id: &str, node_id: &str) -> Result<()> {
-    reset_node_for_retry(conn, goal_id, node_id)?;
+pub fn retry_node(ctx: &Context, conn: &mut Connection, registry: &crate::registry::TaskRegistry, goal_id: &str, node_id: &str, agent: Option<&str>) -> Result<()> {
+    reset_node_for_retry(conn, goal_id, node_id, agent)?;
     // give the reset node an immediate chance at admission rather than
     // waiting for the next periodic timer tick.
     drive(ctx, conn, registry)
@@ -262,7 +262,7 @@ pub fn retry_node(ctx: &Context, conn: &mut Connection, registry: &crate::regist
 /// usable agent at all, will synchronously admit and dispatch the
 /// freshly-`pending` node -- exactly the intended behavior, but not
 /// what a "did the reset itself work" test wants to be coupled to).
-fn reset_node_for_retry(conn: &mut Connection, goal_id: &str, node_id: &str) -> Result<()> {
+fn reset_node_for_retry(conn: &mut Connection, goal_id: &str, node_id: &str, agent: Option<&str>) -> Result<()> {
     let g = goal::get(conn, goal_id)?.context("no such goal")?;
     let mut graph = goal::load_graph(conn, goal_id)?;
     let node = graph.nodes.iter_mut().find(|n| n.id == node_id).with_context(|| format!("no such node {node_id:?} in goal {goal_id}"))?;
@@ -276,14 +276,18 @@ fn reset_node_for_retry(conn: &mut Connection, goal_id: &str, node_id: &str) -> 
     node.task_id = None;
     node.attempts = 0;
     node.earliest_retry_at_ms = None;
+    // An explicit `--agent` pins the node there; otherwise clear any existing pin so routing picks fresh
+    // (past whatever agent it was stuck on) instead of retrying the same one.
+    node.agent = agent.unwrap_or("").to_string();
     goal::save_graph(conn, goal_id, &graph)?;
 
+    let pin_note = agent.map(|a| format!(", pinned to {a}")).unwrap_or_default();
     events::append(
         conn,
         &g.session_id,
         Some(goal_id),
         events::EventKind::SessionResumed,
-        &format!("{node_id}: reset from {prior_status:?} to pending via `divisi goal retry-node`"),
+        &format!("{node_id}: reset from {prior_status:?} to pending via `divisi goal retry-node`{pin_note}"),
     )?;
     Ok(())
 }
@@ -545,7 +549,7 @@ mod tests {
         };
         goal::save_graph(&mut conn, &g.id, &graph::TaskGraph { nodes: vec![node] }).unwrap();
 
-        reset_node_for_retry(&mut conn, &g.id, "s2").unwrap();
+        reset_node_for_retry(&mut conn, &g.id, "s2", None).unwrap();
 
         let reloaded = goal::load_graph(&conn, &g.id).unwrap();
         let n = reloaded.find("s2").unwrap();
@@ -553,6 +557,38 @@ mod tests {
         assert_eq!(n.task_id, None, "stale task_id must be cleared, not left behind");
         assert_eq!(n.attempts, 0, "attempts must be reset so it gets a fresh retry budget");
         assert_eq!(n.earliest_retry_at_ms, None, "any leftover capacity-wait stamp must be cleared too");
+        assert_eq!(n.agent, "", "with no --agent, the old pin is cleared so routing picks fresh");
+    }
+
+    /// The whole point of `--agent`: move a task stuck on a misbehaving provider onto a named one directly,
+    /// without waiting for a cooldown or hoping routing happens to pick it.
+    #[test]
+    fn retry_node_with_agent_pins_the_named_agent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut conn = test_conn();
+        let s = session::new_session(&conn, tmp.path()).unwrap();
+        let g = goal::create(&conn, &s.id, "g", graph::GoalMode::Auto, 25, 60).unwrap();
+        let node = graph::Node {
+            id: "s1".into(),
+            desc: "do it".into(),
+            kind: graph::NodeKind::Code,
+            effort: graph::Effort::Standard,
+            agent: "grok".into(),
+            depends_on: vec![],
+            status: graph::NodeStatus::Failed,
+            task_id: Some(1),
+            attempts: 2,
+            worktree: false,
+            output_ref: None,
+            earliest_retry_at_ms: None,
+        };
+        goal::save_graph(&mut conn, &g.id, &graph::TaskGraph { nodes: vec![node] }).unwrap();
+
+        reset_node_for_retry(&mut conn, &g.id, "s1", Some("single-nvidia")).unwrap();
+
+        let n = goal::load_graph(&conn, &g.id).unwrap().find("s1").unwrap().clone();
+        assert_eq!(n.status, graph::NodeStatus::Pending);
+        assert_eq!(n.agent, "single-nvidia");
     }
 
     /// A node id that doesn't exist in the goal's graph must error clearly
@@ -565,7 +601,7 @@ mod tests {
         let g = goal::create(&conn, &s.id, "g", graph::GoalMode::Auto, 25, 60).unwrap();
         goal::save_graph(&mut conn, &g.id, &graph::TaskGraph { nodes: vec![] }).unwrap();
 
-        let err = reset_node_for_retry(&mut conn, &g.id, "does-not-exist").unwrap_err();
+        let err = reset_node_for_retry(&mut conn, &g.id, "does-not-exist", None).unwrap_err();
         assert!(format!("{err:#}").contains("no such node"));
     }
 

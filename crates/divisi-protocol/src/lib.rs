@@ -734,6 +734,10 @@ pub enum Request {
     GoalRetryNode {
         goal_id: String,
         node_id: String,
+        /// Force this specific agent/provider instead of letting routing pick — the easy way to move a
+        /// stuck task off a provider having problems onto a named one, without waiting for a cooldown.
+        #[serde(default)]
+        agent: Option<String>,
     },
     /// Poll (the messenger long-polls) for a session's events after an id.
     SessionEvents {
@@ -2373,7 +2377,7 @@ mod tests {
             Request::GoalAmend { goal_id: "goal_1".into(), text: "budget=30".into() },
             Request::GoalCancel { goal_id: "goal_1".into() },
             Request::GoalResume { goal_id: "goal_1".into() },
-            Request::GoalRetryNode { goal_id: "goal_1".into(), node_id: "s2".into() },
+            Request::GoalRetryNode { goal_id: "goal_1".into(), node_id: "s2".into(), agent: None },
             Request::SessionEvents { session_id: "sess_1".into(), since_event_id: 4 },
             Request::ChatSend { session: None, text: "how is the pool?".into(), surface: "tui".into(), mode: None, agent: None },
             Request::ChatSend { session: Some("sess_1".into()), text: "cancel goal_1".into(), surface: "zed".into(), mode: Some("plan".into()), agent: Some("claude".into()) },

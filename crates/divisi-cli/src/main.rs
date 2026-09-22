@@ -476,6 +476,10 @@ enum GoalCommand {
     RetryNode {
         goal_id: String,
         node_id: String,
+        /// Force this agent/provider instead of letting routing pick, e.g. `--agent single-nvidia`
+        /// after a provider starts misbehaving — moves the task there right away.
+        #[arg(long)]
+        agent: Option<String>,
     },
     /// Merges awaiting human confirmation from the coordinator's opt-in
     /// auto-merge (`goal.auto_merge`) — a passing review queues one of
@@ -3071,8 +3075,8 @@ fn main() -> anyhow::Result<()> {
                 let response = client::send(&socket_path, Request::GoalResume { goal_id })?;
                 render::print(response, false);
             }
-            GoalCommand::RetryNode { goal_id, node_id } => {
-                let response = client::send(&socket_path, Request::GoalRetryNode { goal_id, node_id })?;
+            GoalCommand::RetryNode { goal_id, node_id, agent } => {
+                let response = client::send(&socket_path, Request::GoalRetryNode { goal_id, node_id, agent })?;
                 render::print(response, false);
             }
             GoalCommand::Merge(merge_cmd) => match merge_cmd {
