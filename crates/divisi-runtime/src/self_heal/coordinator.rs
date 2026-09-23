@@ -83,6 +83,17 @@ fn reeval_blocked_goals(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) 
             asked.push(g.id);
             continue;
         }
+        // Raising a spent budget is bounded by the raised caps themselves, so it doesn't count against
+        // the automatic-attempt limit: a goal that sat out hours of capacity waits and then ran out of
+        // wall clock before its first dispatch must not land on the user as a question.
+        let below_raised = g.max_dispatches < RAISED_DISPATCHES || g.max_minutes < RAISED_MINUTES;
+        if kind == BlockKind::Budget && below_raised {
+            goal::raise_dispatch_cap(conn, &g.id, RAISED_DISPATCHES.max(g.max_dispatches))?;
+            goal::raise_time_cap(conn, &g.id, RAISED_MINUTES.max(g.max_minutes))?;
+            goal::reevaluate_blocked(conn, &g.id)?;
+            raised.push(g.id);
+            continue;
+        }
         if g.auto_reevals >= cfg.max_auto_reevals_per_goal {
             ask(conn, &g, &format!("divisi tried {} times on its own and is still blocked: {reason}. Amend with what to do, or `goal resume`, or cancel.", g.auto_reevals))?;
             asked.push(g.id);
@@ -91,13 +102,6 @@ fn reeval_blocked_goals(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) 
         let backoff = cfg.blocked_reeval_minutes as i64 * (1i64 << g.auto_reevals.min(10));
         if age_minutes < backoff {
             waiting_backoff += 1;
-            continue;
-        }
-        if kind == BlockKind::Budget {
-            goal::raise_dispatch_cap(conn, &g.id, RAISED_DISPATCHES)?;
-            goal::raise_time_cap(conn, &g.id, RAISED_MINUTES)?;
-            goal::reevaluate_blocked(conn, &g.id)?;
-            raised.push(g.id);
             continue;
         }
         if reason.contains("capacity") {
@@ -388,6 +392,18 @@ mod tests {
 
         let detail = reeval_blocked_goals(&ctx, &conn, &SelfHealConfig::default()).unwrap();
         assert!(detail.contains("budget raised"), "{detail}");
+        assert_eq!(status_of(&conn, &g.id), GoalStatus::Running);
+    }
+
+    #[test]
+    fn a_spent_budget_is_raised_even_after_many_automatic_attempts() {
+        let mut conn = test_conn();
+        let ctx = test_ctx(&tempfile::tempdir().unwrap().keep());
+        let g = blocked_with_graph(&mut conn, "time budget spent: 892 min elapsed of 60 min cap", 60);
+        conn.execute("UPDATE goals SET auto_reevals = 99 WHERE id = ?1", [&g.id]).unwrap();
+
+        let detail = reeval_blocked_goals(&ctx, &conn, &SelfHealConfig::default()).unwrap();
+        assert!(detail.contains(&format!("budget raised: [{}]", g.id)), "{detail}");
         assert_eq!(status_of(&conn, &g.id), GoalStatus::Running);
     }
 
