@@ -1673,7 +1673,7 @@ fn dispatch(
             Ok(ResponseData::Empty)
         }
         Request::GoalSubmit { session_id, text, mode, max_dispatches, max_minutes, agent } => {
-            let mut conn = coordinator_db(ctx)?;
+            let conn = coordinator_db(ctx)?;
             divisi_core::redact::ensure_schema(&conn)?;
             let redact_store = divisi_core::redact::RedactStore { conn: &conn };
             let secret_store = divisi_core::secrets::SecretTool;
