@@ -2065,7 +2065,8 @@ fn coordinator_status_info(ctx: &Context) -> anyhow::Result<divisi_protocol::Coo
     let all = crate::coordinator::goal::list(&conn, None)?;
     let pick = |want: crate::coordinator::graph::GoalStatus| all.iter().filter(|g| g.status == want).map(goal_summary).collect::<Vec<_>>();
     let cfg = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs);
-    let health = crate::coordinator::routing::PoolHealth::probe(&ctx.registry, &conn);
+    let mut health = crate::coordinator::routing::PoolHealth::probe(&ctx.registry, &conn);
+    health.disable(&cfg.disabled_agents);
     let mut running_per_agent: std::collections::BTreeMap<String, usize> = Default::default();
     {
         let mut stmt = conn.prepare("SELECT agent, COUNT(*) FROM graph_nodes WHERE status = 'running' GROUP BY agent")?;

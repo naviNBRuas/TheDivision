@@ -64,6 +64,10 @@ pub struct CoordinatorConfig {
     /// Per-agent overrides, e.g. `single-google = 4` under `[agent_concurrency]`. Wins over the defaults above.
     #[serde(default)]
     pub agent_concurrency: std::collections::BTreeMap<String, usize>,
+    /// Agents kept out of every dispatch, e.g. one whose quota is reserved for the user's own use.
+    /// Treated like a benched agent: routing skips it and a node already pinned to it is re-routed.
+    #[serde(default)]
+    pub disabled_agents: Vec<String>,
 }
 
 fn default_provider_agent_concurrency() -> usize {
@@ -95,6 +99,7 @@ impl Default for CoordinatorConfig {
             provider_agent_concurrency: default_provider_agent_concurrency(),
             pool_concurrency: default_pool_concurrency(),
             agent_concurrency: Default::default(),
+            disabled_agents: Vec::new(),
         }
     }
 }
@@ -298,6 +303,11 @@ impl PoolHealth {
         }
 
         Self { detected_authed, rate_limited }
+    }
+
+    /// Keeps `agents` out of routing for this snapshot (`CoordinatorConfig::disabled_agents`).
+    pub fn disable(&mut self, agents: &[String]) {
+        self.rate_limited.extend(agents.iter().filter(|a| a.as_str() != "single-pool").cloned());
     }
 }
 
