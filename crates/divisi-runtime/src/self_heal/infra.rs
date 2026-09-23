@@ -181,6 +181,28 @@ fn newest_backup(dir: &std::path::Path, original_name: &str) -> Result<Option<st
     Ok(candidates.pop())
 }
 
+/// `PRAGMA quick_check` on a db file opened read-only and immutable, so
+/// checking a backup never creates sidecars or touches its bytes.
+fn is_sound_db(path: &std::path::Path) -> bool {
+    use rusqlite::OpenFlags;
+    let uri = format!("file:{}?immutable=1", path.display());
+    Connection::open_with_flags(uri, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI)
+        .and_then(|c| c.query_row("PRAGMA quick_check", (), |r| r.get::<_, String>(0)))
+        .is_ok_and(|r| r == "ok")
+}
+
+/// The newest `<name>.bak-<timestamp>` that itself passes `quick_check`.
+fn newest_sound_backup(dir: &std::path::Path, original_name: &str) -> Result<Option<std::path::PathBuf>> {
+    let prefix = format!("{original_name}.bak-");
+    let mut candidates: Vec<std::path::PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix)))
+        .collect();
+    candidates.sort();
+    Ok(candidates.into_iter().rev().find(|p| is_sound_db(p)))
+}
+
 /// `PRAGMA integrity_check` on the open connection. On failure, when
 /// `allow_db_restore` is set, restores from the newest `divisi.db.bak-*`
 /// (written by `db_backup` below); with no backup at all, this is a
@@ -210,35 +232,24 @@ fn db_integrity(ctx: &Context, conn: &Connection, allow_db_restore: bool) -> Res
         ));
     }
 
-    if let Some(backup) = newest_backup(db_dir, db_name)? {
-        // Live-verification finding (2026-09-11): this used to be a
-        // straight `std::fs::copy(&backup, &db_path)` -- overwriting the
-        // live db file's bytes in place. That is not atomic: this
-        // daemon's cgroup caps at `MemoryMax=6G` as a runaway backstop and
-        // has repeatedly SIGKILLed it under heavy concurrent-agent load
-        // (see db_backup's PASSIVE-checkpoint fix for the same trigger).
-        // A kill landing mid-copy here left `divisi.db` itself truncated
-        // -- confirmed live via `disk I/O error: Error code 522: Unable
-        // to obtain number of requested bytes (file truncated?)` on a
-        // plain `divisi approval resolve`, on the very day this was
-        // found, well after 0.15.4's backup-side PASSIVE-checkpoint fix
-        // (which only addressed producing a good backup, not restoring
-        // one crash-safely). Copy to a temp file in the same directory
-        // first, then atomically `rename()` it over `db_path` -- POSIX
-        // guarantees a same-filesystem rename is atomic, so a kill
-        // mid-copy now only ever leaves a stray temp file, never a
-        // half-written live db.
-        let tmp_path = db_dir.join(format!("{db_name}.restoring-{}", std::process::id()));
-        std::fs::copy(&backup, &tmp_path).context("copying backup to temp file before atomic restore")?;
-        let restore_result = std::fs::rename(&tmp_path, &db_path).context("atomically renaming restored db into place");
-        if restore_result.is_err() {
-            let _ = std::fs::remove_file(&tmp_path);
-        }
-        restore_result?;
+    // Live-verification finding (2026-09-23): the restore used to rename
+    // the newest backup over `divisi.db` whether or not that backup was
+    // itself sound, and left the live db's `-wal`/`-shm` sidecars in
+    // place -- SQLite then replays that foreign WAL onto the restored
+    // file, which is corruption by construction. Every hourly backup had
+    // been copying the same damaged `coordinator_events` pages for a day,
+    // so "newest" was never good enough. Now: the newest backup that
+    // itself passes `quick_check`, written through SQLite's own backup
+    // API into the open connection, so the pager and WAL stay coherent.
+    if let Some(backup) = newest_sound_backup(db_dir, db_name)? {
+        let mut target = Connection::open(&db_path).context("opening db for restore")?;
+        target
+            .restore(rusqlite::DatabaseName::Main, &backup, None::<fn(rusqlite::backup::Progress)>)
+            .with_context(|| format!("restoring {} from {}", db_path.display(), backup.display()))?;
         return Ok(format!("integrity_check failed ({result}); restored from {}", backup.display()));
     }
 
-    Ok(format!("integrity_check failed ({result}); no backup available — schema will re-seed additively on next ensure_schema call (history for this db may be lost)"))
+    Ok(format!("integrity_check failed ({result}); no sound backup available — stop the daemon and rebuild with `sqlite3 divisi.db .recover`"))
 }
 
 /// Live-verification finding (2026-09-14): the newest-backup interval
@@ -334,10 +345,31 @@ fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<S
     // checkpoint as it safely can given concurrent readers, and simply
     // leaves later frames in the WAL rather than risking the main file --
     // a slightly-stale backup beats a corrupt one.
-    conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE)").ok();
+    //
+    // Live-verification finding (2026-09-23): a plain `fs::copy` of the
+    // main file, even after a PASSIVE checkpoint, is not a consistent
+    // snapshot (frames still in the WAL, a checkpoint landing mid-copy),
+    // and nothing checked the copy -- a day of hourly backups all carried
+    // the live db's damaged pages and rotated every good one out.
+    // `VACUUM INTO` writes a transactionally consistent copy through
+    // SQLite itself; it is only kept if it passes `quick_check`, so
+    // retention can never fill up with bad snapshots.
     let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     let backup_path = db_dir.join(format!("{db_name}.bak-{timestamp}"));
-    std::fs::copy(&db_path, &backup_path).context("writing db backup")?;
+    let staging = db_dir.join(format!("{db_name}.backing-up-{}", std::process::id()));
+    let _ = std::fs::remove_file(&staging);
+    let written = conn
+        .execute("VACUUM INTO ?1", [staging.to_string_lossy().as_ref()])
+        .context("writing db backup with VACUUM INTO");
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&staging);
+        return Err(e);
+    }
+    if !is_sound_db(&staging) {
+        let _ = std::fs::remove_file(&staging);
+        anyhow::bail!("fresh backup failed quick_check -- live db is damaged, kept the existing backups ({pruned} pruned)");
+    }
+    std::fs::rename(&staging, &backup_path).context("moving db backup into place")?;
     let pruned = pruned + prune_old_backups(db_dir, db_name).unwrap_or(0);
     Ok(format!("wrote {} ({pruned} pruned)", backup_path.display()))
 }
@@ -528,6 +560,66 @@ mod tests {
         let restored_conn = Connection::open(&db_path).unwrap();
         let count: i64 = restored_conn.query_row("SELECT COUNT(*) FROM t", (), |r| r.get(0)).unwrap();
         assert_eq!(count, 1, "the restored db should have the backup's data back");
+    }
+
+    #[test]
+    fn db_integrity_restore_skips_a_damaged_newer_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(tmp.path());
+        let db_path = ctx.dirs.db_path();
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE t (x INTEGER)", ()).unwrap();
+        for i in 0..2000 {
+            conn.execute("INSERT INTO t VALUES (?1)", [i]).unwrap();
+        }
+        drop(conn);
+        let name = db_path.file_name().unwrap().to_str().unwrap().to_string();
+        std::fs::copy(&db_path, db_path.with_file_name(format!("{name}.bak-20260101T000000Z"))).unwrap();
+
+        let mut bytes = std::fs::read(&db_path).unwrap();
+        for b in bytes.iter_mut().skip(4096) {
+            *b ^= 0xff;
+        }
+        std::fs::write(&db_path, &bytes).unwrap();
+        // The newest backup carries the same damage -- the live incident.
+        std::fs::write(db_path.with_file_name(format!("{name}.bak-20260102T000000Z")), &bytes).unwrap();
+
+        let conn = Connection::open(&db_path).unwrap();
+        let detail = db_integrity(&ctx, &conn, true).unwrap();
+        assert!(detail.contains("20260101T000000Z"), "{detail}");
+        drop(conn);
+
+        let restored = Connection::open(&db_path).unwrap();
+        let count: i64 = restored.query_row("SELECT COUNT(*) FROM t", (), |r| r.get(0)).unwrap();
+        assert_eq!(count, 2000);
+    }
+
+    #[test]
+    fn db_backup_refuses_to_keep_a_damaged_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(tmp.path());
+        let db_path = ctx.dirs.db_path();
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE t (x TEXT)", ()).unwrap();
+        for i in 0..2000 {
+            conn.execute("INSERT INTO t VALUES (?1)", [format!("row {i}")]).unwrap();
+        }
+        drop(conn);
+        let mut bytes = std::fs::read(&db_path).unwrap();
+        for b in bytes.iter_mut().skip(4096) {
+            *b ^= 0xff;
+        }
+        std::fs::write(&db_path, &bytes).unwrap();
+
+        let conn = Connection::open(&db_path).unwrap();
+        let cfg = crate::self_heal::SelfHealConfig { db_backup_interval_secs: 0, ..crate::self_heal::SelfHealConfig::load(&ctx.dirs) };
+        assert!(db_backup(&ctx, &conn, &cfg).is_err());
+        let backups = std::fs::read_dir(db_path.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".bak-") || e.file_name().to_string_lossy().contains(".backing-up-"))
+            .count();
+        assert_eq!(backups, 0, "a damaged snapshot must never land in retention");
     }
 
     #[test]
