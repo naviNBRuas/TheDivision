@@ -759,8 +759,7 @@ export default class SingleNotch extends Extension {
         }[entry.type] ?? [TEXT, ''];
         const row = new St.BoxLayout({x_expand: true, style: 'spacing: 8px; padding: 2px 0;'});
         const tag = new St.Label({text: styleFor[1], y_align: Clutter.ActorAlign.START, style: `color: ${MUTED}; font-size: 10px; min-width: 40px; padding-top: 2px;`});
-        const text = entry.type === 'divisi' && entry.degraded ? `${entry.text}  (rules only)` : entry.text;
-        const body = new St.Label({text, x_expand: true, style: `color: ${styleFor[0]}; font-size: 12px;`});
+        const body = new St.Label({text: Chat.shownText(entry), x_expand: true, style: `color: ${styleFor[0]}; font-size: 12px;`});
         body.clutter_text.line_wrap = true;
         body.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
         body.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;

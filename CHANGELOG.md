@@ -27,6 +27,7 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Fixed
 
+- The notch's Chat tab now cuts a long reply (over 600 characters or 10 lines) on a word boundary and points to the TUI or Zed for the rest, instead of letting it fill the card. The stored conversation keeps the whole reply.
 - A resolved approval could act as a one-time grant for the next identical request; approvals acted on immediately are now marked used.
 
 ## [0.24.0]

@@ -1,6 +1,6 @@
 // Run with: node chat.test.mjs (also run by `cargo test -p divisi-cli --test notch_chat_js`).
 import assert from 'node:assert/strict';
-import {applyEvents, chatEntry, newChat, parseTail, progressText, submitInput} from './chat.js';
+import {applyEvents, chatEntry, newChat, parseTail, progressText, shownText, submitInput} from './chat.js';
 
 const ev = (id, kind, body) => ({id, kind, body: JSON.stringify(body)});
 
@@ -75,6 +75,73 @@ assert.equal(progressText('node_failed', ''), 'a step failed');
     assert.equal(session, 'sess_9');
     assert.deepEqual(events.map(e => e.id), [1, 2]);
     assert.deepEqual(parseTail(''), {session: null, events: []});
+}
+
+// long replies are cut short with a pointer to the TUI or Zed, short ones are shown whole
+{
+    assert.equal(shownText({type: 'divisi', text: 'Nothing is running.'}), 'Nothing is running.');
+    assert.equal(shownText({type: 'divisi', text: 'ok', degraded: true}), 'ok  (rules only)');
+    const long = 'word '.repeat(400).trim();
+    const cut = shownText({type: 'divisi', text: long});
+    assert.ok(cut.length < 700, `a long reply is cut (got ${cut.length} chars)`);
+    assert.match(cut, /open it in the TUI or Zed/);
+    assert.ok(!/\bwor\b|\bwo\b|\bw\b/.test(cut.split('…')[0]), 'the cut falls on a word boundary');
+    const tall = Array.from({length: 40}, (_, i) => `line ${i}`).join('\n');
+    const cutTall = shownText({type: 'divisi', text: tall, degraded: true});
+    assert.ok(cutTall.split('\n').length <= 13, 'a reply with many short lines is cut too');
+    assert.match(cutTall, /open it in the TUI or Zed/);
+    assert.match(cutTall, /\(rules only\)/, 'the rules-only note survives the cut');
+    assert.equal(shownText({type: 'you', text: long}), long, 'only replies are cut');
+}
+
+// the limits are inclusive: exactly 600 characters or 10 lines is shown whole, one more is cut
+{
+    const hint = /open it in the TUI or Zed/;
+    const at = 'a'.repeat(600);
+    assert.equal(shownText({type: 'divisi', text: at}), at);
+    assert.match(shownText({type: 'divisi', text: `${at} b`}), hint);
+    const ten = Array.from({length: 10}, (_, i) => `line ${i}`).join('\n');
+    assert.equal(shownText({type: 'divisi', text: ten}), ten);
+    const eleven = shownText({type: 'divisi', text: `${ten}\nline 10`});
+    assert.match(eleven, hint);
+    assert.ok(eleven.startsWith(`${ten}…`), 'the first ten lines are kept whole');
+    assert.ok(!eleven.includes('line 10'));
+}
+
+// trailing whitespace alone is not a longer reply
+{
+    const ten = Array.from({length: 10}, (_, i) => `line ${i}`).join('\n');
+    assert.equal(shownText({type: 'divisi', text: `${ten}\n`}), `${ten}\n`);
+    const at = 'a'.repeat(600);
+    assert.equal(shownText({type: 'divisi', text: `${at}   `}), `${at}   `);
+}
+
+// a reply with no space to cut on is cut hard at the limit rather than kept whole
+{
+    const token = 'x'.repeat(2000);
+    const cut = shownText({type: 'divisi', text: token});
+    assert.equal(cut.split('…')[0], 'x'.repeat(600));
+    assert.match(cut, /open it in the TUI or Zed/);
+}
+
+// confirmations, results and progress notes are never cut, and the entry itself is left alone
+{
+    const long = 'word '.repeat(400).trim();
+    for (const type of ['confirm', 'result', 'progress'])
+        assert.equal(shownText({type, text: long}), long, `${type} is shown whole`);
+    const entry = {type: 'divisi', text: long, degraded: true};
+    shownText(entry);
+    assert.deepEqual(entry, {type: 'divisi', text: long, degraded: true});
+}
+
+// a long degraded reply arriving from the tail is what the row cuts and marks
+{
+    const c = newChat();
+    const long = 'word '.repeat(400).trim();
+    applyEvents(c, 's', [ev(1, 'chat_assistant', {text: long, degraded: true})]);
+    assert.equal(c.entries[0].text, long, 'the stored entry keeps the whole reply');
+    assert.match(shownText(c.entries[0]), /open it in the TUI or Zed\)  \(rules only\)$/);
+    assert.equal(shownText(chatEntry('chat_assistant', 'not json')), 'not json');
 }
 
 console.log('chat.js: all checks passed');

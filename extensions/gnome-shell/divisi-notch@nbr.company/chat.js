@@ -47,6 +47,31 @@ export function progressText(kind, body) {
     return short ? `${label}: ${short}` : label;
 }
 
+const MAX_REPLY_CHARS = 600;
+const MAX_REPLY_LINES = 10;
+
+/**
+ * The text a row shows. A long reply is cut on a word boundary with a pointer to the TUI or
+ * Zed, which show it whole; the card is too small for it.
+ */
+export function shownText(entry) {
+    let text = entry.text;
+    if (entry.type === 'divisi') {
+        let cut = text.split('\n').slice(0, MAX_REPLY_LINES).join('\n');
+        if (cut.length > MAX_REPLY_CHARS) {
+            cut = cut.slice(0, MAX_REPLY_CHARS);
+            const space = cut.search(/\s\S*$/);
+            if (space > 0)
+                cut = cut.slice(0, space);
+        }
+        if (cut.trimEnd().length < text.trimEnd().length)
+            text = `${cut.trimEnd()}…\n(longer reply — open it in the TUI or Zed)`;
+        if (entry.degraded)
+            text += '  (rules only)';
+    }
+    return text;
+}
+
 /**
  * Applies events. Anything at or below the cursor is ignored, so overlapping polls never show
  * a line twice. A different session starts a fresh view.

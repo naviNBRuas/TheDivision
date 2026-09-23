@@ -162,7 +162,9 @@ gate.
   brand spec prefixes the prompt. Confirmations render inline with y/n.
 - **Notch.** A Chat tab in the card: a scrolling thread and a text entry. It calls
   `divisi chat send/tail --json` as subprocesses, the same pattern the extension already
-  uses for snapshots. Long replies are truncated with an "open in TUI or Zed" hint.
+  uses for snapshots. Long replies are truncated with an "open in TUI or Zed" hint
+  (missing from the stage 4 notch; added 2026-09-23 as `shownText` in `chat.js`: over 600
+  characters or 10 lines is cut on a word boundary).
 
 **Riskiest piece:** keyboard focus for a text entry inside GNOME Shell chrome (a modal
 grab is needed, and Esc-to-dismiss must keep working). Stage 4 starts with a headless
