@@ -40,6 +40,11 @@ const SIGNALS: &[&str] = &[
     // answer right now", so fallback should treat it the same.
     "529",
     "overloaded",
+    // Amp exits 0 with "Error: Out of Credits Add credits to keep using Amp." on stderr — live-verified
+    // 2026-09-23: 139 runs were recorded as completed without doing any work.
+    "out of credits",
+    "insufficient credits",
+    "402 payment required",
 ];
 
 /// Scans a failed/timed-out run's combined output for a rate-limit signal.

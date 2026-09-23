@@ -75,7 +75,13 @@ const GONE_BENCH: Duration = Duration::days(7);
 
 fn looks_like_model_gone(output: &str) -> bool {
     let lower = output.to_lowercase();
-    lower.contains("410 gone") || lower.contains("end of life") || lower.contains("model_not_found") || lower.contains("model not found")
+    lower.contains("410 gone")
+        || lower.contains("end of life")
+        || lower.contains("model_not_found")
+        || lower.contains("model not found")
+        // Waiting never fixes a spent paid balance either; adding credits does.
+        || lower.contains("402 payment required")
+        || lower.contains("out of credits")
 }
 
 /// Benches `agent` for a failed run's `output`: until the stated reset, else with a growing wait for a
@@ -309,6 +315,13 @@ mod tests {
             .unwrap();
         }
         assert!(!note_failure_streak(&conn, "single-nvidia"));
+    }
+
+    #[test]
+    fn an_agent_out_of_credits_is_benched_for_days() {
+        let conn = db();
+        assert!(note(&conn, "amp", "Error: Out of Credits Add credits to keep using Amp."));
+        assert!(active(&conn, Utc::now()).unwrap()["amp"] > Utc::now() + Duration::days(6));
     }
 
     #[test]
