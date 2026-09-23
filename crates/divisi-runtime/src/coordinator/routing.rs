@@ -111,7 +111,14 @@ impl CoordinatorConfig {
     pub fn load(dirs: &DivisiDirs) -> Self {
         let path = dirs.coordinator_file();
         match std::fs::read_to_string(&path) {
-            Ok(s) => toml::from_str(&s).unwrap_or_default(),
+            // Live-verification finding (2026-09-23): a routing.toml without `[effort_max_steps]` failed
+            // to parse and was silently replaced by the built-in table, so every hand edit (dropping
+            // claude, adding kilocode) was ignored for days. Missing sections now take their defaults,
+            // and a file that still can't be parsed is logged instead of swallowed.
+            Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
+                tracing::warn!(path = %path.display(), error = %e, "routing.toml does not parse; using the built-in routing table");
+                Self::default()
+            }),
             Err(_) => {
                 let cfg = Self::default();
                 if let Ok(s) = toml::to_string_pretty(&cfg) {
@@ -127,6 +134,7 @@ impl CoordinatorConfig {
 /// `kind -> effort -> [agent]`, plus the `effort -> max_steps` knobs and
 /// the global fallback order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RoutingTable {
     /// outer key: kind (`code`, `plan`, …); inner key: effort
     /// (`quick`/`standard`/`deep`).
@@ -537,6 +545,13 @@ mod tests {
             select_agent(&t, NodeKind::Plan, Effort::Standard, &h),
             Some("grok".to_string())
         );
+    }
+
+    #[test]
+    fn a_routing_file_without_effort_steps_keeps_its_own_lists() {
+        let table: RoutingTable = toml::from_str("fallback_default = [\"opencode\"]\n[kinds.plan]\nstandard = [\"single-pool\"]\n").unwrap();
+        assert_eq!(table.fallback_default, vec!["opencode".to_string()]);
+        assert_eq!(table.kinds["plan"]["standard"], vec!["single-pool".to_string()]);
     }
 
     #[test]
