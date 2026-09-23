@@ -128,7 +128,8 @@ impl PoolWire for CloudflareWire {
             Some((a, t)) => (a, t),
             None => return Err(PoolError::AuthFailed),
         };
-        let model = "@cf/meta/llama-3.1-8b-instruct";
+        // The 70B fast variant follows multi-step instructions; the 8B one it replaced could not.
+        let model = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
         let url = format!("https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}");
         let messages: Vec<Value> = req.messages.iter().map(|m| json!({ "role": m.role, "content": m.content })).collect();
 
@@ -136,7 +137,8 @@ impl PoolWire for CloudflareWire {
             .post(&url)
             .timeout(provider.timeout)
             .bearer_auth(token)
-            .json(&json!({ "messages": messages }))
+            // Workers AI defaults to 256 output tokens, too few for a file edit or a plan.
+            .json(&json!({ "messages": messages, "max_tokens": req.max_tokens.unwrap_or(2048) }))
             .send()
             .map_err(|e| PoolError::Transport(e.to_string()))?;
 
@@ -146,9 +148,25 @@ impl PoolWire for CloudflareWire {
             return Err(http_error_to_pool_error(status, &text));
         }
         let value: Value = serde_json::from_str(&text).map_err(|e| PoolError::Other(format!("invalid JSON: {e}")))?;
-        let content = value.get("result").and_then(|r| r.get("response")).and_then(|r| r.as_str()).unwrap_or("").to_string();
+        let content = cloudflare_content(&value);
         let latency_ms = started.elapsed().as_millis() as u64;
         Ok(PoolResponse { content, tool_calls: vec![], finish_reason: None, truncated: false, usage_tokens: None, ttfb_ms: Some(latency_ms), latency_ms })
+    }
+}
+
+/// Workers AI's reply text. When the model answers in JSON, `result.response` arrives already parsed
+/// into an object (live-verified 2026-09-23: every JSON reply read as empty); newer models use an
+/// OpenAI-style `choices` array instead.
+fn cloudflare_content(value: &Value) -> String {
+    let result = value.get("result");
+    match result.and_then(|r| r.get("response")) {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Null) | None => result
+            .and_then(|r| r.pointer("/choices/0/message/content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .to_string(),
+        Some(other) => other.to_string(),
     }
 }
 
@@ -378,6 +396,14 @@ pub fn dispatch_for_wire(req: &PoolRequest, provider: &FreeProvider, key: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cloudflare_content_reads_parsed_json_and_choices_shapes() {
+        assert_eq!(cloudflare_content(&json!({"result": {"response": "hi"}})), "hi");
+        let parsed = cloudflare_content(&json!({"result": {"response": {"tool": "list", "path": "."}}}));
+        assert_eq!(serde_json::from_str::<Value>(&parsed).unwrap()["tool"], "list");
+        assert_eq!(cloudflare_content(&json!({"result": {"choices": [{"message": {"content": "yo"}}]}})), "yo");
+    }
     use crate::pool::client::test_server::MockServer;
     use crate::pool::client::ChatMessage;
     use divisi_core::free_pool::{Auth, Limits, Wire};
