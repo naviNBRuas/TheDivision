@@ -1704,13 +1704,18 @@ fn dispatch(
                 max_dispatches.unwrap_or(default_dispatches),
                 max_minutes.unwrap_or(cfg.max_goal_minutes),
             )?;
-            // plan + first tick, best-effort: a planning failure leaves the
-            // goal recoverable (blocked / re-amendable) rather than losing it.
-            if let Err(e) = crate::coordinator::plan_goal(ctx, &mut conn, &g.id, agent.as_deref()) {
-                let _ = crate::coordinator::goal::set_blocked(&conn, &g.id, &format!("planning failed: {e:#}"));
-            } else if let Err(e) = crate::coordinator::drive(ctx, &mut conn, registry) {
-                tracing::warn!(goal = %g.id, error = %e, "initial coordinator drive failed");
-            }
+            // Planning is a model call that can take minutes under load, so it runs on its own thread
+            // and the daemon tick drives the goal once it has a graph (the scheduler skips a goal that
+            // is still `planning`). A planning failure leaves the goal blocked and recoverable.
+            let (plan_ctx, goal_id, agent) = (ctx.clone(), g.id.clone(), agent.clone());
+            std::thread::spawn(move || match coordinator_db(&plan_ctx) {
+                Ok(mut conn) => {
+                    if let Err(e) = crate::coordinator::plan_goal(&plan_ctx, &mut conn, &goal_id, agent.as_deref()) {
+                        let _ = crate::coordinator::goal::set_blocked(&conn, &goal_id, &format!("planning failed: {e:#}"));
+                    }
+                }
+                Err(e) => tracing::warn!(goal = %goal_id, error = %e, "planning a submitted goal failed"),
+            });
             Ok(ResponseData::GoalId(g.id))
         }
         Request::GoalStatus { goal_id } => {

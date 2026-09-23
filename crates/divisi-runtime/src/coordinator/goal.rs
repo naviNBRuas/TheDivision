@@ -227,6 +227,17 @@ pub fn find_overlapping(conn: &Connection, text: &str) -> Result<Option<Goal>> {
     fn tokens(s: &str) -> std::collections::HashSet<String> {
         s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 2).map(|w| w.to_string()).collect()
     }
+    // A goal that names itself with a leading `[source:key]` tag (the epic conductor's
+    // `[conductor:E27/02-...]`) is the same ask only as another goal with that exact tag. Its
+    // boilerplate is shared by design, so fuzzy matching folded distinct sprints into one goal.
+    fn tag(s: &str) -> Option<&str> {
+        let rest = s.strip_prefix('[')?;
+        let end = rest.find(']')?;
+        rest[..end].contains(':').then(|| &rest[..end])
+    }
+    if let Some(want_tag) = tag(text) {
+        return Ok(active(conn)?.into_iter().find(|g| tag(&g.text) == Some(want_tag)));
+    }
     let want = tokens(text);
     if want.is_empty() {
         return Ok(None);
@@ -654,6 +665,16 @@ mod tests {
         let g = create(&conn, &s.id, "fix the login bug in auth.rs", GoalMode::Auto, 25, 60).unwrap();
         let found = find_overlapping(&conn, "fix the login bug in auth.rs").unwrap();
         assert_eq!(found.unwrap().id, g.id);
+    }
+
+    #[test]
+    fn tagged_goals_overlap_only_on_the_same_tag() {
+        let conn = mem();
+        let s = super::super::session::new_session(&conn, std::path::Path::new("/tmp/p")).unwrap();
+        let boiler = "Implement docs/queue sprint. Read the sprint file in full first, TDD, small commits, never push.";
+        create(&conn, &s.id, &format!("[conductor:E27/01-a] {boiler}"), GoalMode::Auto, 25, 60).unwrap();
+        assert!(find_overlapping(&conn, &format!("[conductor:E27/02-b] {boiler}")).unwrap().is_none());
+        assert!(find_overlapping(&conn, &format!("[conductor:E27/01-a] {boiler}")).unwrap().is_some());
     }
 
     #[test]
