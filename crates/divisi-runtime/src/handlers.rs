@@ -1775,7 +1775,7 @@ fn dispatch(
             Ok(ResponseData::Goals(out))
         }
         Request::GoalAmend { goal_id, text } => {
-            let mut conn = coordinator_db(ctx)?;
+            let conn = coordinator_db(ctx)?;
             let g = crate::coordinator::goal::get(&conn, &goal_id)?
                 .ok_or_else(|| anyhow::anyhow!("no such goal: {goal_id}"))?;
             // `budget=N` raises the dispatch cap and re-opens a blocked goal;
@@ -1811,11 +1811,20 @@ fn dispatch(
             // this goal — self-heal's coordinator category checks this
             // before auto-editing it.
             crate::coordinator::goal::mark_human_edited(&conn, &goal_id)?;
-            // An answer to a goal parked for input is what it was waiting for: pick it back up.
+            // An answer to a goal parked for input is what it was waiting for: pick it back up. Resuming
+            // can re-plan (a model call) and the daemon's tick drives it afterwards, so neither runs
+            // inside this request: an amend from the CLI or the notch used to hang for minutes.
             if g.status == crate::coordinator::graph::GoalStatus::WaitingInput {
-                crate::coordinator::resume_goal(ctx, &mut conn, &goal_id)?;
+                let ctx = ctx.clone();
+                std::thread::spawn(move || match coordinator_db(&ctx) {
+                    Ok(mut conn) => {
+                        if let Err(e) = crate::coordinator::resume_goal(&ctx, &mut conn, &goal_id) {
+                            tracing::warn!(goal = %goal_id, error = %e, "resuming an amended goal failed");
+                        }
+                    }
+                    Err(e) => tracing::warn!(goal = %goal_id, error = %e, "resuming an amended goal failed"),
+                });
             }
-            let _ = crate::coordinator::drive(ctx, &mut conn, registry);
             Ok(ResponseData::Empty)
         }
         Request::GoalCancel { goal_id } => {
