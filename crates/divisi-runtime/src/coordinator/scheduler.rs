@@ -467,6 +467,7 @@ pub fn tick(
                         // aihorde-class free-pool providers (`no_tools`)
                         // the same way brain roles exclude them for JSON.
                         require_structured_output: node.kind == NodeKind::Code,
+                        pool_agentic: true,
                     };
                     match dispatcher.dispatch(opts) {
                         Ok(task_id) => {

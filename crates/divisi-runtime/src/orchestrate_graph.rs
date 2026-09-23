@@ -160,6 +160,7 @@ pub fn run(ctx: &Context, opts: GraphOrchestrateOptions<'_>) -> Result<Vec<TaskR
                             allow_fallback: false,
                             usage_json: false,
                             require_structured_output: false,
+                            pool_agentic: true,
                         },
                     )?;
                     Ok((node.id, record))
@@ -272,6 +273,7 @@ pub fn plan_and_run(
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         },
     )?;
     if planned.status != TaskStatus::Completed {

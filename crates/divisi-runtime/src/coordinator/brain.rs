@@ -250,6 +250,7 @@ fn run_role(
                 // free-pool providers whose wire contract doesn't
                 // guarantee that (see `require_structured_output`'s doc).
                 require_structured_output: true,
+                pool_agentic: false,
             },
         )?;
         let out = task_output(&rec);
@@ -275,6 +276,7 @@ fn run_role(
                     allow_fallback: true,
                     usage_json: false,
                     require_structured_output: true,
+                    pool_agentic: false,
                 },
             ) {
                 if let Some(v) = extract_json_where(&task_output(&rec), |v| accept(v)) {

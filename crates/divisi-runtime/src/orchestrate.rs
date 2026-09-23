@@ -87,6 +87,7 @@ pub fn run(conn: &Connection, ctx: &Context, opts: OrchestrateOptions) -> Result
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         })?;
 
         let failed = record.status == TaskStatus::Failed;
@@ -174,6 +175,7 @@ pub fn run_parallel(ctx: &Context, opts: ParallelOrchestrateOptions) -> Result<V
                     allow_fallback: false,
                     usage_json: false,
                     require_structured_output: false,
+                    pool_agentic: true,
                 })?;
 
                 // Broadcast what this agent did to the rest of the batch's

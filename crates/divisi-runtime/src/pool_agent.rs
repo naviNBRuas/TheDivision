@@ -75,6 +75,26 @@ pub fn execute(
     dispatch: &DispatchFn,
 ) -> Result<PoolAgentOutcome> {
     let key = handoff::session_key(session_key, prompt);
+    let build = |platform: &str, model: &str| {
+        let mut messages = vec![ChatMessage { role: "user".to_string(), content: prompt.to_string() }];
+        handoff::inject(handoff_store, &key, platform, model, &mut messages);
+        PoolRequest { messages, ..Default::default() }
+    };
+    execute_with(conn, strategy, candidates, resolve_secret, dispatch, &build)
+}
+
+/// One chat turn over the whole pool: pick a candidate with the bandit, lease, dispatch, and on a rate
+/// limit, payment, auth or transport failure bench that candidate and try the next. `build` makes the
+/// request for the picked `(platform, model)`, so a multi-step caller (`pool_coder`) can send its whole
+/// conversation and simply continue on another provider when one runs out.
+pub fn execute_with(
+    conn: &Connection,
+    strategy: &bandit::Strategy,
+    candidates: &[(String, String, String)],
+    resolve_secret: &SecretFn,
+    dispatch: &DispatchFn,
+    build: &dyn Fn(&str, &str) -> PoolRequest,
+) -> Result<PoolAgentOutcome> {
     let mut attempted: Vec<(String, String, String)> = Vec::new();
     let mut earliest_recovery_ms: Option<i64> = None;
 
@@ -98,17 +118,22 @@ pub fn execute(
             continue;
         };
 
-        let est_tokens = estimate_tokens(prompt);
+        let req = build(&platform, &model);
+        let est_tokens: u64 = req.messages.iter().map(|m| estimate_tokens(&m.content)).sum();
         let lease = ledger::acquire_lease(conn, &platform, &model, &key_id, est_tokens)?;
-
-        let mut messages = vec![ChatMessage { role: "user".to_string(), content: prompt.to_string() }];
-        handoff::inject(handoff_store, &key, &platform, &model, &mut messages);
-        let req = PoolRequest { messages, ..Default::default() };
 
         let started = Instant::now();
         let result = dispatch(&req, provider, &secret);
         ledger::release_lease(conn, &lease.lease_id)?;
 
+        // An empty reply is not a success: it taught the bandit that a fast, broken provider was the
+        // best one and starved every other key (live, 2026-09-23). Bench it like a transport failure.
+        let result = match result {
+            Ok(resp) if resp.content.trim().is_empty() && resp.tool_calls.is_empty() => {
+                Err(PoolError::Other("empty reply".to_string()))
+            }
+            other => other,
+        };
         match result {
             Ok(mut resp) => {
                 resp.latency_ms = resp.latency_ms.max(started.elapsed().as_millis() as u64);

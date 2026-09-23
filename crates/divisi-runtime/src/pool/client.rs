@@ -40,7 +40,7 @@ pub struct PoolRequest {
     pub requires_tools: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PoolResponse {
     pub content: String,
     pub tool_calls: Vec<ToolCall>,

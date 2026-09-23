@@ -18,6 +18,7 @@ pub mod orchestrate;
 pub mod orchestrate_graph;
 pub mod pool;
 pub mod pool_agent;
+pub mod pool_coder;
 pub mod qdrant_backend;
 pub mod redis_backend;
 pub mod registry;

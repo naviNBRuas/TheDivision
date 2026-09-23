@@ -578,6 +578,9 @@ pub struct RunTaskOptions<'a> {
     /// needs either real tool-calling or strict single-shot JSON
     /// compliance those providers' wire contracts don't guarantee.
     pub require_structured_output: bool,
+    /// For `single-pool` only: run the multi-step coding loop (`pool_coder`) over the pool instead of
+    /// one text completion. On for real work; off for planner/supervisor/integrator JSON calls.
+    pub pool_agentic: bool,
 }
 
 /// Cap on the injected memory/notes/knowledge preamble so it can't dwarf
@@ -780,6 +783,9 @@ pub struct OwnedRunTaskOptions {
     pub allow_fallback: bool,
     pub usage_json: bool,
     pub require_structured_output: bool,
+    /// For `single-pool` only: run the multi-step coding loop (`pool_coder`) over the pool instead of
+    /// one text completion. On for real work; off for planner/supervisor/integrator JSON calls.
+    pub pool_agentic: bool,
 }
 
 impl OwnedRunTaskOptions {
@@ -796,6 +802,7 @@ impl OwnedRunTaskOptions {
             allow_fallback: self.allow_fallback,
             usage_json: self.usage_json,
             require_structured_output: self.require_structured_output,
+            pool_agentic: self.pool_agentic,
         }
     }
 }
@@ -1165,7 +1172,11 @@ fn execute(
     // fallback chain) — holding this guard any longer than the run
     // itself would deadlock that recursive call forever waiting on a
     // slot only this (blocked) thread could ever release.
-    let outcome = if opts.agent == "single-pool" {
+    let outcome = if opts.agent == "single-pool" && opts.pool_agentic {
+        // Real work on the pool: a multi-step coding loop in the task's checkout, each turn dispatched
+        // through the pool so one provider running dry mid-task hands the conversation to the next.
+        crate::pool_coder::run_as_task(conn, &run_cwd, &prompt, opts.timeout, opts.require_structured_output)
+    } else if opts.agent == "single-pool" {
         // Never shells a binary: `pool_agent::run_as_task` dispatches
         // straight to a provider's HTTP API via the ledger/bandit/cooldown
         // engine, which needs `&Connection` — a parameter `AgentAdapter::
@@ -1412,6 +1423,7 @@ fn maybe_fail_over(conn: &Connection, ctx: &Context, id: i64, opts: &RunTaskOpti
         allow_fallback: true,
         usage_json: false,
         require_structured_output: false,
+        pool_agentic: true,
     };
     match create_for_cwd(conn, next_opts.description, next_opts.agent, next_opts.cwd) {
         Ok(next_id) => {
@@ -1796,6 +1808,7 @@ value = "-c"
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
         let task = run(&conn, &ctx, opts).unwrap();
         assert_eq!(task.status, TaskStatus::Completed, "expected the sh command to succeed");
@@ -1853,6 +1866,7 @@ value = "-c"
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
         let task = run(&conn, &ctx, opts).unwrap();
         assert_eq!(task.status, TaskStatus::Failed, "a hollow exit-0 with no real output must not read as success");
@@ -1912,6 +1926,7 @@ value = "-c"
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
         // A non-git cwd with --worktree requested should no longer be a
         // guaranteed, un-retriable failure: it should fall back to running
@@ -1958,6 +1973,7 @@ value = "-c"
                 allow_fallback: false,
                 usage_json: false,
                 require_structured_output: false,
+                pool_agentic: true,
             },
         )
     }
@@ -1999,6 +2015,7 @@ value = "-c"
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
         let task = run(&conn, &ctx, opts).unwrap();
         assert_eq!(task.status, TaskStatus::Failed);
@@ -2055,6 +2072,7 @@ value = "-c"
             allow_fallback: true,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
         maybe_fail_over(&conn, &ctx, id, &opts, "Error: rate limit exceeded, try again later", true, None);
 
@@ -2106,6 +2124,7 @@ value = "-c"
             allow_fallback: true,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
         maybe_fail_over(&conn, &ctx, id, &opts, "error: file not found", false, None);
 
@@ -2263,6 +2282,7 @@ value = "-c"
             allow_fallback: false,
             usage_json: false,
             require_structured_output: false,
+            pool_agentic: true,
         };
 
         let task = run(&conn, &ctx, opts).unwrap();

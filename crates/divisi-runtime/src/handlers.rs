@@ -551,6 +551,7 @@ fn dispatch(
                         allow_fallback,
                         usage_json,
                         require_structured_output: false,
+                        pool_agentic: true,
                     },
                     registry.clone(),
                 )?;
@@ -572,6 +573,7 @@ fn dispatch(
                     allow_fallback,
                     usage_json,
                     require_structured_output: false,
+                    pool_agentic: true,
                 },
             )?;
             Ok(ResponseData::Task(record))
