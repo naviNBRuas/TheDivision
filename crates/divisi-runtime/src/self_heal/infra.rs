@@ -64,7 +64,7 @@ fn stale_worktrees(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Re
     };
     let now = chrono::Utc::now();
     let retention = std::time::Duration::from_secs(cfg.worktree_retention_hours as u64 * 3600);
-    let (mut removed, mut dirty, mut unmanaged) = (0usize, 0usize, 0usize);
+    let (mut removed, mut dirty, mut unmanaged, mut branches) = (0usize, 0usize, 0usize, 0usize);
     for entry in entries.filter_map(|e| e.ok()) {
         let wt = entry.path();
         let Some(id) = wt.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix("task-")).and_then(|n| n.parse::<i64>().ok()) else {
@@ -97,11 +97,24 @@ fn stale_worktrees(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Re
             .filter(|o| o.status.success())
             .map(|o| std::path::PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()));
         let Some(repo) = common.as_deref().and_then(|c| c.parent()) else { continue };
+        let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"])
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|b| b.starts_with("single/task-"));
         if divisi_core::worktree::remove(repo, &wt, false).is_ok() {
             removed += 1;
+            // The task branch goes too once its work is in the checked-out branch; `-d` refuses an
+            // unmerged one, so unreviewed work is never lost. 170 of these had piled up by 2026-09-23.
+            if let Some(b) = branch {
+                let ok = std::process::Command::new("git").arg("-C").arg(repo).args(["branch", "-d", &b]).output();
+                if ok.is_ok_and(|o| o.status.success()) {
+                    branches += 1;
+                }
+            }
         }
     }
-    Ok(format!("{removed} removed, {dirty} kept (uncommitted changes), {unmanaged} not recognised by git (left alone)"))
+    Ok(format!("{removed} removed ({branches} merged branches deleted), {dirty} kept (uncommitted changes), {unmanaged} not recognised by git (left alone)"))
 }
 
 /// `runtime.sock` exists but nothing is actually listening on it — a
@@ -698,18 +711,21 @@ mod tests {
         let conn = test_conn();
         let root = ctx.dirs.state_dir().join("worktrees");
         let mut paths = Vec::new();
-        for (id, name) in [(1, "clean"), (2, "dirty")] {
+        for (id, name) in [(1, "clean"), (2, "dirty"), (3, "ahead")] {
             let wt = root.join(format!("task-{id}"));
             divisi_core::worktree::add(&repo, &wt, &format!("single/task-{name}")).unwrap();
             if name == "dirty" {
                 std::fs::write(wt.join("scratch.txt"), "uncommitted").unwrap();
+            }
+            if name == "ahead" {
+                git(&wt, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "unmerged work"]);
             }
             paths.push(wt);
         }
         let mut cfg = SelfHealConfig::default();
         // Freshly created worktrees are inside the default 24h window.
         let msg = stale_worktrees(&ctx, &conn, &cfg).unwrap();
-        assert!(msg.starts_with("0 removed, 0 kept"), "{msg}");
+        assert!(msg.starts_with("0 removed (0 merged branches deleted), 0 kept"), "{msg}");
         assert!(paths.iter().all(|p| p.exists()));
 
         cfg.worktree_retention_hours = 1;
@@ -718,10 +734,12 @@ mod tests {
             std::fs::File::open(p).unwrap().set_modified(old).unwrap();
         }
         let msg = stale_worktrees(&ctx, &conn, &cfg).unwrap();
-        assert!(msg.starts_with("1 removed, 1 kept"), "{msg}");
+        assert!(msg.starts_with("2 removed (1 merged branches deleted), 1 kept"), "{msg}");
         assert!(!paths[0].exists(), "clean old worktree should be gone");
         assert!(paths[1].exists(), "dirty worktree must survive");
-        git(&repo, &["rev-parse", "--verify", "single/task-clean"]);
+        let has = |b: &str| std::process::Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "--verify", "-q", b]).output().unwrap().status.success();
+        assert!(!has("single/task-clean"), "a merged task branch goes with its worktree");
+        assert!(has("single/task-ahead"), "an unmerged task branch is never deleted");
     }
 
     #[test]
