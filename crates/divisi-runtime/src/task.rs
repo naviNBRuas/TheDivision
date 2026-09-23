@@ -1252,8 +1252,12 @@ fn execute(
             // rate-limit-shaped substring (a line number, a diff hunk
             // header, a byte count) and must not be flagged.
             let rate_limited = if treat_as_failed {
-                let combined_output = format!("{}\n{}", outcome.stdout, outcome.stderr);
-                let unavailable = divisi_core::ratelimit::looks_like_unavailable(&combined_output);
+                // Only where a CLI reports its own errors: stderr and the end of stdout. The whole
+                // transcript of a long run that timed out or failed on its own merits can quote "rate
+                // limits" and "quota" as subject matter (a sprint about webhooks did) and bench a
+                // healthy agent for hours; a timeout is never itself a quota message.
+                let combined_output = format!("{}\n{}", stdout_tail(&outcome.stdout, 2000), outcome.stderr);
+                let unavailable = !outcome.timed_out && divisi_core::ratelimit::looks_like_unavailable(&combined_output);
                 // If the agent said when it recovers, keep routing away until then.
                 if unavailable {
                     crate::agent_cooldown::note(conn, opts.agent, &combined_output);
@@ -1453,6 +1457,15 @@ fn remember_failure(
             expires_in_seconds: None,
         },
     );
+}
+
+/// The last `max` bytes of `stdout`, cut on a char boundary.
+fn stdout_tail(stdout: &str, max: usize) -> &str {
+    let mut start = stdout.len().saturating_sub(max);
+    while !stdout.is_char_boundary(start) {
+        start += 1;
+    }
+    &stdout[start..]
 }
 
 fn summarize(stdout: &str, stderr: &str, timed_out: bool, exit_code: Option<i32>) -> String {

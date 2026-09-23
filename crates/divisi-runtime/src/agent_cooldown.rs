@@ -143,7 +143,7 @@ pub fn note_failure_streak(conn: &Connection, agent: &str) -> bool {
         return false;
     }
     let statuses: Vec<String> = conn
-        .prepare("SELECT status FROM tasks WHERE agent = ?1 AND status IN ('failed','completed','cancelled') ORDER BY id DESC LIMIT ?2")
+        .prepare("SELECT status FROM tasks WHERE agent = ?1 AND status IN ('failed','completed','cancelled') AND COALESCE(summary, '') NOT LIKE 'interrupted:%' ORDER BY id DESC LIMIT ?2")
         .and_then(|mut q| q.query_map(params![agent, FAILURE_STREAK as i64], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>())
         .unwrap_or_default();
     if statuses.len() < FAILURE_STREAK || !statuses.iter().all(|s| s == "failed") {
@@ -295,6 +295,20 @@ mod tests {
         let conn = db();
         assert!(note(&conn, "single-openrouter", "Provider error (429 Too Many Requests): Rate limit exceeded: free-models-per-day"));
         assert!(active(&conn, Utc::now()).unwrap().contains_key("single-openrouter"));
+    }
+
+    #[test]
+    fn runs_interrupted_by_a_daemon_restart_do_not_count_toward_a_failure_streak() {
+        let conn = db();
+        crate::task::ensure_schema(&conn).unwrap();
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO tasks (agent, description, status, summary, created_at, updated_at) VALUES ('single-nvidia', 'd', 'failed', 'interrupted: divisid restarted while this task was in flight', ?1, ?1)",
+                params![Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        }
+        assert!(!note_failure_streak(&conn, "single-nvidia"));
     }
 
     #[test]

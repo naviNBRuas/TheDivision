@@ -331,7 +331,7 @@ fn agents_on_a_pure_failure_streak(conn: &rusqlite::Connection, cutoff: &str) ->
     let mut breaker = BTreeSet::new();
     for agent in recent_agents {
         let statuses: Vec<String> = match conn
-            .prepare("SELECT status FROM tasks WHERE agent = ?1 ORDER BY id DESC LIMIT ?2")
+            .prepare("SELECT status FROM tasks WHERE agent = ?1 AND COALESCE(summary, '') NOT LIKE 'interrupted:%' ORDER BY id DESC LIMIT ?2")
             .and_then(|mut stmt| {
                 stmt.query_map(rusqlite::params![agent, CONSECUTIVE_FAILURE_BREAKER_THRESHOLD], |r| r.get::<_, String>(0))?
                     .collect::<rusqlite::Result<Vec<_>>>()
