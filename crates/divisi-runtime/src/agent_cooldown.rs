@@ -62,9 +62,20 @@ pub fn record(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str
     Ok(())
 }
 
-/// Provider-backed `single-*` agents are rate limited per key by the pool, not per agent.
+/// `single-pool` is rate limited per key by the pool, not per agent. The other `single-*` names are
+/// fixed provider+model wrappers with no pool behind them -- exempting them too (as this once did) let
+/// one EOL'd model and two daily-capped keys fail 500+ dispatches in a day without ever being benched.
 fn exempt(agent: &str) -> bool {
-    agent.starts_with("single-")
+    agent == "single-pool"
+}
+
+/// How long an agent whose model the provider has retired (410 Gone, "end of life", unknown model)
+/// stays out of routing: retrying cannot fix it, a config change can, and `divisi agent` clears it.
+const GONE_BENCH: Duration = Duration::days(7);
+
+fn looks_like_model_gone(output: &str) -> bool {
+    let lower = output.to_lowercase();
+    lower.contains("410 gone") || lower.contains("end of life") || lower.contains("model_not_found") || lower.contains("model not found")
 }
 
 /// Benches `agent` for a failed run's `output`: until the stated reset, else with a growing wait for a
@@ -74,6 +85,9 @@ pub fn note(conn: &Connection, agent: &str, output: &str) -> bool {
         return false;
     }
     let now = Utc::now();
+    if looks_like_model_gone(output) {
+        return record_with(conn, agent, now + GONE_BENCH, output, strikes_of(conn, agent), "gone").is_ok();
+    }
     if let Some(until) = divisi_core::ratelimit::reset_time(output, Local::now()) {
         return record(conn, agent, until, output).is_ok();
     }
@@ -270,10 +284,25 @@ mod tests {
     }
 
     #[test]
-    fn provider_backed_agents_are_never_benched_here() {
+    fn the_pool_agent_is_never_benched_here() {
         let conn = db();
-        assert!(!note(&conn, "single-google", "Provider error (429 Too Many Requests)"));
+        assert!(!note(&conn, "single-pool", "Provider error (429 Too Many Requests)"));
         assert!(active(&conn, Utc::now()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_fixed_provider_wrapper_is_benched_like_any_agent() {
+        let conn = db();
+        assert!(note(&conn, "single-openrouter", "Provider error (429 Too Many Requests): Rate limit exceeded: free-models-per-day"));
+        assert!(active(&conn, Utc::now()).unwrap().contains_key("single-openrouter"));
+    }
+
+    #[test]
+    fn a_retired_model_is_benched_for_days_not_retried() {
+        let conn = db();
+        assert!(note(&conn, "single-nvidia", "Provider error (410 Gone): The model 'x' has reached its end of life"));
+        let until = active(&conn, Utc::now()).unwrap()["single-nvidia"];
+        assert!(until > Utc::now() + Duration::days(6));
     }
 
     #[test]
