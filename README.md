@@ -57,6 +57,8 @@ divisi was SingleCLI until 0.24.0. What changed:
 |---|---|
 | `single`, `single-runtimed` | `divisi`, `divisid` |
 | `singlecli-mcp`, `single-mcp` | `divisi-mcp`, `divisi-gateway` |
+| `single-pool`, `single-<provider>` agents, `single/task-*` branches | `divisi-pool`, `divisi-<provider>`, `divisi/task-*` (old names in configs still work) |
+| `singlecli:<tool>` MCP permission rules | `divisi:<tool>` (old rules still apply) |
 | `SINGLE_*` environment variables | `DIVISI_*` (the old names are still read) |
 | `~/.config/single` | `~/.config/divisi` (moved automatically on first run, with a symlink left behind) |
 
@@ -78,15 +80,15 @@ Binaries land in `target/release/`: `divisi` (the CLI/TUI) and
 `divisid` (the headless runtime daemon), plus the `divisi-*` helpers and the
 deprecated `single*` aliases. Put them on `$PATH`.
 
-**Current release (still named `single`):**
+**Install** (releases published before the rename are named `singlecli-*`; the installer takes either):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.sh | sh
 ```
 
-Downloads the prebuilt `single` and `single-runtimed` binaries for your
+Downloads the prebuilt divisi binaries (`divisi`, `divisid`, `divisi-mcp`, `divisi-gateway`, `divisi-agent`, `divisi-lsp`, `divisi-notch`) for your
 platform from the latest [release](https://github.com/naviNBRuas/SingleCLI/releases)
-to `~/.local/bin` (override with `SINGLE_INSTALL_DIR`). See
+to `~/.local/bin` (override with `DIVISI_INSTALL_DIR`). See
 [`install.sh`](install.sh) — it's a plain shell script, read it before
 piping it into `sh` if you want to know exactly what it does.
 
@@ -147,7 +149,7 @@ divisi coordinator status                    # running/queued/blocked/waiting-on
 divisi goal status <goal-id>                 # that goal's task graph, node-by-node status
 divisi acp                                   # stdio ACP server — point Zed's agent panel at this
 
-divisi task run --agent single-pool "explain this diff"   # dispatch straight to the free-provider
+divisi task run --agent divisi-pool "explain this diff"   # dispatch straight to the free-provider
                                                             # pool over HTTP, no agent CLI, no login
 divisi provider list-free                    # the vendored ~44-provider free-LLM catalog
 divisi provider add-free groq                # register + best-effort validate a key
@@ -175,7 +177,7 @@ Every list/inspect command supports `--json` for scripting.
   yet enforced), and a local skills directory.
 - **Phase 3** — a SQLite-backed, scoped, provenance-tagged memory store,
   and a git/project context resolver.
-- **Phase 4** — real single-agent task execution: `divisi task run`
+- **Phase 4** — real divisi-agent task execution: `divisi task run`
   invokes an agent CLI's actual non-interactive mode (`claude -p`, `codex
   exec`, `opencode run`, `agy -p`), optionally isolated in a real git
   worktree, captures the output as an artifact, and records the result.
@@ -268,7 +270,7 @@ Every list/inspect command supports `--json` for scripting.
   runs and its `configure` wizard wired as login; Aider gets
   non-interactive runs only — it has no MCP support and authenticates via
   API-key flags/env vars, not an interactive login.
-- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 of the current 24 built-in agents; the registry has since grown to also include qwen-code, amp, openhands, droid, codebuff, plandex, continue-cli, grok, mistral-vibe, crush, kilocode, and `single-pool`/`single-agent` (divisi's own native, MCP-only agents — see "Coordinator, goals, and the free-provider pool" below).
+- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 of the current 24 built-in agents; the registry has since grown to also include qwen-code, amp, openhands, droid, codebuff, plandex, continue-cli, grok, mistral-vibe, crush, kilocode, and `divisi-pool`/`divisi-agent` (divisi's own native, MCP-only agents — see "Coordinator, goals, and the free-provider pool" below).
   Copilot gets full parity too (MCP sync into `~/.copilot/mcp-config.json`,
   non-interactive runs, login, plugin install). Kiro gets non-interactive
   runs and login (both confirmed by running it directly), but MCP stays
@@ -297,7 +299,7 @@ queued/blocked at once.
 
 Two more pieces plug into this:
 
-- **The free-provider pool (E28)** — `single-pool` is a built-in agent
+- **The free-provider pool (E28)** — `divisi-pool` is a built-in agent
   that never shells a CLI at all: it picks a `(provider, model, key)` via
   a Thompson-sampling bandit over a vendored ~44-provider free-LLM
   catalog (`divisi provider list-free`) and dispatches straight to that

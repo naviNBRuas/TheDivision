@@ -27,10 +27,6 @@ PROTECT = [
     for p in (
         r"naviNBRuas/SingleCLI",
         r"single-redact-master-key",
-        r'"single-pool"',
-        r'"single-agent"',
-        r'"single-(?:openrouter|nvidia|gemini|widgetsai)"',
-        r"single-\{",
         r'"single_memory"',
     )
 ]
@@ -113,7 +109,9 @@ PROSE = [
 
 LEGACY = re.compile(
     r"SingleCLI|singlecli"
-    r"|(?<![\w.-])single-(?:core|protocol|runtimed|runtime|agent-sdk|native-agent|cli|tui|web|lsp|notch|mcp)(?![\w-])"
+    r"|(?<![\w.-])single-(?:core|protocol|runtimed|runtime|agent-sdk|native-agent|cli|tui|web|lsp|notch|mcp|pool|agent|acp)(?![\w-])"
+    r"|(?<![\w.-])single-(?:openrouter|nvidia|google|gemini|typhoon|huggingface|ollama-cloud|mistral|cerebras|cloudflare|opencode-zen)(?![\w-])"
+    r"|single/task-"
     r"|\bSINGLE_[A-Z]|\.config/single(?![\w-])"
     r"|\bSingle(?:Dirs|CliServer|AgentAdapter)\b"
     r"|\bsingle_(?:core|protocol|runtime|agent_sdk|native_agent|notch|web|tui|lsp|mcp)\b"

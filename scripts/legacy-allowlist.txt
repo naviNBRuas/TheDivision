@@ -6,22 +6,26 @@ crates/divisi-core/src/shim.rs	deprecation shims
 crates/divisi-cli/src/bin/*	single* shim binaries
 crates/divisi-cli/src/migrate_cmd.rs	pre-rename install migration
 crates/divisi-cli/src/notch_proc.rs	legacy notch UUID
-install.sh	Phase B: ships with the first divisi release
-.github/workflows/*	Phase B: release artifact names
-docker/*	Phase B: image names
-README.md	install section keeps the old release names until Phase B
 crates/divisi-core/src/mcp.rs	legacy MCP server names removed on sync
-crates/divisi-mcp/src/server.rs	MCP permission resource prefix singlecli:<tool> is persisted in users' permission rules
-crates/divisi-runtime/src/docker.rs	DEFAULT_IMAGE singlecli-agents ships in Phase B
 crates/divisi-lsp/src/main.rs	references a historical spec filename
 crates/divisi-runtime/src/coordinator/mod.rs	references a historical epic folder name
-docs/architecture.md	release asset name singlecli-<target> until Phase B
-crates/divisi-core/src/preferences.rs	tests use the persisted singlecli:<tool> permission resource prefix
 crates/divisi-core/src/backup.rs	__singlecli_secrets__.toml is persisted inside existing backup archives
-crates/divisi-cli/src/update.rs	release asset name singlecli-<target> until Phase B
 crates/divisi-cli/src/internal_lsp_manifest.rs	references a historical spec filename
 .cargo/config.toml	comment explains the legacy config directory migration
 crates/divisi-cli/tests/no_config_side_effects.rs	test clears the legacy SINGLE_CONFIG_DIR variable
 docs/config-format.md	describes the pre-rename config migration
 crates/divisi-core/src/secrets.rs	legacy keyring service name (keys stored before the rename)
 crates/divisi-cli/tests/bounded_latency.rs	clears the legacy config env var so the test stays isolated
+crates/divisi-core/src/agent_names.rs	maps pre-rename agent names (single-pool, single-<provider>) onto divisi names
+crates/divisi-core/src/permissions.rs	reads pre-rename singlecli:<tool> permission rules as divisi:<tool>
+crates/divisi-core/src/preferences.rs	migrates learned singlecli:<tool> preferences to divisi:<tool>
+crates/divisi-cli/src/update.rs	falls back to pre-rename singlecli-<target> release assets
+install.sh	falls back to pre-rename singlecli-<target> release assets and SINGLE_* install variables
+crates/divisi-agent-sdk/src/formats/opencode.rs	recognises provider keys written under the pre-rename single- namespace
+crates/divisi-mcp/src/server.rs	references a historical spec filename
+crates/divisi-runtime/src/self_heal/infra.rs	sweeps task branches created before the rename
+README.md	"Renamed from SingleCLI" table lists the old names
+crates/divisi-cli/src/acp.rs	references the historical Python prototype tools/single-acp
+crates/divisi-runtime/src/coordinator/brain.rs	references the historical Python prototype single-acp
+crates/divisi-runtime/src/coordinator/routing.rs	comment on reading pre-rename agent names
+docs/architecture.md	explains pre-rename branch and release asset names

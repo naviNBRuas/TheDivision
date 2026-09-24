@@ -3,8 +3,8 @@
   divisi notch HUD -- launchd user agent (macOS).
 
   Install:
-    cp notch.launchd.plist ~/Library/LaunchAgents/company.nbr.single-notch.plist
-    launchctl load ~/Library/LaunchAgents/company.nbr.single-notch.plist
+    cp notch.launchd.plist ~/Library/LaunchAgents/company.nbr.divisi-notch.plist
+    launchctl load ~/Library/LaunchAgents/company.nbr.divisi-notch.plist
 
   `KeepAlive` is deliberately `false`: this only runs the HUD once at
   login, matching macOS panel conventions, rather than respawning it in
@@ -21,7 +21,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>company.nbr.single-notch</string>
+    <string>company.nbr.divisi-notch</string>
     <key>ProgramArguments</key>
     <array>
         <!-- Adjust if `divisi-notch` isn't installed at the default location. -->

@@ -6,7 +6,7 @@ the project's original request for that).
 - **Phase 1** — foundation: config, registry, adapters, a runtime daemon, a CLI, a minimal TUI dashboard.
 - **Phase 2** — shared-capability registries: MCP CRUD, an LSP registry, a tool metadata registry, an OS-keychain secrets abstraction, a local skills directory.
 - **Phase 3** — a SQLite-backed scoped memory subsystem and a git/project context resolver.
-- **Phase 4** — real single-agent task execution: a task record, git worktree isolation, and actually invoking each agent CLI's non-interactive mode.
+- **Phase 4** — real divisi-agent task execution: a task record, git worktree isolation, and actually invoking each agent CLI's non-interactive mode.
 - **Phase 5** — declarative custom agent adapters (`~/.config/divisi/agents/*.toml`): a new CLI agent gets real detection, MCP sync, and task execution without recompiling divisi.
 - **Phase 6 (partial)** — a provider registry (OpenAI, Anthropic, ...) syncing API keys into the two agents with a verified config slot for them.
 - **Auth** — multi-account credential switching (`divisi account ...`) so one agent CLI (e.g. Claude Code) can have several logged-in accounts, swapped safely.
@@ -213,7 +213,7 @@ investigation.
   `docs/install-methods.md`).
 - **`divisi-core::worktree`** — real `git worktree add`/`remove`/`list`
   subprocess calls, tested against real temporary git repos (not mocked).
-  One worktree per task, branch named `single/task-<id>`.
+  One worktree per task, branch named `divisi/task-<id>` (`single/task-<id>` before the rename). Coordinator goals share one worktree per goal on `divisi/goal-<id>`.
 - **`divisi-runtime::task`** — a `tasks` SQLite table and a synchronous
   `run()` that ties the above together: creates the task record,
   optionally isolates it in a fresh worktree, invokes the agent, captures
@@ -466,7 +466,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   rather than colliding on asset names). There's no meaningful semver to
   diff for a rolling tag, so this channel is always reported as "an
   update is available" rather than silently claiming it's current.
-- Applying an update downloads the same `singlecli-<target>.tar.gz` asset
+- Applying an update downloads the same `divisi-<target>.tar.gz` asset (falling back to a pre-rename `singlecli-<target>.tar.gz`)
   shape `install.sh`/`release.yml` already use, extracts it, and
   atomically replaces `divisi`/`divisid` next to whichever binary
   is currently running (`std::env::current_exe()`'s directory) — not a
@@ -837,13 +837,13 @@ degrade, handoff, client — ~2,500 lines) plus `divisi_core::free_pool`
 (the vendored ~90-provider catalog, `divisi provider list-free`) and
 `divisi_core::pool_keys` (per-provider labeled key storage) implement a
 real, working alternative to shelling an agent CLI: `divisi task run
---agent single-pool "<prompt>"` picks a `(platform, model, key_id)` via a
+--agent divisi-pool "<prompt>"` picks a `(platform, model, key_id)` via a
 Thompson-sampling bandit (spec §6.4 — a decay-weighted Beta posterior over
 each candidate's 7-day outcome history, half-life 2 days), dispatches
 straight to that provider's HTTP API (no CLI process spawned at all — see
 `divisi_agent_sdk::adapters::PoolAdapter`'s doc comment for why its
 `run_prompt` is a placeholder and `divisi-runtime::task::execute`
-special-cases `agent == "single-pool"` before ever reaching adapter
+special-cases `agent == "divisi-pool"` before ever reaching adapter
 dispatch), and on a rate limit/5xx/auth failure benches that candidate and
 retries the next one before the caller ever sees a failure.
 
@@ -1035,17 +1035,17 @@ to push to a session that has no in-flight turn. Concretely:
 
 ### Default agent
 
-A Zed-submitted goal (`run_turn`) used to default `agent` to `single-pool`
+A Zed-submitted goal (`run_turn`) used to default `agent` to `divisi-pool`
 when the session had no `/agent` override, on the theory that it's the
 lightest-weight default. Removed: `plan_goal` applies that override to
 *every* node in the planned graph, not just the planning step, so this
 sent a goal's entire task graph — code, test, review, everything — through
-`single-pool`, which has no real tool/file/command execution. Live-
+`divisi-pool`, which at the time had no real tool/file/command execution. Live-
 verification finding: this fabricated a plausible-but-fictional cargo
 test/clippy run when asked to actually run one. `agent` now defaults to
 `None`, letting the coordinator's normal per-node-kind routing
 (`routing.toml`) pick a real tool-capable agent per step — the same path
-every goal submitted via `divisi goal submit` already takes.
+every goal submitted via `divisi goal submit` already takes. (Since 2026-09-24 `divisi-pool` runs a real multi-step coding loop for work dispatches, see `pool_coder.rs`.)
 `/agent <name>` still works exactly as before for a session that
 deliberately wants one agent pinned for everything.
 
