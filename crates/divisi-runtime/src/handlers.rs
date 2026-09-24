@@ -2009,11 +2009,40 @@ fn dispatch(
             pool: pool_status_info(ctx)?,
             keys: provider_key_status_info(ctx, None)?,
             coordinator: coordinator_status_info(ctx)?,
-            agents: agent_list_info_cached(ctx),
+            agents: notch_agents(ctx),
             recent_tasks: recent_task_briefs(ctx),
             agent_usage: agent_usage_stats(ctx),
         })),
     }
+}
+
+/// Agents as the notch shows them. Live finding (2026-09-24): the notch used the static login check,
+/// so agents a real call had verified (claude, codex) still read "needs login"/"unverified", and
+/// agents switched off on purpose (`disabled_agents`) looked broken. Disabled agents are left out; a
+/// stored real-call probe (`divisi agent auth --probe`) overrides the static check.
+fn notch_agents(ctx: &Context) -> Vec<divisi_protocol::AgentInfo> {
+    use divisi_protocol::AuthState;
+    let cfg = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs);
+    let probed: std::collections::HashMap<String, String> = crate::state::open(&ctx.dirs.db_path())
+        .ok()
+        .and_then(|conn| {
+            let mut st = conn.prepare("SELECT agent, category FROM agent_auth_probe").ok()?;
+            let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).ok()?;
+            Some(rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    agent_list_info_cached(ctx)
+        .into_iter()
+        .filter(|a| !cfg.disabled_agents.iter().any(|d| d == &a.name))
+        .map(|mut a| {
+            match probed.get(&a.name).map(String::as_str) {
+                Some("authed" | "exhausted" | "no_auth_needed") => a.authenticated = AuthState::Authenticated,
+                Some("needs_login") => a.authenticated = AuthState::NotAuthenticated,
+                _ => {}
+            }
+            a
+        })
+        .collect()
 }
 
 fn agent_usage_stats(ctx: &Context) -> Vec<divisi_protocol::AgentLocalStats> {
