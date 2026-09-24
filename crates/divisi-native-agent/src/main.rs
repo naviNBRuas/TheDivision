@@ -13,7 +13,7 @@ use divisi_core::secrets::{SecretStore, SecretTool};
 // synchronous (reqwest::blocking). Rather than converting everything to
 // async, we create a dedicated tokio Runtime once (lazily, on first call_mcp
 // invocation) and block_on just the MCP codepaths. The Runtime is reused for
-// the lifetime of this single-agent process (a single CLI invocation that
+// the lifetime of this divisi-agent process (a single CLI invocation that
 // exits when the task is done), and the child MCP session spawned inside it
 // dies naturally with the process — no explicit idle-eviction needed.
 static MCP_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -21,7 +21,7 @@ use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
 use rmcp::ServiceExt;
 
 #[derive(Parser)]
-#[command(name = "single-agent", about = "Native in-process coding agent")]
+#[command(name = "divisi-agent", about = "Native in-process coding agent")]
 struct Cli {
     #[command(subcommand)]
     command: Command,

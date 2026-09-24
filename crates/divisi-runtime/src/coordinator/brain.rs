@@ -144,7 +144,7 @@ pub fn parse_integration(v: &Value) -> Result<IntegrationOutcome> {
 /// turns validated planner specs into a persisted-shape `TaskGraph`,
 /// assigning each node an agent via routing and the worktree default for
 /// its kind. `prefer_pool` only affects work-node routing here (spec §7:
-/// `single-pool` slots in as "any coordinator node's agent") — it never
+/// `divisi-pool` slots in as "any coordinator node's agent") — it never
 /// touches which agent runs the planner/supervisor/integrator role
 /// itself (`plan`/`supervise`/`integrate` below keep their own
 /// `select_agent` call unchanged; those need reliable structured JSON

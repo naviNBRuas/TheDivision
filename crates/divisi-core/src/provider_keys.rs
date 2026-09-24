@@ -224,7 +224,7 @@ mod tests {
             let agent = "divisi-test-agent-labeled";
             crate::providers::add(&dirs.providers_registry_file(), divisi_protocol::ProviderSpec {
                 name: provider.into(),
-                env_var_name: "SINGLECLI_TEST_LABELED_KEY".into(),
+                env_var_name: "DIVISI_TEST_LABELED_KEY".into(),
                 secret_name: format!("provider:{provider}"),
                 base_url: None,
                 models: Vec::new(),
@@ -242,7 +242,7 @@ mod tests {
             .unwrap();
 
             let env = resolve_env_for_agent(&dirs, agent);
-            assert_eq!(env.get("SINGLECLI_TEST_LABELED_KEY").map(String::as_str), Some("labeled-value"));
+            assert_eq!(env.get("DIVISI_TEST_LABELED_KEY").map(String::as_str), Some("labeled-value"));
 
             SecretStore::delete(&store, &key_secret_name).unwrap();
         }
@@ -254,7 +254,7 @@ mod tests {
             let secret_name = format!("provider:{provider_and_agent}");
             crate::providers::add(&dirs.providers_registry_file(), divisi_protocol::ProviderSpec {
                 name: provider_and_agent.into(),
-                env_var_name: "SINGLECLI_TEST_SHARED_KEY".into(),
+                env_var_name: "DIVISI_TEST_SHARED_KEY".into(),
                 secret_name: secret_name.clone(),
                 base_url: None,
                 models: Vec::new(),
@@ -264,7 +264,7 @@ mod tests {
             SecretStore::set(&store, &secret_name, "shared-value").unwrap();
 
             let env = resolve_env_for_agent(&dirs, provider_and_agent);
-            assert_eq!(env.get("SINGLECLI_TEST_SHARED_KEY").map(String::as_str), Some("shared-value"));
+            assert_eq!(env.get("DIVISI_TEST_SHARED_KEY").map(String::as_str), Some("shared-value"));
 
             SecretStore::delete(&store, &secret_name).unwrap();
         }
@@ -275,7 +275,7 @@ mod tests {
             let provider = "divisi-test-provider-unrelated";
             crate::providers::add(&dirs.providers_registry_file(), divisi_protocol::ProviderSpec {
                 name: provider.into(),
-                env_var_name: "SINGLECLI_TEST_UNRELATED_KEY".into(),
+                env_var_name: "DIVISI_TEST_UNRELATED_KEY".into(),
                 secret_name: format!("provider:{provider}"),
                 base_url: None,
                 models: Vec::new(),

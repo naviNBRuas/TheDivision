@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn spawn_failure_context_names_a_missing_binary_when_cwd_is_fine() {
         let dir = tempfile::tempdir().unwrap();
-        let msg = spawn_failure_context("single-cli-definitely-does-not-exist-xyz", dir.path(), &ExecBackend::host(None));
+        let msg = spawn_failure_context("divisi-definitely-does-not-exist-xyz", dir.path(), &ExecBackend::host(None));
         assert!(msg.contains("not found on $PATH"), "{msg}");
     }
 
@@ -467,7 +467,7 @@ mod tests {
         assert!(status.success(), "failed to start test container");
 
         let mut extra_env = std::collections::BTreeMap::new();
-        extra_env.insert("SINGLECLI_TEST_SECRET".to_string(), "argv-must-not-contain-this-literal".to_string());
+        extra_env.insert("DIVISI_TEST_SECRET".to_string(), "argv-must-not-contain-this-literal".to_string());
 
         // `workdir` must exist *inside the container* (docker exec -w does
         // a real chdir there) — a host tempdir path wouldn't, since this
@@ -478,7 +478,7 @@ mod tests {
         let backend = ExecBackend::Docker { container, workdir: in_container_workdir, extra_env: Some(&extra_env) };
         let outcome = run_command_live(
             "sh",
-            &["-c".to_string(), "echo $SINGLECLI_TEST_SECRET".to_string()],
+            &["-c".to_string(), "echo $DIVISI_TEST_SECRET".to_string()],
             host_cwd.path(),
             &backend,
             None,

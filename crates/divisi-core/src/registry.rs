@@ -735,12 +735,12 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
                     .into(),
             ),
         },
-        // -- single-agent: divisi's own in-process coding agent (not a
+        // -- divisi-agent: divisi's own in-process coding agent (not a
         // vendor CLI — built from this workspace's divisi-native-agent
         // crate).
         AgentDefinition {
-            name: "single-agent".into(),
-            adapter: "single-agent".into(),
+            name: "divisi-agent".into(),
+            adapter: "divisi-agent".into(),
             command: "divisi-agent".into(),
             install_method: InstallMethod::Native {
                 detail: "Built from this workspace's divisi-native-agent crate \
@@ -753,7 +753,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
                 source: "https://github.com/naviNBRuas/SingleCLI".into(),
             }),
             unverified: false,
-            // single-agent has no auth state of its own — it reads API
+            // divisi-agent has no auth state of its own — it reads API
             // keys from divisi's own secret store via
             // divisi_core::secrets::SecretStore, not from its own
             // config/credentials files, so it authenticates identically
@@ -791,9 +791,9 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
         // real dispatch happens in `divisi-runtime::task::execute`'s
         // special case instead.
         AgentDefinition {
-            name: "single-pool".into(),
+            name: "divisi-pool".into(),
             adapter: "pool".into(),
-            command: "single-pool".into(),
+            command: "divisi-pool".into(),
             install_method: InstallMethod::Native {
                 detail: "Built into divisid; no separate binary to install.".into(),
             },
@@ -820,7 +820,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             },
             config_paths: vec!["free-pool.toml".into()],
             notes: Some(
-                "The E28 free-provider pool agent: `divisi task run --agent single-pool` \
+                "The E28 free-provider pool agent: `divisi task run --agent divisi-pool` \
                  picks a (provider, model, key) via the adaptive bandit and dispatches \
                  straight to the provider's HTTP API, no CLI shelled. Use `divisi provider \
                  list-free`/`add-free`/`sync-pool` to see and key the ~40-provider catalog."

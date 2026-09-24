@@ -589,7 +589,7 @@ mod tests {
 
         let n = goal::load_graph(&conn, &g.id).unwrap().find("s1").unwrap().clone();
         assert_eq!(n.status, graph::NodeStatus::Pending);
-        assert_eq!(n.agent, "single-nvidia");
+        assert_eq!(n.agent, "divisi-nvidia", "a legacy agent name is stored under its divisi name");
     }
 
     /// A node id that doesn't exist in the goal's graph must error clearly

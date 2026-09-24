@@ -331,14 +331,14 @@ fn build_capacity(conn: &Connection, ctx: &Context, cfg: &CoordinatorConfig) -> 
     Ok(Capacity { global_running, per_agent_running, per_agent_cap })
 }
 
-/// Concurrency cap per agent: the registry's own cap, else a default for provider-backed `single-*` agents
-/// and `single-pool`; `[agent_concurrency]` in `coordinator.toml` overrides any of them.
+/// Concurrency cap per agent: the registry's own cap, else a default for provider-backed `divisi-*` agents
+/// and `divisi-pool`; `[agent_concurrency]` in `coordinator.toml` overrides any of them.
 pub fn agent_caps<'a>(agents: impl Iterator<Item = (&'a str, Option<usize>)>, cfg: &CoordinatorConfig) -> BTreeMap<String, usize> {
     let mut caps: BTreeMap<String, usize> = agents
         .filter_map(|(name, own)| match (own, name) {
             (Some(c), _) => Some((name.to_string(), c)),
-            (None, "single-pool") => Some((name.to_string(), cfg.pool_concurrency)),
-            (None, n) if n.starts_with("single-") => Some((name.to_string(), cfg.provider_agent_concurrency)),
+            (None, "divisi-pool") => Some((name.to_string(), cfg.pool_concurrency)),
+            (None, n) if divisi_core::agent_names::provider_of(n).is_some() => Some((name.to_string(), cfg.provider_agent_concurrency)),
             _ => None,
         })
         .collect();
@@ -651,7 +651,7 @@ fn handle_capacity_exhaustion(conn: &Connection, goal: &Goal, node_id: &str, art
     }
 
     // A precise stamp (`earliest_recovery_ms` from the artifact) means
-    // single-pool itself gave up after trying every provider it has --
+    // divisi-pool itself gave up after trying every provider it has --
     // there's nothing else to fail over to, so honor its ETA verbatim.
     // No precise stamp means a single CLI agent's own rate limit tripped
     // (grok, claude, codex, ...), not the whole pool -- retrying that same
@@ -986,7 +986,7 @@ fn maybe_auto_merge(conn: &Connection, goal: &Goal, node_id: &str) -> Result<()>
             continue;
         }
         let Some(task_id) = dep.task_id else { continue };
-        let branch = format!("single/task-{task_id}");
+        let branch = format!("divisi/task-{task_id}");
         let pending_id = divisi_core::pending_merge::request(conn, &goal.id, &goal.session_id, node_id, dep_id, &branch)?;
         events::append(
             conn,
@@ -1082,14 +1082,14 @@ mod tests {
 
     #[test]
     fn provider_agents_and_the_pool_get_default_concurrency_caps_that_config_can_override() {
-        let cfg = CoordinatorConfig { agent_concurrency: [("single-google".to_string(), 5)].into_iter().collect(), ..CoordinatorConfig::default() };
-        let agents = vec![("opencode", Some(3)), ("grok", None), ("single-pool", None), ("single-nvidia", None), ("single-google", None)];
+        let cfg = CoordinatorConfig { agent_concurrency: [("divisi-google".to_string(), 5)].into_iter().collect(), ..CoordinatorConfig::default() };
+        let agents = vec![("opencode", Some(3)), ("grok", None), ("divisi-pool", None), ("divisi-nvidia", None), ("divisi-google", None)];
         let caps = agent_caps(agents.into_iter(), &cfg);
         assert_eq!(caps["opencode"], 3, "the registry's own cap is kept");
         assert!(!caps.contains_key("grok"), "an uncapped CLI agent stays uncapped");
-        assert_eq!(caps["single-pool"], cfg.pool_concurrency);
-        assert_eq!(caps["single-nvidia"], cfg.provider_agent_concurrency);
-        assert_eq!(caps["single-google"], 5, "config overrides the default");
+        assert_eq!(caps["divisi-pool"], cfg.pool_concurrency);
+        assert_eq!(caps["divisi-nvidia"], cfg.provider_agent_concurrency);
+        assert_eq!(caps["divisi-google"], 5, "config overrides the default");
     }
 
     #[test]
@@ -1119,7 +1119,7 @@ mod tests {
         let mut n = node("s1", &[], Effort::Standard, "");
         n.kind = NodeKind::Code;
         let g = TaskGraph { nodes: vec![n] };
-        // opencode detected+authed; single-pool needs no such entry (PoolHealth::usable's carve-out).
+        // opencode detected+authed; divisi-pool needs no such entry (PoolHealth::usable's carve-out).
         let health = PoolHealth { detected_authed: ["opencode".to_string()].into_iter().collect(), rate_limited: Default::default() };
 
         let cfg_off = cfg(6);
@@ -1132,8 +1132,8 @@ mod tests {
         let cfg_on = CoordinatorConfig { prefer_pool: true, ..cfg(6) };
         let a2 = tick_pure(&g, &cfg_on, &caps(0, &[], &[]), &budget_ok(), &RoutingTable::default(), &health);
         match &a2[0] {
-            TickAction::Dispatch { agent, .. } => assert_eq!(agent, "single-pool"),
-            other => panic!("expected Dispatch to single-pool, got {other:?}"),
+            TickAction::Dispatch { agent, .. } => assert_eq!(agent, "divisi-pool"),
+            other => panic!("expected Dispatch to divisi-pool, got {other:?}"),
         }
     }
 
@@ -1373,12 +1373,12 @@ mod tests {
         use crate::coordinator::{goal, graph::GoalMode};
         let s = crate::coordinator::session::new_session(conn, dir).unwrap();
         let g = goal::create(conn, &s.id, "g", GoalMode::Auto, 25, 60).unwrap();
-        let graph = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "single-pool")] };
+        let graph = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "divisi-pool")] };
         goal::save_graph(conn, &g.id, &graph).unwrap();
 
         let artifact_path = dir.join("artifact.txt");
         let body = match earliest_recovery_ms {
-            Some(ms) => format!("single-pool: rate limited — every keyed provider is exhausted or benched, earliest recovery at {ms}"),
+            Some(ms) => format!("divisi-pool: rate limited — every keyed provider is exhausted or benched, earliest recovery at {ms}"),
             None => "some CLI agent's rate-limit text with no parseable marker".to_string(),
         };
         std::fs::write(&artifact_path, &body).unwrap();
@@ -1386,7 +1386,7 @@ mod tests {
         let tid = 900i64;
         conn.execute(
             "INSERT INTO tasks (id, description, agent, status, timed_out, created_at, updated_at, cwd, workspace_id, rate_limited, artifact_path)
-             VALUES (?1, 'x', 'single-pool', 'failed', 0, '', '', '', '', 1, ?2)",
+             VALUES (?1, 'x', 'divisi-pool', 'failed', 0, '', '', '', '', 1, ?2)",
             rusqlite::params![tid, artifact_path.display().to_string()],
         )
         .unwrap();
@@ -1652,7 +1652,7 @@ mod tests {
         crate::task::ensure_schema(&conn).unwrap();
 
         let task_id = crate::task::create_for_cwd(&conn, "do the work", "grok", repo.path()).unwrap();
-        let branch = format!("single/task-{task_id}");
+        let branch = format!("divisi/task-{task_id}");
         let worktree_path = tempfile::tempdir().unwrap().path().join(format!("task-{task_id}"));
         divisi_core::worktree::add(repo.path(), &worktree_path, &branch).unwrap();
         std::fs::write(worktree_path.join("new-file.txt"), "from the worktree").unwrap();
@@ -1688,7 +1688,7 @@ mod tests {
         crate::task::ensure_schema(&conn).unwrap();
 
         let task_id = crate::task::create_for_cwd(&conn, "do the work", "grok", repo.path()).unwrap();
-        let branch = format!("single/task-{task_id}");
+        let branch = format!("divisi/task-{task_id}");
         let worktree_path = tempfile::tempdir().unwrap().path().join(format!("task-{task_id}"));
         divisi_core::worktree::add(repo.path(), &worktree_path, &branch).unwrap();
         std::fs::write(worktree_path.join("new-file.txt"), "from the worktree").unwrap();
@@ -1719,7 +1719,7 @@ mod tests {
         crate::task::ensure_schema(&conn).unwrap();
 
         let task_id = crate::task::create_for_cwd(&conn, "do the work", "grok", repo.path()).unwrap();
-        let branch = format!("single/task-{task_id}");
+        let branch = format!("divisi/task-{task_id}");
         let worktree_path = tempfile::tempdir().unwrap().path().join(format!("task-{task_id}"));
         divisi_core::worktree::add(repo.path(), &worktree_path, &branch).unwrap();
         std::fs::write(worktree_path.join("new-file.txt"), "from the worktree").unwrap();

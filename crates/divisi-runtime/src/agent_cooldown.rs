@@ -10,7 +10,7 @@
 //! - Once a cooldown has passed, the self-heal pass probes the agent with a tiny real call
 //!   (`needing_verification`) so it is confirmed, or benched again with a longer wait, within minutes.
 //!
-//! Provider-backed `single-*` agents are exempt: the pool keeps its own per-key ledger for them.
+//! Provider-backed `divisi-*` agents are exempt: the pool keeps its own per-key ledger for them.
 
 use anyhow::Result;
 use chrono::{DateTime, Duration, Local, Utc};
@@ -62,11 +62,11 @@ pub fn record(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str
     Ok(())
 }
 
-/// `single-pool` is rate limited per key by the pool, not per agent. The other `single-*` names are
+/// `divisi-pool` is rate limited per key by the pool, not per agent. The other `divisi-*` names are
 /// fixed provider+model wrappers with no pool behind them -- exempting them too (as this once did) let
 /// one EOL'd model and two daily-capped keys fail 500+ dispatches in a day without ever being benched.
 fn exempt(agent: &str) -> bool {
-    agent == "single-pool"
+    divisi_core::agent_names::is_pool(agent)
 }
 
 /// How long an agent whose model the provider has retired (410 Gone, "end of life", unknown model)
@@ -292,15 +292,15 @@ mod tests {
     #[test]
     fn the_pool_agent_is_never_benched_here() {
         let conn = db();
-        assert!(!note(&conn, "single-pool", "Provider error (429 Too Many Requests)"));
+        assert!(!note(&conn, "divisi-pool", "Provider error (429 Too Many Requests)"));
         assert!(active(&conn, Utc::now()).unwrap().is_empty());
     }
 
     #[test]
     fn a_fixed_provider_wrapper_is_benched_like_any_agent() {
         let conn = db();
-        assert!(note(&conn, "single-openrouter", "Provider error (429 Too Many Requests): Rate limit exceeded: free-models-per-day"));
-        assert!(active(&conn, Utc::now()).unwrap().contains_key("single-openrouter"));
+        assert!(note(&conn, "divisi-openrouter", "Provider error (429 Too Many Requests): Rate limit exceeded: free-models-per-day"));
+        assert!(active(&conn, Utc::now()).unwrap().contains_key("divisi-openrouter"));
     }
 
     #[test]
@@ -309,12 +309,12 @@ mod tests {
         crate::task::ensure_schema(&conn).unwrap();
         for _ in 0..3 {
             conn.execute(
-                "INSERT INTO tasks (agent, description, status, summary, created_at, updated_at) VALUES ('single-nvidia', 'd', 'failed', 'interrupted: divisid restarted while this task was in flight', ?1, ?1)",
+                "INSERT INTO tasks (agent, description, status, summary, created_at, updated_at) VALUES ('divisi-nvidia', 'd', 'failed', 'interrupted: divisid restarted while this task was in flight', ?1, ?1)",
                 params![Utc::now().to_rfc3339()],
             )
             .unwrap();
         }
-        assert!(!note_failure_streak(&conn, "single-nvidia"));
+        assert!(!note_failure_streak(&conn, "divisi-nvidia"));
     }
 
     #[test]
@@ -327,8 +327,8 @@ mod tests {
     #[test]
     fn a_retired_model_is_benched_for_days_not_retried() {
         let conn = db();
-        assert!(note(&conn, "single-nvidia", "Provider error (410 Gone): The model 'x' has reached its end of life"));
-        let until = active(&conn, Utc::now()).unwrap()["single-nvidia"];
+        assert!(note(&conn, "divisi-nvidia", "Provider error (410 Gone): The model 'x' has reached its end of life"));
+        let until = active(&conn, Utc::now()).unwrap()["divisi-nvidia"];
         assert!(until > Utc::now() + Duration::days(6));
     }
 

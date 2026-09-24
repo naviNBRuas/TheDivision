@@ -37,7 +37,7 @@ pub struct CoordinatorConfig {
     /// are parse-or-estimated.
     #[serde(default)]
     pub usage_json_agents: Vec<String>,
-    /// E28 spec §7: when true, `single-pool` is tried first for every
+    /// E28 spec §7: when true, `divisi-pool` is tried first for every
     /// kind unless that kind's own list already names it explicitly
     /// (that explicit placement always wins — this only supplies a
     /// default when the kind is silent on the pool). Off by default so
@@ -54,14 +54,14 @@ pub struct CoordinatorConfig {
     /// giving up to `Blocked`, independent of `max_capacity_waits_per_goal`.
     #[serde(default = "default_max_capacity_wait_minutes")]
     pub max_capacity_wait_minutes: u32,
-    /// Concurrent nodes allowed on each provider-backed `single-<provider>` agent that has no cap of its
+    /// Concurrent nodes allowed on each provider-backed `divisi-<provider>` agent that has no cap of its
     /// own. Free tiers rate limit per key, so a few at a time beats a burst of 429s.
     #[serde(default = "default_provider_agent_concurrency")]
     pub provider_agent_concurrency: usize,
-    /// Concurrent nodes allowed on `single-pool` itself (it fans out over many providers internally).
+    /// Concurrent nodes allowed on `divisi-pool` itself (it fans out over many providers internally).
     #[serde(default = "default_pool_concurrency")]
     pub pool_concurrency: usize,
-    /// Per-agent overrides, e.g. `single-google = 4` under `[agent_concurrency]`. Wins over the defaults above.
+    /// Per-agent overrides, e.g. `divisi-google = 4` under `[agent_concurrency]`. Wins over the defaults above.
     #[serde(default)]
     pub agent_concurrency: std::collections::BTreeMap<String, usize>,
     /// Agents kept out of every dispatch, e.g. one whose quota is reserved for the user's own use.
@@ -117,14 +117,15 @@ impl CoordinatorConfig {
     pub fn load(dirs: &DivisiDirs) -> Self {
         let path = dirs.coordinator_file();
         match std::fs::read_to_string(&path) {
-            // Live-verification finding (2026-09-23): a routing.toml without `[effort_max_steps]` failed
-            // to parse and was silently replaced by the built-in table, so every hand edit (dropping
-            // claude, adding kilocode) was ignored for days. Missing sections now take their defaults,
-            // and a file that still can't be parsed is logged instead of swallowed.
-            Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!(path = %path.display(), error = %e, "routing.toml does not parse; using the built-in routing table");
-                Self::default()
-            }),
+            Ok(s) => toml::from_str::<Self>(&s)
+                .map(|mut c| {
+                    c.disabled_agents = divisi_core::agent_names::canonical_list(&c.disabled_agents);
+                    c
+                })
+                .unwrap_or_else(|e| {
+                    tracing::warn!(path = %path.display(), error = %e, "coordinator.toml does not parse; using defaults");
+                    Self::default()
+                }),
             Err(_) => {
                 let cfg = Self::default();
                 if let Ok(s) = toml::to_string_pretty(&cfg) {
@@ -154,8 +155,8 @@ pub struct RoutingTable {
 impl Default for RoutingTable {
     fn default() -> Self {
         // spec §5.4 seed. deliberately references agents this user's pool
-        // actually has (grok / opencode / single-openrouter / single-nvidia
-        // / single-gemini / claude).
+        // actually has (grok / opencode / divisi-openrouter / divisi-nvidia
+        // / divisi-gemini / claude).
         let k = |pairs: &[(&str, &[&str])]| -> BTreeMap<String, Vec<String>> {
             pairs
                 .iter()
@@ -166,19 +167,19 @@ impl Default for RoutingTable {
         kinds.insert(
             "code".into(),
             k(&[
-                ("quick", &["single-openrouter", "single-nvidia", "opencode"]),
-                ("standard", &["opencode", "grok", "single-openrouter"]),
+                ("quick", &["divisi-openrouter", "divisi-nvidia", "opencode"]),
+                ("standard", &["opencode", "grok", "divisi-openrouter"]),
                 ("deep", &["grok", "claude", "opencode"]),
             ]),
         );
-        kinds.insert("research".into(), k(&[("standard", &["grok", "single-gemini"])]));
-        kinds.insert("test".into(), k(&[("standard", &["opencode", "single-openrouter"])]));
+        kinds.insert("research".into(), k(&[("standard", &["grok", "divisi-gemini"])]));
+        kinds.insert("test".into(), k(&[("standard", &["opencode", "divisi-openrouter"])]));
         kinds.insert("review".into(), k(&[("standard", &["grok", "claude", "opencode"])]));
-        kinds.insert("docs".into(), k(&[("standard", &["opencode", "single-openrouter"])]));
+        kinds.insert("docs".into(), k(&[("standard", &["opencode", "divisi-openrouter"])]));
         kinds.insert("infra".into(), k(&[("standard", &["opencode", "grok"])]));
         kinds.insert(
             "plan".into(),
-            k(&[("standard", &["grok", "claude", "opencode", "single-openrouter"])]),
+            k(&[("standard", &["grok", "claude", "opencode", "divisi-openrouter"])]),
         );
         kinds.insert("supervise".into(), k(&[("standard", &["grok", "claude", "opencode"])]));
         kinds.insert("integrate".into(), k(&[("standard", &["grok", "opencode", "claude"])]));
@@ -189,7 +190,7 @@ impl Default for RoutingTable {
         Self {
             kinds,
             effort_max_steps,
-            fallback_default: ["grok", "opencode", "single-openrouter", "single-gemini", "single-nvidia", "claude"]
+            fallback_default: ["grok", "opencode", "divisi-openrouter", "divisi-gemini", "divisi-nvidia", "claude"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
@@ -201,7 +202,24 @@ impl RoutingTable {
     pub fn load(dirs: &DivisiDirs) -> Self {
         let path = dirs.routing_file();
         match std::fs::read_to_string(&path) {
-            Ok(s) => toml::from_str(&s).unwrap_or_default(),
+                        // Live-verification finding (2026-09-23): a routing.toml without `[effort_max_steps]` failed
+            // to parse and was silently replaced by the built-in table, so every hand edit was ignored
+            // for days (`#[serde(default)]` on the struct fixes that). A file that still can't be parsed
+            // is logged, and pre-rename names (`single-pool`, `single-<provider>`) keep routing.
+            Ok(s) => toml::from_str::<Self>(&s)
+                .map(|mut t| {
+                    for lists in t.kinds.values_mut() {
+                        for l in lists.values_mut() {
+                            *l = divisi_core::agent_names::canonical_list(l);
+                        }
+                    }
+                    t.fallback_default = divisi_core::agent_names::canonical_list(&t.fallback_default);
+                    t
+                })
+                .unwrap_or_else(|e| {
+                    tracing::warn!(path = %path.display(), error = %e, "routing.toml does not parse; using the built-in routing table");
+                    Self::default()
+                }),
             Err(_) => {
                 let table = Self::default();
                 if let Ok(s) = toml::to_string_pretty(&table) {
@@ -247,7 +265,7 @@ impl RoutingTable {
 /// the health-probe window earn an agent a spot in `PoolHealth::rate_limited`
 /// even when none of those failures matched a known rate-limit/auth-failure
 /// phrasing. Some real exhaustion never says so in words the agent's CLI
-/// bothers to phrase consistently (`single-nvidia`'s flaky
+/// bothers to phrase consistently (`divisi-nvidia`'s flaky
 /// "HTTP request to provider failed", `cursor`'s silent "exit code 1, no
 /// output"), and a message-text allowlist can never cover every CLI's
 /// wording — a streak of pure failures is itself strong enough evidence
@@ -269,12 +287,12 @@ pub struct PoolHealth {
 }
 
 impl PoolHealth {
-    /// `single-pool` (E28) is never filtered here: it isn't a shelled
+    /// `divisi-pool` (E28) is never filtered here: it isn't a shelled
     /// binary, so "on $PATH" is meaningless, and it has its own admission
     /// engine (the ledger) instead of the `rate_limited` task-row signal
     /// this struct tracks for CLI agents.
     fn usable(&self, agent: &str) -> bool {
-        agent == "single-pool" || (self.detected_authed.contains(agent) && !self.rate_limited.contains(agent))
+        divisi_core::agent_names::is_pool(agent) || (self.detected_authed.contains(agent) && !self.rate_limited.contains(agent))
     }
 
     /// builds a live snapshot cheaply — this is called on every scheduler
@@ -321,7 +339,7 @@ impl PoolHealth {
 
     /// Keeps `agents` out of routing for this snapshot (`CoordinatorConfig::disabled_agents`).
     pub fn disable(&mut self, agents: &[String]) {
-        self.rate_limited.extend(agents.iter().filter(|a| a.as_str() != "single-pool").cloned());
+        self.rate_limited.extend(agents.iter().filter(|a| !divisi_core::agent_names::is_pool(a)).cloned());
     }
 }
 
@@ -416,7 +434,7 @@ pub fn select_agent_excluding(table: &RoutingTable, kind: NodeKind, effort: Effo
 }
 
 /// `select_agent`, but honors `CoordinatorConfig::prefer_pool` (E28 spec
-/// §7): when set, `single-pool` is tried before everything else for
+/// §7): when set, `divisi-pool` is tried before everything else for
 /// every kind — *unless* that kind's own exact `(kind, effort)` list
 /// already names it explicitly, in which case that placement wins and
 /// this is a no-op. `select_agent`'s own signature stays untouched so
@@ -426,11 +444,11 @@ pub fn select_agent_with_prefer_pool(table: &RoutingTable, kind: NodeKind, effor
     if !prefer_pool {
         return select_agent(table, kind, effort, health);
     }
-    let explicit_override = table.kinds.get(kind.as_str()).and_then(|m| m.get(effort.as_str())).is_some_and(|list| list.iter().any(|a| a == "single-pool"));
+    let explicit_override = table.kinds.get(kind.as_str()).and_then(|m| m.get(effort.as_str())).is_some_and(|list| list.iter().any(|a| a == "divisi-pool"));
     if explicit_override {
         return select_agent(table, kind, effort, health);
     }
-    Some("single-pool".to_string())
+    Some("divisi-pool".to_string())
 }
 
 #[cfg(test)]
@@ -445,11 +463,11 @@ mod tests {
     }
 
     #[test]
-    fn select_agent_returns_single_pool_when_named_in_kind_list() {
+    fn select_agent_returns_divisi_pool_when_named_in_kind_list() {
         let mut t = RoutingTable::default();
-        t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["single-pool".to_string(), "opencode".to_string()]);
-        let h = health(&[], &[]); // single-pool needs no detected_authed entry
-        assert_eq!(select_agent(&t, NodeKind::Code, Effort::Standard, &h), Some("single-pool".to_string()));
+        t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["divisi-pool".to_string(), "opencode".to_string()]);
+        let h = health(&[], &[]); // divisi-pool needs no detected_authed entry
+        assert_eq!(select_agent(&t, NodeKind::Code, Effort::Standard, &h), Some("divisi-pool".to_string()));
     }
 
     #[test]
@@ -482,20 +500,20 @@ mod tests {
     }
 
     #[test]
-    fn prefer_pool_true_tries_single_pool_first_unless_kind_overrides() {
+    fn prefer_pool_true_tries_divisi_pool_first_unless_kind_overrides() {
         let t = RoutingTable::default();
         let h = health(&["opencode", "grok"], &[]);
-        // code/standard doesn't name single-pool -> prefer_pool wins.
-        assert_eq!(select_agent_with_prefer_pool(&t, NodeKind::Code, Effort::Standard, &h, true), Some("single-pool".to_string()));
+        // code/standard doesn't name divisi-pool -> prefer_pool wins.
+        assert_eq!(select_agent_with_prefer_pool(&t, NodeKind::Code, Effort::Standard, &h, true), Some("divisi-pool".to_string()));
         // Without prefer_pool, ordinary routing applies.
         assert_eq!(select_agent_with_prefer_pool(&t, NodeKind::Code, Effort::Standard, &h, false), Some("opencode".to_string()));
     }
 
     #[test]
-    fn prefer_pool_true_defers_to_kinds_own_explicit_single_pool_placement() {
+    fn prefer_pool_true_defers_to_kinds_own_explicit_divisi_pool_placement() {
         let mut t = RoutingTable::default();
-        // code/standard explicitly puts single-pool second, after opencode.
-        t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["opencode".to_string(), "single-pool".to_string()]);
+        // code/standard explicitly puts divisi-pool second, after opencode.
+        t.kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["opencode".to_string(), "divisi-pool".to_string()]);
         let h = health(&["opencode"], &[]);
         // Explicit placement wins: ordinary select_agent logic still
         // picks opencode first since it's usable and comes first in the
@@ -504,30 +522,30 @@ mod tests {
     }
 
     #[test]
-    fn single_pool_is_never_filtered_as_undetected() {
+    fn divisi_pool_is_never_filtered_as_undetected() {
         let t = RoutingTable::default();
         let mut kinds = t.kinds.clone();
-        kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["single-pool".to_string()]);
+        kinds.get_mut("code").unwrap().insert("standard".to_string(), vec!["divisi-pool".to_string()]);
         let t = RoutingTable { kinds, ..t };
         // Empty health -- no agent detected_authed at all -- would
         // normally fall through to "pool health map is empty -> try the
-        // first candidate anyway"; confirm single-pool is picked via the
+        // first candidate anyway"; confirm divisi-pool is picked via the
         // *usable* path, not that degrade fallback, by also marking a
         // different agent authed (so detected_authed is non-empty and the
         // fallback branch does NOT apply) -- only `usable()`'s explicit
-        // single-pool carve-out can explain the result then.
+        // divisi-pool carve-out can explain the result then.
         let h = health(&["some-other-agent"], &[]);
-        assert_eq!(select_agent(&t, NodeKind::Code, Effort::Standard, &h), Some("single-pool".to_string()));
+        assert_eq!(select_agent(&t, NodeKind::Code, Effort::Standard, &h), Some("divisi-pool".to_string()));
     }
 
     #[test]
     fn select_agent_skips_rate_limited_and_unauthed() {
         let t = RoutingTable::default();
-        // code/standard = [opencode, grok, single-openrouter]
-        let h = health(&["grok", "single-openrouter"], &["grok"]);
+        // code/standard = [opencode, grok, divisi-openrouter]
+        let h = health(&["grok", "divisi-openrouter"], &["grok"]);
         assert_eq!(
             select_agent(&t, NodeKind::Code, Effort::Standard, &h),
-            Some("single-openrouter".to_string())
+            Some("divisi-openrouter".to_string())
         );
     }
 
@@ -535,11 +553,11 @@ mod tests {
     fn select_agent_falls_back_to_default_when_kind_list_exhausted() {
         let t = RoutingTable::default();
         // nothing from code/quick or code/standard is usable; only a
-        // fallback-order agent (single-gemini) is.
-        let h = health(&["single-gemini"], &[]);
+        // fallback-order agent (divisi-gemini) is.
+        let h = health(&["divisi-gemini"], &[]);
         assert_eq!(
             select_agent(&t, NodeKind::Code, Effort::Quick, &h),
-            Some("single-gemini".to_string())
+            Some("divisi-gemini".to_string())
         );
     }
 
@@ -555,9 +573,9 @@ mod tests {
 
     #[test]
     fn a_routing_file_without_effort_steps_keeps_its_own_lists() {
-        let table: RoutingTable = toml::from_str("fallback_default = [\"opencode\"]\n[kinds.plan]\nstandard = [\"single-pool\"]\n").unwrap();
+        let table: RoutingTable = toml::from_str("fallback_default = [\"opencode\"]\n[kinds.plan]\nstandard = [\"divisi-pool\"]\n").unwrap();
         assert_eq!(table.fallback_default, vec!["opencode".to_string()]);
-        assert_eq!(table.kinds["plan"]["standard"], vec!["single-pool".to_string()]);
+        assert_eq!(table.kinds["plan"]["standard"], vec!["divisi-pool".to_string()]);
     }
 
     #[test]

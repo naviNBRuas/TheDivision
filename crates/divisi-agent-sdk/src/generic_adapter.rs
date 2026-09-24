@@ -31,7 +31,7 @@ impl AgentAdapter for GenericAdapter {
     }
 
     fn discover(&self) -> Discovery {
-        // `[run]`-mode custom agents are one-shot `single-agent run
+        // `[run]`-mode custom agents are one-shot `divisi-agent run
         // --provider X --prompt "$2"` wrapper scripts (see
         // `custom_agents::to_agent_definition`'s `tools: false` for the
         // same root cause): a real `--version` probe fires a billed LLM

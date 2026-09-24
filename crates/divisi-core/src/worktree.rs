@@ -2,7 +2,7 @@
 //! isolated working tree and branch, off a real repository, via real `git
 //! worktree` subprocess calls — not a fabricated isolation mechanism.
 //!
-//! Phase 4 scope: single-agent, single-worktree-per-task isolation. Cross-
+//! Phase 4 scope: one agent and one worktree per task. Cross-
 //! worktree coordination (locks, merge/conflict resolution across several
 //! concurrent agents) is future work once there's more than one agent
 //! actually running concurrently against the same repo — see
@@ -238,7 +238,7 @@ mod tests {
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-1");
 
-        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-1").unwrap();
         assert!(worktree_path.join("README.md").is_file());
 
         let worktrees = list(repo.path()).unwrap();
@@ -256,15 +256,15 @@ mod tests {
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-1");
 
-        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-1").unwrap();
         assert!(worktree_path.is_dir(), "first attempt's worktree should exist");
 
         // a second `add` on the same id, without cleanup, must fail --
         // this reproduces the live bug before asserting the fix.
-        assert!(add(repo.path(), &worktree_path, "single/task-1").is_err());
+        assert!(add(repo.path(), &worktree_path, "divisi/task-1").is_err());
 
-        reset_stale(repo.path(), &worktree_path, "single/task-1");
-        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        reset_stale(repo.path(), &worktree_path, "divisi/task-1");
+        add(repo.path(), &worktree_path, "divisi/task-1").unwrap();
         assert!(worktree_path.join("README.md").is_file(), "retry's worktree should be usable");
     }
 
@@ -276,8 +276,8 @@ mod tests {
         let worktree_path = worktree_parent.path().join("task-1");
 
         // nothing exists yet -- must not error or panic.
-        reset_stale(repo.path(), &worktree_path, "single/task-1");
-        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        reset_stale(repo.path(), &worktree_path, "divisi/task-1");
+        add(repo.path(), &worktree_path, "divisi/task-1").unwrap();
     }
 
     /// Live-verification finding: a directory `git add`-ed while it
@@ -315,7 +315,7 @@ mod tests {
 
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-1");
-        add(repo.path(), &worktree_path, "single/task-1").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-1").unwrap();
 
         assert_eq!(
             std::fs::read_to_string(worktree_path.join("nested-repo").join("real-content.md")).unwrap(),
@@ -331,7 +331,7 @@ mod tests {
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-2");
 
-        add(repo.path(), &worktree_path, "single/task-2").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-2").unwrap();
         remove(repo.path(), &worktree_path, false).unwrap();
         assert!(!worktree_path.exists());
     }
@@ -340,7 +340,7 @@ mod tests {
     fn add_fails_outside_a_git_repo() {
         let not_a_repo = tempfile::tempdir().unwrap();
         let worktree_path = tempfile::tempdir().unwrap().path().join("task-3");
-        assert!(add(not_a_repo.path(), &worktree_path, "single/task-3").is_err());
+        assert!(add(not_a_repo.path(), &worktree_path, "divisi/task-3").is_err());
     }
 
     #[test]
@@ -350,14 +350,14 @@ mod tests {
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-diff");
 
-        add(repo.path(), &worktree_path, "single/task-diff").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-diff").unwrap();
         std::fs::write(worktree_path.join("new-file.txt"), "hello from the worktree").unwrap();
         let status = Command::new("git").current_dir(&worktree_path).args(["add", "."]).status().unwrap();
         assert!(status.success());
         let status = Command::new("git").current_dir(&worktree_path).args(["commit", "-q", "-m", "add new-file"]).status().unwrap();
         assert!(status.success());
 
-        let diff_output = diff(repo.path(), "single/task-diff").unwrap();
+        let diff_output = diff(repo.path(), "divisi/task-diff").unwrap();
         assert!(diff_output.contains("new-file.txt"));
         assert!(diff_output.contains("hello from the worktree"));
     }
@@ -369,14 +369,14 @@ mod tests {
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-merge");
 
-        add(repo.path(), &worktree_path, "single/task-merge").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-merge").unwrap();
         std::fs::write(worktree_path.join("merged-file.txt"), "merge me").unwrap();
         let status = Command::new("git").current_dir(&worktree_path).args(["add", "."]).status().unwrap();
         assert!(status.success());
         let status = Command::new("git").current_dir(&worktree_path).args(["commit", "-q", "-m", "add merged-file"]).status().unwrap();
         assert!(status.success());
 
-        merge(repo.path(), "single/task-merge").unwrap();
+        merge(repo.path(), "divisi/task-merge").unwrap();
         assert!(repo.path().join("merged-file.txt").is_file());
     }
 
@@ -387,7 +387,7 @@ mod tests {
         let worktree_parent = tempfile::tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("task-conflict");
 
-        add(repo.path(), &worktree_path, "single/task-conflict").unwrap();
+        add(repo.path(), &worktree_path, "divisi/task-conflict").unwrap();
 
         // Conflicting edit on the worktree branch.
         std::fs::write(worktree_path.join("README.md"), "changed on the worktree branch").unwrap();
@@ -411,7 +411,7 @@ mod tests {
             .unwrap();
         assert!(status.success());
 
-        let result = merge(repo.path(), "single/task-conflict");
+        let result = merge(repo.path(), "divisi/task-conflict");
         assert!(result.is_err(), "expected a real conflict to produce an Err");
         let message = format!("{:#}", result.unwrap_err());
         assert!(

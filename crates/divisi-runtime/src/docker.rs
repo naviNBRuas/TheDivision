@@ -23,7 +23,7 @@ use std::process::Command;
 /// The shared image `docker/Dockerfile` builds — every supported agent
 /// CLI installed via the same `bootstrap_install` commands
 /// `divisi_core::registry::builtin_registry()` already knows about.
-pub const DEFAULT_IMAGE: &str = "singlecli-agents";
+pub const DEFAULT_IMAGE: &str = "divisi-agents";
 
 pub fn docker_available() -> bool {
     Command::new("which").arg("docker").output().map(|o| o.status.success()).unwrap_or(false)

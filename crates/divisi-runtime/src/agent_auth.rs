@@ -166,7 +166,7 @@ fn free_model_env(name: &str) -> BTreeMap<String, String> {
 pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> AgentAuthRow {
     // Provider proxies and the built-in pool agent have no login of their own: their credential is a
     // pool provider key, reported by the provider table.
-    if name == "single-pool" || name == "single-agent" || name.starts_with("single-") {
+    if divisi_core::agent_names::is_divisi_backed(name) {
         return row(name, Category::Provider, "dispatches through pool provider keys; see `divisi provider`", None);
     }
     let Some(adapter) = divisi_agent_sdk::adapters::for_agent_with_custom(name, &ctx.dirs.agents_dir(), &ctx.registry) else {
@@ -267,7 +267,7 @@ pub fn report(ctx: &Context, conn: &Connection, probe: bool, deep: bool, only: &
     for name in &names {
         let base = stored.get(name).cloned().unwrap_or_else(|| {
             let installed = divisi_agent_sdk::adapters::for_agent_with_custom(name, &ctx.dirs.agents_dir(), &ctx.registry).is_some_and(|a| a.discover().detected);
-            if name.starts_with("single-") {
+            if divisi_core::agent_names::is_divisi_backed(name) {
                 AgentAuthRow { agent: name.clone(), category: Category::Provider.as_str().into(), evidence: "dispatches through pool provider keys; see `divisi provider`".into(), checked_at: None, until: None }
             } else if installed {
                 AgentAuthRow { agent: name.clone(), category: Category::Unverified.as_str().into(), evidence: "never probed; run `divisi agent auth --probe`".into(), checked_at: None, until: None }

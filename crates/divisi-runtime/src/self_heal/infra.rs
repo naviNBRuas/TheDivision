@@ -53,7 +53,7 @@ fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
 /// checkout, so without this they pile up without bound. Scans the
 /// directory rather than `tasks.worktree_path`, which is NULL for most
 /// rows. Dirty worktrees, ones git no longer recognises, and the
-/// `single/task-*` branches are all left alone.
+/// `divisi/task-*` branches are all left alone.
 fn stale_worktrees(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<String> {
     if cfg.worktree_retention_hours == 0 {
         return Ok("disabled (worktree_retention_hours = 0)".into());
@@ -111,7 +111,7 @@ fn stale_worktrees(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Re
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|b| b.starts_with("single/task-") || b.starts_with("divisi/goal-"));
+            .filter(|b| b.starts_with("divisi/task-") || b.starts_with("divisi/goal-"));
         if divisi_core::worktree::remove(repo, &wt, false).is_ok() {
             removed += 1;
             // The task branch goes too once its work is in the checked-out branch; `-d` refuses an
@@ -411,11 +411,11 @@ fn dead_agent_binaries(ctx: &Context) -> Result<String> {
         .registry
         .iter()
         .filter(|a| a.bootstrap_install.is_some())
-        // single-pool (E28) never shells a binary -- `discover()`'s
+        // divisi-pool (E28) never shells a binary -- `discover()`'s
         // default "is `command()` on $PATH" check is meaningless for it
         // and would always report false, since nothing is ever installed
-        // at a literal `single-pool` binary name.
-        .filter(|a| a.name != "single-pool")
+        // at a literal `divisi-pool` binary name.
+        .filter(|a| !divisi_core::agent_names::is_pool(&a.name))
         .filter(|a| {
             divisi_agent_sdk::adapters::for_agent_with_custom(&a.name, &ctx.dirs.agents_dir(), &ctx.registry)
                 .map(|adapter| !adapter.discover().detected)
@@ -723,7 +723,7 @@ mod tests {
         let mut paths = Vec::new();
         for (id, name) in [(1, "clean"), (2, "dirty"), (3, "ahead")] {
             let wt = root.join(format!("task-{id}"));
-            divisi_core::worktree::add(&repo, &wt, &format!("single/task-{name}")).unwrap();
+            divisi_core::worktree::add(&repo, &wt, &format!("divisi/task-{name}")).unwrap();
             if name == "dirty" {
                 std::fs::write(wt.join("scratch.txt"), "uncommitted").unwrap();
             }
@@ -748,8 +748,8 @@ mod tests {
         assert!(!paths[0].exists(), "clean old worktree should be gone");
         assert!(paths[1].exists(), "dirty worktree must survive");
         let has = |b: &str| std::process::Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "--verify", "-q", b]).output().unwrap().status.success();
-        assert!(!has("single/task-clean"), "a merged task branch goes with its worktree");
-        assert!(has("single/task-ahead"), "an unmerged task branch is never deleted");
+        assert!(!has("divisi/task-clean"), "a merged task branch goes with its worktree");
+        assert!(has("divisi/task-ahead"), "an unmerged task branch is never deleted");
     }
 
     #[test]

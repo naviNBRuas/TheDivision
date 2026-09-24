@@ -57,6 +57,7 @@ impl Context {
     }
 
     pub fn find_agent(&self, name: &str) -> Option<&AgentDefinition> {
+        let name = divisi_core::agent_names::canonical(name);
         self.registry.iter().find(|a| a.name == name)
     }
 }

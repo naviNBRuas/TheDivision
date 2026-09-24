@@ -58,7 +58,7 @@ fn run_in(container: &str, command: &str) -> CallToolResult {
 impl ServerHandler for DistroboxServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("single-mcp-distrobox", env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new("divisi-mcp-distrobox", env!("CARGO_PKG_VERSION")))
             .with_instructions("Runs shell commands inside your kali/blackarch distrobox containers for pentesting/CTF work.")
     }
 

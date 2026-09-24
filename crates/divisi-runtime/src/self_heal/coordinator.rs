@@ -140,7 +140,7 @@ fn ask(conn: &Connection, g: &goal::Goal, question: &str) -> Result<()> {
 /// A node whose retries are exhausted (`Failed`, `attempts >= 2`) gets
 /// its agent pin cleared and status reset to `Pending`, so the next
 /// tick's `select_agent` routes it through the kind's list fresh
-/// (potentially onto `single-pool`) instead of sitting dead forever.
+/// (potentially onto `divisi-pool`) instead of sitting dead forever.
 /// Never touches a goal amended in the last hour.
 ///
 /// Live-verification finding: this previously required `node.agent`
@@ -199,10 +199,10 @@ fn routing_toml_drift(ctx: &Context) -> Result<String> {
     for by_effort in table.kinds.values_mut() {
         for agents in by_effort.values_mut() {
             agents.retain(|a| {
-                // single-pool and single-<provider> presets are never
+                // divisi-pool and divisi-<provider> presets are never
                 // "undetected" the way a shelled CLI is -- see
                 // `PoolHealth::usable`'s same carve-out.
-                if a == "single-pool" || a.starts_with("single-") {
+                if divisi_core::agent_names::is_divisi_backed(a) {
                     return true;
                 }
                 let detected = divisi_agent_sdk::adapters::for_agent_with_custom(a, &ctx.dirs.agents_dir(), &ctx.registry).map(|ad| ad.discover().detected).unwrap_or(false);

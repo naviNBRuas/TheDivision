@@ -62,13 +62,13 @@ fn from_provider(p: &PoolKeyStatusInfo) -> AgentClass {
 }
 
 /// Classifies one agent. `providers` is the pool's per-provider status list;
-/// the `single-*` agents are provider proxies, so their credential is the
+/// the `divisi-*` agents are provider proxies, so their credential is the
 /// matching pool key rather than a vendor login.
 pub fn classify_agent(agent: &AgentInfo, providers: &[PoolKeyStatusInfo]) -> AgentClass {
     if !agent.detected {
         return AgentClass { class: "not_installed", why: "binary not found".into() };
     }
-    if agent.name == "single-pool" || agent.name == "single-agent" {
+    if crate::agent_names::is_pool(&agent.name) || crate::agent_names::is_native(&agent.name) {
         let ok = providers.iter().filter(|p| matches!(p.auth_state.as_str(), "authed" | "no_auth_needed")).count();
         return if ok > 0 {
             AgentClass { class: "authed", why: format!("{ok} providers usable") }
@@ -76,7 +76,8 @@ pub fn classify_agent(agent: &AgentInfo, providers: &[PoolKeyStatusInfo]) -> Age
             AgentClass { class: "needs_login", why: "no usable provider key".into() }
         };
     }
-    if let Some(id) = agent.name.strip_prefix("single-") {
+    if let Some(id) = crate::agent_names::provider_of(&agent.name) {
+        let id = id.as_str();
         return match providers.iter().find(|p| p.platform == id) {
             Some(p) => from_provider(p),
             None => AgentClass { class: "unverified", why: format!("provider {id} not in the pool catalog") },
@@ -142,10 +143,10 @@ mod tests {
         assert_eq!(classify_agent(&agent("claude", true, AuthState::Authenticated), &ps).class, "authed");
         assert_eq!(classify_agent(&agent("claude", true, AuthState::NotAuthenticated), &ps).class, "needs_login");
         assert_eq!(classify_agent(&agent("opencode", true, AuthState::Unsupported), &ps).class, "unverified");
-        assert_eq!(classify_agent(&agent("single-nvidia", true, AuthState::Unsupported), &ps).class, "authed");
-        assert_eq!(classify_agent(&agent("single-google", true, AuthState::Unsupported), &ps).class, "unverified");
+        assert_eq!(classify_agent(&agent("divisi-nvidia", true, AuthState::Unsupported), &ps).class, "authed");
+        assert_eq!(classify_agent(&agent("divisi-google", true, AuthState::Unsupported), &ps).class, "unverified");
         assert_eq!(classify_agent(&agent("single-cohere", true, AuthState::Unsupported), &ps).class, "needs_login");
         assert_eq!(classify_agent(&agent("single-nowhere", true, AuthState::Unsupported), &ps).class, "unverified");
-        assert_eq!(classify_agent(&agent("single-pool", true, AuthState::Unsupported), &ps).class, "authed");
+        assert_eq!(classify_agent(&agent("divisi-pool", true, AuthState::Unsupported), &ps).class, "authed");
     }
 }

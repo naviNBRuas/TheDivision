@@ -571,14 +571,14 @@ pub struct RunTaskOptions<'a> {
     /// `claude --output-format json`); otherwise a no-op hint and the
     /// run's usage is parse-or-estimated. See `AgentAdapter::run_prompt_json`.
     pub usage_json: bool,
-    /// Opt-in (default off): for the `single-pool` agent only, drops any
+    /// Opt-in (default off): for the `divisi-pool` agent only, drops any
     /// free-pool provider flagged `chat_prose_only` (aihorde-class —
     /// see `divisi_core::free_pool::structured_output_ok`) from
     /// candidacy. Set by `code`/`plan`/`integrate` role dispatch, which
     /// needs either real tool-calling or strict single-shot JSON
     /// compliance those providers' wire contracts don't guarantee.
     pub require_structured_output: bool,
-    /// For `single-pool` only: run the multi-step coding loop (`pool_coder`) over the pool instead of
+    /// For `divisi-pool` only: run the multi-step coding loop (`pool_coder`) over the pool instead of
     /// one text completion. On for real work; off for planner/supervisor/integrator JSON calls.
     pub pool_agentic: bool,
 }
@@ -734,10 +734,10 @@ pub fn run(conn: &Connection, ctx: &Context, opts: RunTaskOptions) -> Result<Tas
     else {
         anyhow::bail!("unknown agent: {}", opts.agent);
     };
-    // single-pool never shells a binary (see task::execute's special
+    // divisi-pool never shells a binary (see task::execute's special
     // case + PoolAdapter's doc comment) so "is it on $PATH" is meaningless
     // for it -- always considered available.
-    if opts.agent != "single-pool" && !adapter.discover().detected {
+    if !divisi_core::agent_names::is_pool(opts.agent) && !adapter.discover().detected {
         anyhow::bail!(
             "agent '{}' is not installed; run `divisi setup --yes` first",
             opts.agent
@@ -783,7 +783,7 @@ pub struct OwnedRunTaskOptions {
     pub allow_fallback: bool,
     pub usage_json: bool,
     pub require_structured_output: bool,
-    /// For `single-pool` only: run the multi-step coding loop (`pool_coder`) over the pool instead of
+    /// For `divisi-pool` only: run the multi-step coding loop (`pool_coder`) over the pool instead of
     /// one text completion. On for real work; off for planner/supervisor/integrator JSON calls.
     pub pool_agentic: bool,
 }
@@ -827,10 +827,10 @@ pub fn run_background(
     else {
         anyhow::bail!("unknown agent: {}", opts.agent);
     };
-    // single-pool never shells a binary (see task::execute's special
+    // divisi-pool never shells a binary (see task::execute's special
     // case + PoolAdapter's doc comment) so "is it on $PATH" is meaningless
     // for it -- always considered available.
-    if opts.agent != "single-pool" && !adapter.discover().detected {
+    if !divisi_core::agent_names::is_pool(&opts.agent) && !adapter.discover().detected {
         anyhow::bail!(
             "agent '{}' is not installed; run `divisi setup --yes` first",
             opts.agent
@@ -930,7 +930,7 @@ fn execute(
                 .state_dir()
                 .join("worktrees")
                 .join(format!("task-{id}"));
-            let branch = format!("single/task-{id}");
+            let branch = format!("divisi/task-{id}");
             // retry-safety: a prior failed attempt at this same task id may
             // have left a partial worktree dir / branch behind (`add`
             // derives both purely from `id`) -- clear it before trying
@@ -1172,11 +1172,11 @@ fn execute(
     // fallback chain) — holding this guard any longer than the run
     // itself would deadlock that recursive call forever waiting on a
     // slot only this (blocked) thread could ever release.
-    let outcome = if opts.agent == "single-pool" && opts.pool_agentic {
+    let outcome = if divisi_core::agent_names::is_pool(opts.agent) && opts.pool_agentic {
         // Real work on the pool: a multi-step coding loop in the task's checkout, each turn dispatched
         // through the pool so one provider running dry mid-task hands the conversation to the next.
         crate::pool_coder::run_as_task(conn, &run_cwd, &prompt, opts.timeout, opts.require_structured_output)
-    } else if opts.agent == "single-pool" {
+    } else if divisi_core::agent_names::is_pool(opts.agent) {
         // Never shells a binary: `pool_agent::run_as_task` dispatches
         // straight to a provider's HTTP API via the ledger/bandit/cooldown
         // engine, which needs `&Connection` — a parameter `AgentAdapter::
@@ -2252,16 +2252,16 @@ value = "-c"
         assert_eq!(rec.summary.as_deref(), Some("ok"));
     }
 
-    /// E28 Task 14: `agent == "single-pool"` must never reach
+    /// E28 Task 14: `agent == "divisi-pool"` must never reach
     /// `adapter.run_prompt` (which would try to shell a binary literally
-    /// named "single-pool" and fail) — it goes through
+    /// named "divisi-pool" and fail) — it goes through
     /// `pool_agent::run_as_task` instead. With zero pool provider keys
     /// seeded, `bandit::pick` finds no candidates and `execute` returns
     /// `Exhausted` immediately, with no network call — a clean signal
     /// that the dispatch path taken was `pool_agent`, not a CLI shell
     /// (which would instead fail with "unknown agent" or a shell error).
     #[test]
-    fn task_run_with_agent_single_pool_calls_pool_agent_not_a_cli() {
+    fn task_run_with_agent_divisi_pool_calls_pool_agent_not_a_cli() {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("DIVISI_CONFIG_DIR", dir.path());
         let conn = test_conn();
@@ -2272,7 +2272,7 @@ value = "-c"
         let this_repo = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let opts = RunTaskOptions {
             description: "hello from the pool",
-            agent: "single-pool",
+            agent: "divisi-pool",
             cwd: &this_repo,
             use_worktree: false,
             account: None,

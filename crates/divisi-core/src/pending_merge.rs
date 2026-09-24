@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn request_then_confirm_flows_through_pending_to_confirmed() {
         let conn = test_conn();
-        let id = request(&conn, "g1", "s1", "review", "code", "single/task-1").unwrap();
+        let id = request(&conn, "g1", "s1", "review", "code", "divisi/task-1").unwrap();
 
         let pending = list_pending(&conn).unwrap();
         assert_eq!(pending.len(), 1);
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn reject_leaves_it_rejected_not_pending() {
         let conn = test_conn();
-        let id = request(&conn, "g1", "s1", "review", "code", "single/task-1").unwrap();
+        let id = request(&conn, "g1", "s1", "review", "code", "divisi/task-1").unwrap();
         let resolved = resolve(&conn, id, false).unwrap();
         assert_eq!(resolved.status, PendingMergeStatus::Rejected);
         assert!(list_pending(&conn).unwrap().is_empty());
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn resolving_an_already_resolved_merge_is_a_noop_not_a_double_apply() {
         let conn = test_conn();
-        let id = request(&conn, "g1", "s1", "review", "code", "single/task-1").unwrap();
+        let id = request(&conn, "g1", "s1", "review", "code", "divisi/task-1").unwrap();
         resolve(&conn, id, true).unwrap();
         // a second resolve (e.g. a duplicate confirm click) must not flip
         // a confirmed decision to rejected or vice versa

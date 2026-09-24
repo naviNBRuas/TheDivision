@@ -51,7 +51,7 @@ fn missing_routable_agents(ctx: &Context) -> Vec<String> {
     }
     names
         .into_iter()
-        .filter(|a| a != "single-pool" && !a.starts_with("single-")) // never shelled binaries -- see PoolHealth::usable's same carve-out
+        .filter(|a| !divisi_core::agent_names::is_divisi_backed(a)) // never shelled binaries -- see PoolHealth::usable's same carve-out
         .filter(|a| ctx.find_agent(a).and_then(|d| d.bootstrap_install.as_ref()).is_some())
         .filter(|a| for_agent_with_custom(a, &ctx.dirs.agents_dir(), &ctx.registry).map(|ad| !ad.discover().detected).unwrap_or(false))
         .collect()

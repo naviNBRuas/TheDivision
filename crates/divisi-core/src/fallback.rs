@@ -20,7 +20,10 @@ pub fn load(path: &Path) -> Result<Vec<Vec<AgentAccountRef>>> {
         return Ok(Vec::new());
     }
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let file: FallbackFile = toml::from_str(&text).with_context(|| format!("parsing {} as TOML", path.display()))?;
+    let mut file: FallbackFile = toml::from_str(&text).with_context(|| format!("parsing {} as TOML", path.display()))?;
+    for r in file.chains.iter_mut().flatten() {
+        r.agent = crate::agent_names::canonical(&r.agent);
+    }
     Ok(file.chains)
 }
 

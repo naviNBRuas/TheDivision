@@ -338,7 +338,7 @@ pub fn reevaluate_blocked(conn: &Connection, id: &str) -> Result<u32> {
 /// E28 spec §9.2: clears a node's pinned `agent` and resets it to
 /// `Pending` — used when a node keeps failing on the same explicitly-
 /// pinned agent, so the next tick's `select_agent` routes it fresh
-/// (walking past the known-bad agent, potentially onto `single-pool`)
+/// (walking past the known-bad agent, potentially onto `divisi-pool`)
 /// instead of retrying the same pin forever.
 pub fn clear_node_agent_pin(conn: &Connection, goal_id: &str, node_id: &str) -> Result<()> {
     conn.execute(
@@ -574,7 +574,7 @@ pub fn load_graph(conn: &Connection, goal_id: &str) -> Result<TaskGraph> {
                 desc: row.get("desc")?,
                 kind: NodeKind::parse(&row.get::<_, String>("kind")?).unwrap_or(NodeKind::Code),
                 effort: Effort::parse(&row.get::<_, String>("effort")?).unwrap_or(Effort::Standard),
-                agent: row.get("agent")?,
+                agent: divisi_core::agent_names::canonical(&row.get::<_, String>("agent")?),
                 depends_on: serde_json::from_str(&depends_on).unwrap_or_default(),
                 status: NodeStatus::parse(&row.get::<_, String>("status")?).unwrap_or(NodeStatus::Pending),
                 task_id: row.get("task_id")?,
@@ -722,7 +722,7 @@ mod tests {
             &conn,
             &s.id,
             &format!(
-                "Make divisi self-healing as an ongoing standing concern, not a one-off audit: itself, single-pool (the free-provider dispatch engine), divisi-gateway, and divisi-lsp. Read the architecture doc's diagnostic sections first for already-diagnosed issues. Actually find the grok worktree-cwd spawn-failure root cause with real tracing, not guessing. Run the full test suite and clippy, fix real warnings you find. Verify divisi-gateway/divisi-lsp's lazy-spawn and idle-eviction work end to end against a real process. Audit the free-pool's ~44 providers for any more with the aihorde-class chat-prose problem. {shared_boilerplate}"
+                "Make divisi self-healing as an ongoing standing concern, not a one-off audit: itself, divisi-pool (the free-provider dispatch engine), divisi-gateway, and divisi-lsp. Read the architecture doc's diagnostic sections first for already-diagnosed issues. Actually find the grok worktree-cwd spawn-failure root cause with real tracing, not guessing. Run the full test suite and clippy, fix real warnings you find. Verify divisi-gateway/divisi-lsp's lazy-spawn and idle-eviction work end to end against a real process. Audit the free-pool's ~44 providers for any more with the aihorde-class chat-prose problem. {shared_boilerplate}"
             ),
             GoalMode::Auto,
             25,

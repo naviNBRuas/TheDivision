@@ -635,7 +635,7 @@ fn dispatch(
                         task.cwd
                     )
                 })?;
-            let branch = format!("single/task-{task_id}");
+            let branch = format!("divisi/task-{task_id}");
             let diff_output = divisi_core::worktree::diff(std::path::Path::new(&repo_root), &branch)?;
             Ok(ResponseData::WorktreeDiff(diff_output))
         }
@@ -664,7 +664,7 @@ fn dispatch(
                         task.cwd
                     )
                 })?;
-            let branch = format!("single/task-{task_id}");
+            let branch = format!("divisi/task-{task_id}");
             let output = divisi_core::worktree::merge(std::path::Path::new(&repo_root), &branch)?;
             Ok(ResponseData::WorktreeMerged(divisi_protocol::WorktreeMergeResult {
                 task_id,
@@ -1324,7 +1324,7 @@ fn dispatch(
             let providers_path = ctx.dirs.providers_registry_file();
             let mut synced = 0usize;
             for provider in divisi_core::free_pool::FREE_PROVIDERS {
-                let name = format!("single-{}", provider.id);
+                let name = format!("divisi-{}", provider.id);
                 let env_var_name = format!("DIVISI_POOL_{}_API_KEY", provider.id.to_uppercase().replace('-', "_"));
                 divisi_core::providers::add(
                     &providers_path,
@@ -2239,7 +2239,7 @@ fn task_db(ctx: &Context) -> anyhow::Result<rusqlite::Connection> {
     crate::memory::ensure_schema(&conn)?;
     divisi_core::notes::ensure_schema(&conn)?;
     crate::knowledge_graph::ensure_schema(&conn)?;
-    // agent == "single-pool" reads pool_provider_keys/pool_usage/etc on
+    // agent == "divisi-pool" reads pool_provider_keys/pool_usage/etc on
     // every run (task::execute's special case) — needed here, not just
     // server.rs's startup reconcile, so the in-process (no-daemon)
     // fallback path also has the tables before the first pool run.
@@ -2893,7 +2893,7 @@ mod tests {
         let task_id = crate::task::create_for_cwd(&conn, "test task", "claude", repo.path()).unwrap();
 
         let worktree_path = tempfile::tempdir().unwrap().path().join(format!("task-{task_id}"));
-        let branch = format!("single/task-{task_id}");
+        let branch = format!("divisi/task-{task_id}");
         divisi_core::worktree::add(repo.path(), &worktree_path, &branch).unwrap();
         std::fs::write(worktree_path.join("new-file.txt"), "from the worktree").unwrap();
         let run_in_worktree = |args: &[&str]| {

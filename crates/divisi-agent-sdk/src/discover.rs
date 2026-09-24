@@ -201,7 +201,7 @@ pub fn discover(command: &str) -> Discovery {
 
 /// Same existence check as `discover()`, but never runs `<command>
 /// --version`. Live-verification finding: for a `[run]`-mode custom agent
-/// (a one-shot `single-agent run --provider X --prompt "$2"` wrapper
+/// (a one-shot `divisi-agent run --provider X --prompt "$2"` wrapper
 /// script — see `divisi-core::custom_agents`), the script blindly forwards
 /// whatever it's given as `--prompt`, so a real `--version` probe from
 /// `discover()` either sends an empty prompt or misparses `--version`
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn missing_command_is_not_detected() {
-        let d = discover("single-cli-definitely-does-not-exist-xyz");
+        let d = discover("divisi-definitely-does-not-exist-xyz");
         assert!(!d.detected);
         assert!(d.version.is_none());
     }
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn detect_only_reports_undetected_for_a_missing_command() {
-        let d = discover_detect_only("single-cli-definitely-does-not-exist-xyz");
+        let d = discover_detect_only("divisi-definitely-does-not-exist-xyz");
         assert!(!d.detected);
         assert!(d.version.is_none());
     }

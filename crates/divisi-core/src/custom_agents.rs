@@ -71,7 +71,10 @@ pub fn load_all(dir: &Path) -> Result<(Vec<CustomAgentFile>, Vec<(String, String
         match std::fs::read_to_string(&path).map_err(anyhow::Error::from).and_then(|text| {
             toml::from_str::<CustomAgentFile>(&text).map_err(anyhow::Error::from)
         }) {
-            Ok(def) => agents.push(def),
+            Ok(mut def) => {
+                def.name = crate::agent_names::canonical(&def.name);
+                agents.push(def)
+            }
             Err(e) => errors.push((label, e.to_string())),
         }
     }
@@ -102,8 +105,8 @@ pub fn to_agent_definition(def: &CustomAgentFile) -> crate::registry::AgentDefin
             // -- "has a `[run]` block, so it can be invoked
             // non-interactively" -- which has nothing to do with tool
             // execution and was silently true for every custom agent
-            // with a `[run]` section, including the `single-agent run
-            // --provider X` wrappers (single-openrouter, single-typhoon,
+            // with a `[run]` section, including the `divisi-agent run
+            // --provider X` wrappers (divisi-openrouter, divisi-typhoon,
             // etc.), none of which actually parse or execute tool-call
             // syntax; one leaked a literal `<tool_call>` token straight
             // into its output. `[run]`-based custom agents are one-shot
@@ -219,8 +222,8 @@ key_path = "mcpServers"
     /// Live-verification finding: `tools` used to be true for any custom
     /// agent with a `[run]` block, conflating "can be invoked
     /// non-interactively" with "actually executes tool calls" — every
-    /// `single-agent run --provider X` wrapper (single-openrouter,
-    /// single-typhoon, etc.) claimed full tool capability despite being
+    /// `divisi-agent run --provider X` wrapper (divisi-openrouter,
+    /// divisi-typhoon, etc.) claimed full tool capability despite being
     /// a one-shot prompt→completion wrapper with no tool-call protocol.
     /// One observed leaking a literal `<tool_call>` token into its
     /// output as a direct result.

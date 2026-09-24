@@ -1,4 +1,4 @@
-//! `single-pool` as a real coding agent: a multi-step loop that reads, edits and runs things in the
+//! `divisi-pool` as a real coding agent: a multi-step loop that reads, edits and runs things in the
 //! task's working directory, with every model turn dispatched through the pool (`pool_agent::
 //! execute_with`) — so the bandit, ledger, per-key cooldowns and failover all apply per turn, and a
 //! run that hits one provider's limit carries on with the next one mid-task.
@@ -245,7 +245,7 @@ pub fn run_loop(
                         return Ok(CoderRun {
                             success: false,
                             transcript,
-                            error: format!("single-pool: rate limited — every keyed provider is exhausted or benched (step {step})"),
+                            error: format!("divisi-pool: rate limited — every keyed provider is exhausted or benched (step {step})"),
                         });
                     }
                     std::thread::sleep(wait);
@@ -281,7 +281,7 @@ pub fn run_loop(
     Ok(CoderRun { success: false, transcript, error: format!("reached {MAX_STEPS} steps without finishing") })
 }
 
-/// Production wiring used by `task::execute` for `single-pool` work dispatches.
+/// Production wiring used by `task::execute` for `divisi-pool` work dispatches.
 pub fn run_as_task(
     conn: &Connection,
     root: &Path,

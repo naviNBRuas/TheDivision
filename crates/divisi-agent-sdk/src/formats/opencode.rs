@@ -203,19 +203,19 @@ const KNOWN_REGISTRY_PROVIDERS: &[&str] = &[
 /// `openrouter`, … — gets that provider's entire registry catalog (100+
 /// entries, including EOL'd models) merged on top of the one or two models
 /// divisi actually curated, and opencode's "auto" selection can then
-/// pick a dead model. Writing it under `single-<name>` instead (divisi's
+/// pick a dead model. Writing it under `divisi-<name>` instead (divisi's
 /// existing pool namespace, which isn't in models.dev) leaves only the
 /// declared models. `--output-format`/`autoload` do not prevent the merge —
 /// verified against opencode 1.18.29.
 pub fn opencode_provider_key(config_path: &Path, provider_name: &str) -> String {
-    if provider_name.starts_with("single-") {
+    if provider_name.starts_with("divisi-") || provider_name.starts_with("single-") {
         return provider_name.to_string(); // already namespaced
     }
     let collides = registry_provider_names(config_path)
         .map(|names| names.iter().any(|n| n == provider_name))
         .unwrap_or_else(|| KNOWN_REGISTRY_PROVIDERS.contains(&provider_name));
     if collides {
-        format!("single-{provider_name}")
+        format!("divisi-{provider_name}")
     } else {
         provider_name.to_string()
     }
@@ -463,10 +463,10 @@ mod tests {
     #[test]
     fn opencode_provider_key_aliases_registry_collisions_via_the_denylist() {
         let p = Path::new("/nonexistent/.config/opencode/opencode.jsonc");
-        assert_eq!(opencode_provider_key(p, "nvidia"), "single-nvidia");
-        assert_eq!(opencode_provider_key(p, "openrouter"), "single-openrouter");
+        assert_eq!(opencode_provider_key(p, "nvidia"), "divisi-nvidia");
+        assert_eq!(opencode_provider_key(p, "openrouter"), "divisi-openrouter");
         assert_eq!(opencode_provider_key(p, "my-private-llm"), "my-private-llm");
-        assert_eq!(opencode_provider_key(p, "single-nvidia"), "single-nvidia"); // already namespaced
+        assert_eq!(opencode_provider_key(p, "divisi-nvidia"), "divisi-nvidia"); // already namespaced
     }
 
     #[test]
@@ -480,8 +480,8 @@ mod tests {
 
         // in the cache -> aliased; not in the cache and not in the
         // denylist -> left alone (even though the denylist would catch it).
-        assert_eq!(opencode_provider_key(&cfg, "acmecloud"), "single-acmecloud");
-        assert_eq!(opencode_provider_key(&cfg, "widgetsai"), "single-widgetsai");
+        assert_eq!(opencode_provider_key(&cfg, "acmecloud"), "divisi-acmecloud");
+        assert_eq!(opencode_provider_key(&cfg, "widgetsai"), "divisi-widgetsai");
         assert_eq!(opencode_provider_key(&cfg, "nvidia"), "nvidia"); // cache is authoritative here
     }
 
@@ -500,7 +500,7 @@ mod tests {
         };
         let result = apply_provider(&path, &provider).unwrap();
         assert!(result["provider"].get("nvidia").is_none(), "stale bare key must be removed");
-        let block = &result["provider"]["single-nvidia"];
+        let block = &result["provider"]["divisi-nvidia"];
         assert_eq!(block["name"], "nvidia");
         assert_eq!(block["options"]["baseURL"], "https://integrate.api.nvidia.com/v1");
         assert!(block["models"].get("deepseek-ai/deepseek-v4-flash-0731").is_some());

@@ -360,7 +360,7 @@ mod tests {
             let keys_path = dir.path().join("provider_keys.toml");
             add(&providers_path, ProviderSpec {
                 name: "divisi-test-unconfigured".into(),
-                env_var_name: "SINGLECLI_TEST_UNCONFIGURED_KEY".into(),
+                env_var_name: "DIVISI_TEST_UNCONFIGURED_KEY".into(),
                 secret_name: "provider:divisi-test-unconfigured".into(),
                 base_url: None,
                 models: Vec::new(),
@@ -379,7 +379,7 @@ mod tests {
             let secret_name = "provider:divisi-test-shared-configured".to_string();
             add(&providers_path, ProviderSpec {
                 name: "divisi-test-shared-configured".into(),
-                env_var_name: "SINGLECLI_TEST_SHARED_CONFIGURED_KEY".into(),
+                env_var_name: "DIVISI_TEST_SHARED_CONFIGURED_KEY".into(),
                 secret_name: secret_name.clone(),
                 base_url: None,
                 models: Vec::new(),
@@ -403,7 +403,7 @@ mod tests {
             let provider = "divisi-test-labeled-configured";
             add(&providers_path, ProviderSpec {
                 name: provider.into(),
-                env_var_name: "SINGLECLI_TEST_LABELED_CONFIGURED_KEY".into(),
+                env_var_name: "DIVISI_TEST_LABELED_CONFIGURED_KEY".into(),
                 secret_name: format!("provider:{provider}"),
                 base_url: None,
                 models: Vec::new(),

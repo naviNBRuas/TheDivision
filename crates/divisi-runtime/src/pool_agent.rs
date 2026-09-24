@@ -1,4 +1,4 @@
-//! The `single-pool` agent adapter — spec §7. Implements the same run
+//! The `divisi-pool` agent adapter — spec §7. Implements the same run
 //! contract `task::execute` expects from a shelled CLI agent, but never
 //! shells anything: it picks a `(platform, model, key_id)` via the
 //! bandit, dispatches over HTTP through `pool::client`, and records
@@ -6,7 +6,7 @@
 //! connection, which is why this lives in `divisi-runtime` rather than as
 //! a normal `AgentAdapter` impl in `divisi-agent-sdk` (that trait's
 //! `run_prompt` has no `&Connection` parameter — see `task.rs`'s
-//! `execute()`, which special-cases `agent == "single-pool"` before ever
+//! `execute()`, which special-cases `agent == "divisi-pool"` before ever
 //! reaching the adapter dispatch, per Task 14).
 //!
 //! **Model selection seam**: the vendored catalog (Part A) has no
@@ -253,7 +253,7 @@ pub fn global_handoff_store() -> &'static HandoffStore {
     HANDOFF_STORE.get_or_init(HandoffStore::default)
 }
 
-/// Production entry point for `task::execute`'s `agent == "single-pool"`
+/// Production entry point for `task::execute`'s `agent == "divisi-pool"`
 /// special case (Task 14): builds the real candidate list, resolves
 /// secrets via the OS keychain, dispatches over real HTTP, and maps the
 /// result onto the same `RunOutcome` shape a shelled CLI agent returns —
@@ -312,7 +312,7 @@ pub fn run_as_task(
             success: false,
             stdout: String::new(),
             stderr: format!(
-                "single-pool: rate limited — every keyed provider is exhausted or benched, earliest recovery at {earliest_recovery_ms}"
+                "divisi-pool: rate limited — every keyed provider is exhausted or benched, earliest recovery at {earliest_recovery_ms}"
             ),
             exit_code: Some(1),
             timed_out: false,

@@ -80,7 +80,7 @@ struct AcpSession {
     last_event_id: i64,
     cancel: Arc<AtomicBool>,
     /// E29: `/agent <name>` override for this session's goal submissions.
-    /// `None` means the ACP default (`single-pool`) — see `run_turn`'s
+    /// `None` means the ACP default (`divisi-pool`) — see `run_turn`'s
     /// `GoalSubmit` construction.
     agent_override: Option<String>,
 }
@@ -149,7 +149,7 @@ impl Acp {
                 id,
                 json!({
                     "protocolVersion": PROTOCOL_VERSION,
-                    "agentInfo": { "name": "single-acp", "version": env!("CARGO_PKG_VERSION") },
+                    "agentInfo": { "name": "divisi", "version": env!("CARGO_PKG_VERSION") },
                     "agentCapabilities": {
                         "loadSession": true,
                         "promptCapabilities": { "image": false, "audio": false, "embeddedContext": true },
@@ -348,15 +348,15 @@ impl Acp {
 
         // otherwise: submit a goal and stream the coordinator's progress.
         self.chunk(acp_sid, "planning…\n", "agent_thought_chunk");
-        // Live-verification finding (E29's `single-pool`-by-default choice,
+        // Live-verification finding (E29's `divisi-pool`-by-default choice,
         // reverted): `plan_goal` force-overrides EVERY node in the graph to
         // whatever `agent` names, not just the planner step — so this
         // default sent every Zed-submitted goal's entire task graph
-        // (code, test, review, everything) through `single-pool`, which
+        // (code, test, review, everything) through `divisi-pool`, which
         // has no real tool/file/command execution (confirmed live:
         // fabricated a plausible but entirely fictional cargo test run,
         // and separately leaked a raw `<tool_call>` token into its output
-        // when a different `single-agent run` wrapper tried to use a
+        // when a different `divisi-agent run` wrapper tried to use a
         // tool). `agent_override` (`/agent <name>`) still works exactly
         // as before for a user who deliberately wants one agent for
         // everything; absent that, leave `agent` as `None` so the
@@ -749,13 +749,13 @@ impl Acp {
                         .unwrap()
                         .get(acp_sid)
                         .and_then(|s| s.agent_override.clone())
-                        .unwrap_or_else(|| "single-pool (default)".to_string());
+                        .unwrap_or_else(|| "divisi-pool (default)".to_string());
                     format!("current session agent: {current}\nusage: /agent <name>  or  /agent default")
                 } else if arg == "default" {
                     if let Some(s) = self.sessions.lock().unwrap().get_mut(acp_sid) {
                         s.agent_override = None;
                     }
-                    "reset to default agent (single-pool)".to_string()
+                    "reset to default agent (divisi-pool)".to_string()
                 } else {
                     if let Some(s) = self.sessions.lock().unwrap().get_mut(acp_sid) {
                         s.agent_override = Some(arg.to_string());
@@ -956,7 +956,7 @@ fn commands() -> Value {
         { "name": "lsp", "description": "LSP servers divisi-lsp can route to" },
         { "name": "providers", "description": "configured LLM providers" },
         { "name": "dashboard", "description": "how to open the divisi control panel" },
-        { "name": "agent", "description": "set or clear this session's pinned agent (default: single-pool)" },
+        { "name": "agent", "description": "set or clear this session's pinned agent (default: divisi-pool)" },
         { "name": "cancel", "description": "cancel this session's active goal" }
     ])
 }
@@ -1083,7 +1083,7 @@ fn usage_line(v: &divisi_protocol::GoalView) -> String {
 
 fn log(msg: &str) {
     if let Ok(path) = std::env::var("DIVISI_ACP_LOG").or_else(|_| {
-        std::env::var("HOME").map(|h| format!("{h}/.cache/single-acp.log"))
+        std::env::var("HOME").map(|h| format!("{h}/.cache/divisi-acp.log"))
     }) {
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
             let _ = writeln!(f, "{} {msg}", chrono_now());
@@ -1159,16 +1159,16 @@ mod tests {
     }
 
     #[test]
-    fn goal_submit_defaults_to_single_pool_when_no_override_set() {
+    fn goal_submit_defaults_to_divisi_pool_when_no_override_set() {
         let agent: Option<String> = None;
-        let resolved = agent.or_else(|| Some("single-pool".to_string()));
-        assert_eq!(resolved.as_deref(), Some("single-pool"));
+        let resolved = agent.or_else(|| Some("divisi-pool".to_string()));
+        assert_eq!(resolved.as_deref(), Some("divisi-pool"));
     }
 
     #[test]
     fn goal_submit_honors_explicit_override() {
         let agent: Option<String> = Some("opencode".to_string());
-        let resolved = agent.or_else(|| Some("single-pool".to_string()));
+        let resolved = agent.or_else(|| Some("divisi-pool".to_string()));
         assert_eq!(resolved.as_deref(), Some("opencode"));
     }
 

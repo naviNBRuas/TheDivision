@@ -76,7 +76,7 @@ pub struct SelfHealConfig {
     /// Infra category: a finished task's git worktree (a full checkout,
     /// hundreds of MB each) is removed once its task has been terminal for
     /// this many hours and the worktree has no uncommitted changes. The
-    /// `single/task-*` branch is kept. `0` disables the sweep.
+    /// `divisi/task-*` branch is kept. `0` disables the sweep.
     pub worktree_retention_hours: u32,
 }
 

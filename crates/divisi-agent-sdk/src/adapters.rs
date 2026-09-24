@@ -1229,17 +1229,17 @@ impl AgentAdapter for DivisiAgentAdapter {
         "divisi-agent"
     }
 
-    /// single-agent has no on-disk MCP config surface — it talks directly
+    /// divisi-agent has no on-disk MCP config surface — it talks directly
     /// to divisi's own provider registry and secret store.
     fn configure_mcp(&self, home: &Path, _servers: &[McpServerSpec], _dry_run: bool) -> Result<IntegrationWrite> {
-        Ok(unsupported_write("single-agent", home, "single-agent has no MCP config surface — it uses divisi's own provider registry"))
+        Ok(unsupported_write("divisi-agent", home, "divisi-agent has no MCP config surface — it uses divisi's own provider registry"))
     }
 
     fn remove_mcp(&self, home: &Path, _names: &[String], _dry_run: bool) -> Result<IntegrationWrite> {
-        Ok(unsupported_write("single-agent", home, "single-agent has no MCP config surface — it uses divisi's own provider registry"))
+        Ok(unsupported_write("divisi-agent", home, "divisi-agent has no MCP config surface — it uses divisi's own provider registry"))
     }
 
-    /// `single-agent run --provider <P> --model <M> --prompt <prompt> --cwd <cwd>`
+    /// `divisi-agent run --provider <P> --model <M> --prompt <prompt> --cwd <cwd>`
     ///
     /// Provider and model are read from `DIVISI_AGENT_PROVIDER` and
     /// `DIVISI_AGENT_MODEL` env vars (falling back to `opencode-zen` /
@@ -1281,7 +1281,7 @@ impl AgentAdapter for DivisiAgentAdapter {
         )
     }
 
-    // No `login`: single-agent reads API keys from divisi's own secret
+    // No `login`: divisi-agent reads API keys from divisi's own secret
     // store, not from its own credentials file — there is nothing to attach
     // a terminal session to.
 }
@@ -1338,28 +1338,28 @@ fn write_with_backup(agent: &str, path: &Path, rendered: &str, dry_run: bool) ->
     })
 }
 
-/// `single-pool` (E28) — a placeholder registration only. It never
+/// `divisi-pool` (E28) — a placeholder registration only. It never
 /// shells a binary, so `run_prompt` deliberately falls through to the
 /// trait's default `bail!`: `divisi-runtime::task::execute` special-cases
-/// `agent == "single-pool"` *before* ever calling `adapter.run_prompt`,
+/// `agent == "divisi-pool"` *before* ever calling `adapter.run_prompt`,
 /// dispatching to `pool_agent::run_as_task` instead, because that
 /// function needs the runtime's `&Connection` (for the ledger/cooldown/
 /// bandit tables) which this trait has no parameter for. This adapter
-/// exists only so `for_agent_with_custom("single-pool", ...)` resolves to
+/// exists only so `for_agent_with_custom("divisi-pool", ...)` resolves to
 /// `Some(..)` instead of task::execute bailing "unknown agent" before it
 /// ever reaches that special case.
 pub struct PoolAdapter;
 
 impl AgentAdapter for PoolAdapter {
     fn command(&self) -> &str {
-        "single-pool"
+        "divisi-pool"
     }
 
     // Live-verification finding: the trait's default `discover()` shells
-    // `which single-pool`, which never resolves to anything -- there is
-    // no `single-pool` binary on $PATH (see this adapter's doc comment:
+    // `which divisi-pool`, which never resolves to anything -- there is
+    // no `divisi-pool` binary on $PATH (see this adapter's doc comment:
     // it dispatches over HTTP from inside divisid, nothing is
-    // ever shelled). That made `divisi doctor` report "single-pool: not
+    // ever shelled). That made `divisi doctor` report "divisi-pool: not
     // installed" even on a build where the E28 pool engine was fully
     // wired up and working end-to-end, which reads as "you're missing a
     // feature" rather than the truth: it's always available whenever
@@ -1369,11 +1369,11 @@ impl AgentAdapter for PoolAdapter {
     }
 
     fn configure_mcp(&self, home: &Path, _servers: &[McpServerSpec], _dry_run: bool) -> Result<IntegrationWrite> {
-        Ok(unsupported_write("single-pool", home, "single-pool is an internal HTTP-dispatch agent, not an MCP-capable CLI; nothing to configure"))
+        Ok(unsupported_write("divisi-pool", home, "divisi-pool is an internal HTTP-dispatch agent, not an MCP-capable CLI; nothing to configure"))
     }
 
     fn remove_mcp(&self, home: &Path, _names: &[String], _dry_run: bool) -> Result<IntegrationWrite> {
-        Ok(unsupported_write("single-pool", home, "single-pool is an internal HTTP-dispatch agent, not an MCP-capable CLI; nothing to remove"))
+        Ok(unsupported_write("divisi-pool", home, "divisi-pool is an internal HTTP-dispatch agent, not an MCP-capable CLI; nothing to remove"))
     }
 }
 
@@ -1522,8 +1522,8 @@ pub fn for_agent(name: &str) -> Option<Box<dyn AgentAdapter>> {
         "crush" => Some(Box::new(CrushAdapter)),
         "kilocode" => Some(Box::new(KiloCodeAdapter)),
         "mistral-vibe" => Some(Box::new(MistralVibeAdapter)),
-        "single-agent" => Some(Box::new(DivisiAgentAdapter)),
-        "single-pool" => Some(Box::new(PoolAdapter)),
+        "divisi-agent" => Some(Box::new(DivisiAgentAdapter)),
+        "divisi-pool" => Some(Box::new(PoolAdapter)),
         "cline" => Some(Box::new(ClineAdapter)),
         "continue" => Some(Box::new(ContinueAdapter)),
         "roo" => Some(Box::new(RooAdapter)),
@@ -1544,6 +1544,8 @@ pub fn for_agent(name: &str) -> Option<Box<dyn AgentAdapter>> {
 /// divisi, and the reason registry entries without a real adapter still
 /// get detected by `doctor`/`divisi setup` instead of silently doing nothing.
 pub fn for_agent_with_custom(name: &str, custom_agents_dir: &Path, registry: &[divisi_core::registry::AgentDefinition]) -> Option<Box<dyn AgentAdapter>> {
+    let canonical = divisi_core::agent_names::canonical(name);
+    let name = canonical.as_str();
     if let Some(builtin) = for_agent(name) {
         return Some(builtin);
     }
