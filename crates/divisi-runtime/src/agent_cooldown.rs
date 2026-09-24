@@ -38,8 +38,11 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
 }
 
 /// Wait after the `strikes`-th quota failure with no stated reset time: 30 min, doubling, capped at 12 h.
+/// Wait for a bench with no stated reset: 15m, 30m, then 1h at most. Live finding (2026-09-24): it
+/// grew to 12h, so transient provider errors ("3 failed runs in a row") kept opencode and nvidia
+/// out for half a day; the recovery probe re-benches an agent that is really still down.
 pub fn backoff(strikes: u32) -> Duration {
-    Duration::minutes((30i64 << strikes.min(5)).min(12 * 60))
+    Duration::minutes((15i64 << strikes.min(2)).min(60))
 }
 
 /// How long a not-logged-in agent stays benched between recovery probes.
@@ -149,7 +152,8 @@ fn early_probe_minutes(kind: &str) -> i64 {
     match kind {
         "gone" => 6 * 60,
         "auth" => 60,
-        _ => 20,
+        // shorter than the first 15-minute guessed bench, so a recovered agent returns early
+        _ => 10,
     }
 }
 
@@ -350,13 +354,13 @@ mod tests {
         let conn = db();
         assert!(note(&conn, "grok", "Error: You reached your free usage limit for now, try again later"));
         let first = active(&conn, Utc::now()).unwrap()["grok"] - Utc::now();
-        assert!(first > Duration::minutes(29) && first <= Duration::minutes(30), "first strike waits 30 minutes, got {first}");
+        assert!(first > Duration::minutes(14) && first <= Duration::minutes(15), "first strike waits 15 minutes, got {first}");
         // a second failure while still benched cannot shorten it, and the strike count advances
         assert!(note(&conn, "grok", "Error: You reached your free usage limit for now, try again later"));
         assert_eq!(strikes_of(&conn, "grok"), 2);
-        assert_eq!(backoff(0), Duration::minutes(30));
-        assert_eq!(backoff(1), Duration::hours(1));
-        assert_eq!(backoff(9), Duration::hours(12), "capped");
+        assert_eq!(backoff(0), Duration::minutes(15));
+        assert_eq!(backoff(1), Duration::minutes(30));
+        assert_eq!(backoff(9), Duration::hours(1), "capped");
     }
 
     #[test]
@@ -444,7 +448,7 @@ mod tests {
         let conn = db();
         assert!(note(&conn, "agy", "RESOURCE_EXHAUSTED (code 429): exhausted your capacity"));
         assert!(early_probe_due(&conn, Utc::now()).unwrap().is_empty(), "not right away");
-        let later = Utc::now() + Duration::minutes(21);
+        let later = Utc::now() + Duration::minutes(11);
         assert_eq!(early_probe_due(&conn, later).unwrap(), vec!["agy".to_string()]);
         let snap = snapshot(&conn, "agy").unwrap();
         note(&conn, "agy", "RESOURCE_EXHAUSTED (code 429): exhausted your capacity");

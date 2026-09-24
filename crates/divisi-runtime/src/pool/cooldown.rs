@@ -8,7 +8,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::time::Duration;
 
 const TRANSIENT_MS: i64 = 90 * 1000;
-const ESCALATION_LADDER_MS: [i64; 4] = [2 * 60 * 1000, 10 * 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000];
+// Live finding (2026-09-24): the last rung was 1 day, so a key that hit a per-minute limit five times
+// sat out a whole day; 115 keys/agents were benched at once. Free tiers reset per minute or daily, so
+// the ladder tops out at 1h and every guessed bench also ends at the next UTC midnight (below).
+const ESCALATION_LADDER_MS: [i64; 4] = [2 * 60 * 1000, 10 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000];
+const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 const HITS_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 const PAYMENT_OR_TIER_MS: i64 = 24 * 60 * 60 * 1000;
 const AUTH_BENCHED_MS: i64 = 5 * 60 * 1000;
@@ -91,7 +95,10 @@ pub fn bench(conn: &Connection, platform: &str, model: &str, key_id: &str, kind:
     // The operator ceiling caps the ladder + 402/403 benches, but never
     // shortens an Authoritative (provider-stated) time.
     let ceiling_ms = cooldown_ceiling(conn).as_millis() as i64;
-    let capped_ms = if matches!(provenance, Provenance::Authoritative) { delay_ms } else { delay_ms.min(ceiling_ms) };
+    // Guessed benches also end at the next UTC midnight, when daily free-tier quotas reset: a key
+    // that is still out costs one failed request then, instead of a day of idle capacity.
+    let to_midnight_ms = DAY_MS - now_ms.rem_euclid(DAY_MS);
+    let capped_ms = if matches!(provenance, Provenance::Authoritative) { delay_ms } else { delay_ms.min(ceiling_ms).min(to_midnight_ms) };
 
     let until_ms = now_ms + capped_ms;
 
@@ -221,7 +228,7 @@ mod tests {
 
         now += 1000;
         let until = bench(&conn, "p", "m", "k", BenchKind::Escalated, now).unwrap();
-        assert_eq!(until - now, ESCALATION_LADDER_MS[3]); // hit 5 -> 1day (ceiling)
+        assert_eq!(until - now, ESCALATION_LADDER_MS[3]); // hit 5 -> 1h (top rung)
     }
 
     #[test]
@@ -241,7 +248,13 @@ mod tests {
         let conn = test_conn();
         let now = 1_700_000_000_000;
         let until = bench(&conn, "p", "m", "k", BenchKind::PaymentRequired, now).unwrap();
-        assert_eq!(until - now, PAYMENT_OR_TIER_MS);
+        // 2023-11-14 22:13:20 UTC: a 1-day bench is cut at the next UTC midnight.
+        assert_eq!(until % DAY_MS, 0);
+        assert!(until - now < PAYMENT_OR_TIER_MS);
+        // Early in the UTC day it runs until that same midnight.
+        let morning = now - now.rem_euclid(DAY_MS) + 60_000;
+        let until = bench(&conn, "p", "m", "k2", BenchKind::PaymentRequired, morning).unwrap();
+        assert_eq!(until, morning - 60_000 + DAY_MS);
     }
 
     #[test]

@@ -191,10 +191,30 @@ pub fn tick_pure(
                 None => continue, // no agent available for this kind right now
             },
         };
-        let used_here = this_tick_per_agent.get(&agent).copied().unwrap_or(0);
-        if cap.agent_headroom(&agent).saturating_sub(used_here) == 0 {
-            continue; // this agent is at capacity; leave the node ready
-        }
+        let has_room = |a: &str, used: &BTreeMap<String, usize>| cap.agent_headroom(a).saturating_sub(used.get(a).copied().unwrap_or(0)) > 0;
+        let agent = if has_room(&agent, &this_tick_per_agent) {
+            agent
+        } else if agent == "divisi-pool" || node.agent.is_empty() || pinned_and_benched {
+            // Spill-over. Live finding (2026-09-24): planning pins every node to `divisi-pool`, so once
+            // its slots were full the other verified agents (opencode, kilocode, agy, divisi-*) sat idle
+            // while nodes queued. A routed node takes the next usable agent for its kind with room; an
+            // explicit pin to a named agent still waits for that agent.
+            let mut tried = vec![agent.clone()];
+            let mut pick = None;
+            while let Some(a) = routing::select_agent_excluding(table, node.kind, node.effort, health, &tried) {
+                if has_room(&a, &this_tick_per_agent) {
+                    pick = Some(a);
+                    break;
+                }
+                tried.push(a);
+            }
+            match pick {
+                Some(a) => a,
+                None => continue, // every candidate is at capacity; leave the node ready
+            }
+        } else {
+            continue; // pinned to a named agent at capacity; leave the node ready
+        };
         actions.push(TickAction::Dispatch {
             node_id: node.id.clone(),
             agent: agent.clone(),
@@ -1249,6 +1269,23 @@ mod tests {
         assert_eq!(caps["divisi-pool"], cfg.pool_concurrency);
         assert_eq!(caps["divisi-nvidia"], cfg.provider_agent_concurrency);
         assert_eq!(caps["divisi-google"], 5, "config overrides the default");
+    }
+
+    #[test]
+    fn tick_pure_spills_pool_nodes_to_another_agent_when_the_pool_is_full() {
+        let g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "divisi-pool"), node("s2", &[], Effort::Standard, "grok")] };
+        let mut health = PoolHealth::default();
+        health.detected_authed.insert("opencode".into());
+        let cap = caps(1, &[("divisi-pool", 1), ("grok", 1)], &[("divisi-pool", 1), ("grok", 1)]);
+        let a = tick_pure(&g, &cfg(6), &cap, &budget_ok(), &RoutingTable::default(), &health);
+        let routed: Vec<(String, String)> = a
+            .iter()
+            .filter_map(|x| match x {
+                TickAction::Dispatch { node_id, agent, .. } => Some((node_id.clone(), agent.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(routed, [("s1".to_string(), "opencode".to_string())], "a pool node spills; a node pinned to grok waits");
     }
 
     #[test]
