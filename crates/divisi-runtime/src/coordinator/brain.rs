@@ -432,7 +432,9 @@ pub fn integrate(
         doing it. List each unmet requirement in residual_gaps. \
         unrecoverable is true ONLY when no agent could ever finish it: it needs a human decision, \
         credentials or a live external system, or contradicts itself. Work that is missing, unimplemented \
-        or failed is NOT unrecoverable; another round will do it.\n\
+        or failed is NOT unrecoverable; another round will do it. \
+        checks_pass is also false when the results state facts nobody could have verified from the repository \
+        (certifications, audit dates, uptime or SLA figures, customers, prices); list each as a gap.\n\
         Fix only trivial glue (imports, a rename mismatch).\n\n\
         GOAL:\n{goal_text}\n\nSUBTASK RESULTS:{body}\n"
     );
