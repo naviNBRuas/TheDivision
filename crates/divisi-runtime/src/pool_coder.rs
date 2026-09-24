@@ -291,6 +291,7 @@ pub fn run_as_task(
 ) -> Result<divisi_protocol::RunOutcome> {
     let started = Instant::now();
     let candidates = crate::pool_agent::candidates_from_keys(conn, require_structured_output)?;
+    let candidates = crate::pool::models::expand(conn, candidates, &crate::pool_agent::pool_secret, crate::pool::ledger::now_ms());
     let strategy = bandit::Strategy::Balanced;
     divisi_core::redact::ensure_schema(conn)?;
     let redact_store = divisi_core::redact::RedactStore { conn };

@@ -32,6 +32,8 @@ pub struct ToolCall {
 #[derive(Debug, Clone, Default)]
 pub struct PoolRequest {
     pub messages: Vec<ChatMessage>,
+    /// The provider's real model id (`pool::models`); `None` sends the provider id, as native wires expect.
+    pub model: Option<String>,
     pub tools: Vec<ToolDef>,
     pub max_tokens: Option<u32>,
     /// True when the caller's task actually needs tool calls to succeed —
@@ -226,7 +228,7 @@ pub fn dispatch_openai_compat(
     timeout: Duration,
     hedge_abort: &AtomicBool,
 ) -> Result<PoolResponse, PoolError> {
-    let body = build_body(req, provider.id, &provider.quirks)?;
+    let body = build_body(req, req.model.as_deref().unwrap_or(provider.id), &provider.quirks)?;
     let url = format!("{}/chat/completions", provider.base_url.trim_end_matches('/'));
 
     let started = Instant::now();

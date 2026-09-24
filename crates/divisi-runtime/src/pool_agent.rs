@@ -118,7 +118,10 @@ pub fn execute_with(
             continue;
         };
 
-        let req = build(&platform, &model);
+        let mut req = build(&platform, &model);
+        if model != platform {
+            req.model = Some(model.clone());
+        }
         let est_tokens: u64 = req.messages.iter().map(|m| estimate_tokens(&m.content)).sum();
         let lease = ledger::acquire_lease(conn, &platform, &model, &key_id, est_tokens)?;
 
@@ -179,6 +182,8 @@ pub fn execute_with(
                         attempted.push((platform, model, key_id));
                         continue;
                     }
+                    // A model the provider doesn't serve won't start working in a minute.
+                    PoolError::Other(msg) if model_unavailable(msg) => cooldown::BenchKind::PaymentRequired,
                     PoolError::ToolsUnsupported | PoolError::Other(_) => cooldown::BenchKind::Local,
                 };
                 let until_ms = cooldown::bench(conn, &platform, &model, &key_id, bench_kind, now)?;
@@ -189,6 +194,11 @@ pub fn execute_with(
     }
 
     Ok(PoolAgentOutcome::Exhausted { earliest_recovery_ms: earliest_recovery_ms.unwrap_or(ledger::now_ms()) })
+}
+
+fn model_unavailable(msg: &str) -> bool {
+    let l = msg.to_lowercase();
+    l.contains("model") && ["not found", "does not exist", "not available", "not supported", "invalid model", "unknown model", "decommissioned", "deprecated"].iter().any(|k| l.contains(k))
 }
 
 /// `chars/4` estimate, matching E27's `parse_or_estimate_tokens` seam
@@ -228,6 +238,12 @@ pub fn candidates_from_keys(conn: &Connection, require_structured_output: bool) 
         .collect())
 }
 
+/// A pool key's secret from the OS keychain.
+pub fn pool_secret(platform: &str, key_id: &str) -> Option<String> {
+    use divisi_core::secrets::{SecretStore, SecretTool};
+    SecretStore::get(&SecretTool, &divisi_core::pool_keys::secret_name(platform, key_id)).ok().flatten()
+}
+
 /// One process-wide handoff store, since a session's "last provider/model"
 /// state needs to persist across separate `divisi task run` invocations
 /// within the daemon's lifetime, not just within one `execute` call.
@@ -256,6 +272,7 @@ pub fn run_as_task(
     let candidates = candidates_from_keys(conn, require_structured_output)?;
     let strategy = bandit::Strategy::Balanced;
     let started = Instant::now();
+    let candidates = crate::pool::models::expand(conn, candidates, &pool_secret, ledger::now_ms());
 
     // E29: any `{{REDACTED:<session>:N}}` alias `redact::scan_and_replace`
     // left in the prompt gets resolved back to its real value here, at

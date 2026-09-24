@@ -264,8 +264,10 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
     FreeProvider {
         id: "google",
         display: "Google Gemini",
-        base_url: "",
-        wire: Wire::Gemini,
+        // Google's OpenAI-compatible endpoint: lists its live models (`pool::models`) and takes the
+        // same chat shape as every other provider. The native wire pinned a retired model.
+        base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+        wire: Wire::OpenAiCompat,
         auth: Auth::Bearer,
         signup_url: "https://aistudio.google.com/apikey",
         limits: Limits { rpm: None, rpd: None, tpm: None, tpd: None },

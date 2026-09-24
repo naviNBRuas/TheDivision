@@ -11,6 +11,7 @@ pub mod cooldown;
 pub mod degrade;
 pub mod handoff;
 pub mod ledger;
+pub mod models;
 pub mod pools;
 
 use anyhow::Result;
