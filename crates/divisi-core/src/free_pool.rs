@@ -350,8 +350,10 @@ pub static FREE_PROVIDERS: &[FreeProvider] = &[
     FreeProvider {
         id: "cohere",
         display: "Cohere",
-        base_url: "",
-        wire: Wire::Cohere,
+        // Cohere's OpenAI-compatible endpoint lists its live models; the native wire pinned
+        // `command-r`, which Cohere removed on 2025-09-15.
+        base_url: "https://api.cohere.ai/compatibility/v1",
+        wire: Wire::OpenAiCompat,
         auth: Auth::Bearer,
         signup_url: "https://dashboard.cohere.com",
         limits: NO_LIMITS,

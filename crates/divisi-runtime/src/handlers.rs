@@ -1350,10 +1350,9 @@ fn dispatch(
                 .collect();
             let store = divisi_core::secrets::SecretTool;
             for provider in &providers {
-                // No validate_url quirk: an OpenAI-compatible provider is checked with one tiny real chat
-                // call on its best discovered model (most keys were never validated otherwise); any
-                // other provider is left as real usage last left it.
-                if provider.quirks.validate_url.is_none() {
+                // Every keyed provider is checked with one tiny real chat call (on its best discovered
+                // models when it lists them); its own validation URL is only the fallback.
+                {
                     // A keyless provider (anonymous access) has no key to check.
                     if matches!(provider.auth, divisi_core::free_pool::Auth::Keyless(_)) {
                         continue;
@@ -1369,7 +1368,11 @@ fn dispatch(
                             )?;
                             continue;
                         };
-                        let (verdict, note) = chat_probe(&conn, provider, &secret);
+                        let (mut verdict, note) = chat_probe(&conn, provider, &secret);
+                        // A provider's own validation URL is the fallback when the chat call is inconclusive.
+                        if verdict.is_none() && provider.quirks.validate_url.is_some() {
+                            verdict = probe_free_provider_key(provider, &secret);
+                        }
                         if let Some(ok) = verdict {
                             divisi_core::pool_keys::mark_validated(&conn, provider.id, &key.key_id, ok)?;
                         }
@@ -1378,14 +1381,6 @@ fn dispatch(
                              ON CONFLICT(platform, key_id) DO UPDATE SET note = excluded.note, at = excluded.at",
                             rusqlite::params![provider.id, key.key_id, note, chrono::Utc::now().to_rfc3339()],
                         )?;
-                    }
-                    continue;
-                }
-                for key in divisi_core::pool_keys::list(&conn, Some(provider.id))? {
-                    let secret_name = divisi_core::pool_keys::secret_name(provider.id, &key.key_id);
-                    let Some(secret) = divisi_core::secrets::SecretStore::get(&store, &secret_name)? else { continue };
-                    if let Some(ok) = probe_free_provider_key(provider, &secret) {
-                        divisi_core::pool_keys::mark_validated(&conn, provider.id, &key.key_id, ok)?;
                     }
                 }
             }

@@ -218,7 +218,7 @@ impl Gateway {
         }
         let conn = rusqlite::Connection::open(&db_path).with_context(|| format!("opening {}", db_path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL").context("setting WAL journal mode")?;
-        conn.busy_timeout(std::time::Duration::from_secs(5)).context("setting busy timeout")?;
+        conn.busy_timeout(std::time::Duration::from_secs(30)).context("setting busy timeout")?;
         divisi_core::notes::ensure_schema(&conn)?;
         Ok(conn)
     }
