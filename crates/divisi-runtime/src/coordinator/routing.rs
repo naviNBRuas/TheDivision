@@ -68,6 +68,11 @@ pub struct CoordinatorConfig {
     /// Treated like a benched agent: routing skips it and a node already pinned to it is re-routed.
     #[serde(default)]
     pub disabled_agents: Vec<String>,
+    /// Repo roots whose goals work in the checkout itself instead of a goal worktree (for example a
+    /// docs/queue repo whose new files another process must see immediately). Everything else gets a
+    /// private worktree per goal, see `scheduler::goal_workdir`.
+    #[serde(default)]
+    pub shared_checkouts: Vec<String>,
 }
 
 fn default_provider_agent_concurrency() -> usize {
@@ -100,6 +105,7 @@ impl Default for CoordinatorConfig {
             pool_concurrency: default_pool_concurrency(),
             agent_concurrency: Default::default(),
             disabled_agents: Vec::new(),
+            shared_checkouts: Vec::new(),
         }
     }
 }

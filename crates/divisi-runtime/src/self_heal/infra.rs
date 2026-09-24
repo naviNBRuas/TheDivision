@@ -67,13 +67,23 @@ fn stale_worktrees(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Re
     let (mut removed, mut dirty, mut unmanaged, mut branches) = (0usize, 0usize, 0usize, 0usize);
     for entry in entries.filter_map(|e| e.ok()) {
         let wt = entry.path();
-        let Some(id) = wt.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix("task-")).and_then(|n| n.parse::<i64>().ok()) else {
+        let name = wt.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+        let parsed_at = |s: &str| s.parse::<chrono::DateTime<chrono::Utc>>().ok().map(std::time::SystemTime::from);
+        let last_active = if let Some(goal_id) = name.strip_prefix("goal-") {
+            // A goal's shared worktree (`scheduler::goal_workdir`) lives as long as the goal does.
+            match crate::coordinator::goal::get(conn, goal_id).ok().flatten() {
+                Some(g) if !matches!(g.status, crate::coordinator::graph::GoalStatus::Done | crate::coordinator::graph::GoalStatus::Failed | crate::coordinator::graph::GoalStatus::Cancelled) => continue,
+                Some(g) => parsed_at(&g.updated_at),
+                None => None,
+            }
+        } else if let Some(id) = name.strip_prefix("task-").and_then(|n| n.parse::<i64>().ok()) {
+            match crate::task::get(conn, id).ok().flatten() {
+                Some(t) if matches!(t.status, divisi_protocol::TaskStatus::Created | divisi_protocol::TaskStatus::Running) => continue,
+                Some(t) => parsed_at(&t.updated_at),
+                None => None,
+            }
+        } else {
             continue;
-        };
-        let last_active = match crate::task::get(conn, id).ok().flatten() {
-            Some(t) if matches!(t.status, divisi_protocol::TaskStatus::Created | divisi_protocol::TaskStatus::Running) => continue,
-            Some(t) => t.updated_at.parse::<chrono::DateTime<chrono::Utc>>().ok().map(std::time::SystemTime::from),
-            None => None,
         }
         .or_else(|| entry.metadata().and_then(|m| m.modified()).ok());
         let idle = last_active.and_then(|t| std::time::SystemTime::from(now).duration_since(t).ok()).unwrap_or_default();
@@ -101,7 +111,7 @@ fn stale_worktrees(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Re
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|b| b.starts_with("single/task-"));
+            .filter(|b| b.starts_with("single/task-") || b.starts_with("divisi/goal-"));
         if divisi_core::worktree::remove(repo, &wt, false).is_ok() {
             removed += 1;
             // The task branch goes too once its work is in the checked-out branch; `-d` refuses an

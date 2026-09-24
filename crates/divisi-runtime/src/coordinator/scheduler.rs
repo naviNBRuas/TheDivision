@@ -451,11 +451,14 @@ pub fn tick(
                         events::append(conn, &goal.session_id, Some(&goal.id), EventKind::NodeFailed, &reason)?;
                         continue;
                     }
+                    let (session_cwd, isolated) = goal_workdir(ctx, cfg, &goal.id, &session_cwd)?;
                     let opts = crate::task::OwnedRunTaskOptions {
                         description: prompt,
                         agent: agent.clone(),
                         cwd: session_cwd,
-                        use_worktree: worktree,
+                        // Inside a goal worktree every node shares that tree, so a test or review node
+                        // sees what the code nodes changed.
+                        use_worktree: worktree && !isolated,
                         account: None,
                         real_home: false,
                         no_memory_context: false,
@@ -817,6 +820,38 @@ fn run_supervisor_or_block(
     Ok(())
 }
 
+/// The directory a goal's nodes work in. In a git repo that isn't listed in `shared_checkouts`, each
+/// goal gets one private worktree on branch `divisi/goal-<id>`, created on its first dispatch: parallel
+/// goals can't trample each other or the person's own checkout, and every node of the goal sees the
+/// same tree. Returns the directory (keeping a subdirectory session cwd's relative position) and
+/// whether it is such a goal worktree.
+///
+/// Live-verification finding (2026-09-24): test/docs/review nodes ran in the shared checkout while
+/// code nodes ran in per-node worktrees, so tests checked code without the goal's changes, three
+/// goals edited the divisi checkout at once, and one switched its branch.
+pub fn goal_workdir(ctx: &Context, cfg: &CoordinatorConfig, goal_id: &str, session_cwd: &std::path::Path) -> Result<(std::path::PathBuf, bool)> {
+    let Some(root) = divisi_core::project_context::resolve(session_cwd).repo_root.map(std::path::PathBuf::from) else {
+        return Ok((session_cwd.to_path_buf(), false));
+    };
+    let shared = cfg.shared_checkouts.iter().any(|p| {
+        let p = std::path::Path::new(p);
+        p == root || std::fs::canonicalize(p).is_ok_and(|c| c == root)
+    });
+    if shared {
+        return Ok((session_cwd.to_path_buf(), false));
+    }
+    let wt = ctx.dirs.state_dir().join("worktrees").join(format!("goal-{goal_id}"));
+    if !wt.exists() {
+        divisi_core::worktree::add(&root, &wt, &goal_branch(goal_id))?;
+    }
+    let rel = session_cwd.strip_prefix(&root).unwrap_or(std::path::Path::new(""));
+    Ok((wt.join(rel), true))
+}
+
+pub fn goal_branch(goal_id: &str) -> String {
+    format!("divisi/goal-{goal_id}")
+}
+
 fn run_integrator(
     ctx: &Context,
     conn: &mut Connection,
@@ -825,7 +860,9 @@ fn run_integrator(
     table: &RoutingTable,
     health: &PoolHealth,
 ) -> Result<()> {
-    let cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
+    let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
+    let cfg = CoordinatorConfig::load(&ctx.dirs);
+    let (cwd, isolated) = goal_workdir(ctx, &cfg, &goal.id, &session_cwd)?;
     let outputs: Vec<(String, String)> = graph
         .nodes
         .iter()
@@ -851,6 +888,17 @@ fn run_integrator(
             if !met {
                 let gaps = if outcome.residual_gaps.is_empty() { outcome.summary.clone() } else { outcome.residual_gaps.join("; ") };
                 goal::set_blocked_reason(conn, &goal.id, &format!("goal not met: {gaps}"))?;
+            } else if isolated && goal.auto_merge {
+                // The goal's whole result is one branch; offer it for a human merge.
+                let branch = goal_branch(&goal.id);
+                let id = divisi_core::pending_merge::request(conn, &goal.id, &goal.session_id, "integrate", "goal", &branch)?;
+                events::append(
+                    conn,
+                    &goal.session_id,
+                    Some(&goal.id),
+                    EventKind::MergeAwaitingConfirmation,
+                    &format!("{branch} awaiting human merge confirmation — see `divisi goal merge show {id}`"),
+                )?;
             }
             events::append(
                 conn,
@@ -960,6 +1008,32 @@ fn load_session_cwd(conn: &Connection, session_id: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_goal_gets_one_private_worktree_unless_its_repo_is_shared() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("sub")).unwrap();
+        let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&repo).args(args).status().unwrap().success());
+        git(&["init", "-q"]);
+        git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i"]);
+        let dirs = divisi_core::DivisiDirs::from_root(tmp.path().join("cfg"));
+        dirs.ensure_created().unwrap();
+        let ctx = Context { dirs, resolved: divisi_core::ResolvedConfig::default(), registry: divisi_core::builtin_registry() };
+        let repo = std::fs::canonicalize(&repo).unwrap();
+
+        let (dir, isolated) = goal_workdir(&ctx, &cfg(4), "g1", &repo.join("sub")).unwrap();
+        assert!(isolated);
+        assert!(dir.ends_with("worktrees/goal-g1/sub"), "{}", dir.display());
+        let again = goal_workdir(&ctx, &cfg(4), "g1", &repo.join("sub")).unwrap();
+        assert_eq!(again.0, dir, "a goal reuses its worktree");
+
+        let shared = CoordinatorConfig { shared_checkouts: vec![repo.display().to_string()], ..cfg(4) };
+        assert_eq!(goal_workdir(&ctx, &shared, "g2", &repo).unwrap(), (repo.clone(), false));
+        let plain = tmp.path().join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(!goal_workdir(&ctx, &cfg(4), "g3", &plain).unwrap().1);
+    }
     use crate::coordinator::graph::{Effort, Node, NodeKind, NodeStatus};
 
     fn cfg(max_parallel: usize) -> CoordinatorConfig {
