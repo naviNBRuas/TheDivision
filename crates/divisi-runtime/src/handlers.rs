@@ -1350,10 +1350,22 @@ fn dispatch(
                 .collect();
             let store = divisi_core::secrets::SecretTool;
             for provider in &providers {
-                // No validate_url quirk means there's nothing to probe --
-                // leave those keys exactly as real usage last left them
-                // rather than guessing a probe endpoint.
-                let Some(_) = provider.quirks.validate_url else { continue };
+                // No validate_url quirk: an OpenAI-compatible provider is checked with one tiny real chat
+                // call on its best discovered model (most keys were never validated otherwise); any
+                // other provider is left as real usage last left it.
+                if provider.quirks.validate_url.is_none() {
+                    if !crate::pool::models::discoverable(provider) {
+                        continue;
+                    }
+                    for key in divisi_core::pool_keys::list(&conn, Some(provider.id))? {
+                        let secret_name = divisi_core::pool_keys::secret_name(provider.id, &key.key_id);
+                        let Some(secret) = divisi_core::secrets::SecretStore::get(&store, &secret_name)? else { continue };
+                        if let Some(ok) = chat_probe(&conn, provider, &secret) {
+                            divisi_core::pool_keys::mark_validated(&conn, provider.id, &key.key_id, ok)?;
+                        }
+                    }
+                    continue;
+                }
                 for key in divisi_core::pool_keys::list(&conn, Some(provider.id))? {
                     let secret_name = divisi_core::pool_keys::secret_name(provider.id, &key.key_id);
                     let Some(secret) = divisi_core::secrets::SecretStore::get(&store, &secret_name)? else { continue };
@@ -2348,6 +2360,24 @@ fn write_settings_with_backup(
 /// no base url) — distinct from `Some(false)`, an actual failed probe.
 /// Shared by `ProviderAddFree` (probe once at registration) and
 /// `ProviderValidateKeys` (re-probe on demand).
+/// `Some(true)` when the key answers (or is merely rate limited), `Some(false)` when the provider
+/// rejects it or wants payment, `None` when the result says nothing about the key.
+fn chat_probe(conn: &rusqlite::Connection, provider: &divisi_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
+    use crate::pool::client::{ChatMessage, PoolError, PoolRequest};
+    let model = crate::pool::models::best(conn, provider, key, crate::pool::ledger::now_ms()).into_iter().next()?;
+    let req = PoolRequest {
+        messages: vec![ChatMessage { role: "user".into(), content: "Reply with the single word OK.".into() }],
+        model: Some(model),
+        max_tokens: Some(16),
+        ..Default::default()
+    };
+    match crate::pool::client::native::dispatch_for_wire(&req, provider, key) {
+        Ok(_) | Err(PoolError::RateLimited { .. }) => Some(true),
+        Err(PoolError::AuthFailed | PoolError::PaymentRequired) => Some(false),
+        Err(_) => None,
+    }
+}
+
 fn probe_free_provider_key(provider: &divisi_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
     let path = provider.quirks.validate_url?;
     if provider.base_url.is_empty() {
