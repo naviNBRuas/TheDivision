@@ -864,6 +864,15 @@ impl AgentAdapter for AmpAdapter {
 }
 
 impl AgentAdapter for DroidAdapter {
+    /// `droid` has no login subcommand: its interactive session asks for the Factory browser sign-in on first start, inside the isolated home.
+    fn login(&self, home: &Path) -> Result<()> {
+        run_interactive_with_home("droid", &[], home)
+    }
+
+    fn login_supported(&self) -> bool {
+        true
+    }
+
     fn command(&self) -> &str {
         "droid"
     }
@@ -937,6 +946,15 @@ impl AgentAdapter for CodebuffAdapter {
 }
 
 impl AgentAdapter for ContinueCliAdapter {
+    /// `cn` has no login subcommand: its interactive session asks for the Continue Hub sign-in on first start, inside the isolated home.
+    fn login(&self, home: &Path) -> Result<()> {
+        run_interactive_with_home("cn", &[], home)
+    }
+
+    fn login_supported(&self) -> bool {
+        true
+    }
+
     fn command(&self) -> &str {
         "cn"
     }

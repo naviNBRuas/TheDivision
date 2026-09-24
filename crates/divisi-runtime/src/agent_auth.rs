@@ -166,8 +166,17 @@ fn free_model_env(name: &str) -> BTreeMap<String, String> {
 pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> AgentAuthRow {
     // Provider proxies and the built-in pool agent have no login of their own: their credential is a
     // pool provider key, reported by the provider table.
-    if divisi_core::agent_names::is_divisi_backed(name) {
-        return row(name, Category::Provider, "dispatches through pool provider keys; see `divisi provider`", None);
+    // The pool and the native agent have no login of their own: they are ready when the pool holds at
+    // least one key that validated and is enabled. The `divisi-<provider>` wrappers are ordinary shelled
+    // commands and get the same real-call probe as any other agent below.
+    if divisi_core::agent_names::is_pool(name) || divisi_core::agent_names::is_native(name) {
+        let keys = divisi_core::pool_keys::list(conn, None).unwrap_or_default();
+        let ok = keys.iter().filter(|k| k.valid && !k.disabled).count();
+        return if ok > 0 {
+            row(name, Category::Authed, format!("{ok} of {} pool keys validated; see `divisi provider key-status`", keys.len()), None)
+        } else {
+            row(name, Category::NeedsLogin, "no pool key has validated; run `divisi provider validate`", None)
+        };
     }
     let Some(adapter) = divisi_agent_sdk::adapters::for_agent_with_custom(name, &ctx.dirs.agents_dir(), &ctx.registry) else {
         return row(name, Category::Error, "no adapter for this agent", None);
@@ -267,7 +276,7 @@ pub fn report(ctx: &Context, conn: &Connection, probe: bool, deep: bool, only: &
     for name in &names {
         let base = stored.get(name).cloned().unwrap_or_else(|| {
             let installed = divisi_agent_sdk::adapters::for_agent_with_custom(name, &ctx.dirs.agents_dir(), &ctx.registry).is_some_and(|a| a.discover().detected);
-            if divisi_core::agent_names::is_divisi_backed(name) {
+            if divisi_core::agent_names::is_pool(name) || divisi_core::agent_names::is_native(name) {
                 AgentAuthRow { agent: name.clone(), category: Category::Provider.as_str().into(), evidence: "dispatches through pool provider keys; see `divisi provider`".into(), checked_at: None, until: None }
             } else if installed {
                 AgentAuthRow { agent: name.clone(), category: Category::Unverified.as_str().into(), evidence: "never probed; run `divisi agent auth --probe`".into(), checked_at: None, until: None }
