@@ -1120,9 +1120,9 @@ fn maybe_auto_merge(conn: &Connection, goal: &Goal, node_id: &str) -> Result<()>
     // a real branch to confirm requires a real repo root, even though
     // confirm-time (`GoalMergeResolve`) resolves it fresh rather than
     // trusting a value captured here.
-    if divisi_core::project_context::resolve(std::path::Path::new(&load_session_cwd(conn, &goal.session_id)?)).repo_root.is_none() {
+    let Some(root) = divisi_core::project_context::resolve(std::path::Path::new(&load_session_cwd(conn, &goal.session_id)?)).repo_root else {
         return Ok(()); // not a git repo at all — nothing worktree-backed to merge
-    }
+    };
 
     for dep_id in &node.depends_on {
         let Some(dep) = graph.find(dep_id) else { continue };
@@ -1131,6 +1131,12 @@ fn maybe_auto_merge(conn: &Connection, goal: &Goal, node_id: &str) -> Result<()>
         }
         let Some(task_id) = dep.task_id else { continue };
         let branch = format!("divisi/task-{task_id}");
+        // Live finding (2026-09-24): nodes of a goal that runs in its own goal worktree get no branch
+        // of their own (the goal branch carries their work), yet every passing review queued a merge
+        // for a branch that never existed — 30 unmergeable requests in one afternoon.
+        if !branch_exists(std::path::Path::new(&root), &branch) {
+            continue;
+        }
         let pending_id = divisi_core::pending_merge::request(conn, &goal.id, &goal.session_id, node_id, dep_id, &branch)?;
         events::append(
             conn,
@@ -1141,6 +1147,14 @@ fn maybe_auto_merge(conn: &Connection, goal: &Goal, node_id: &str) -> Result<()>
         )?;
     }
     Ok(())
+}
+
+fn branch_exists(repo: &std::path::Path, branch: &str) -> bool {
+    std::process::Command::new("git")
+        .current_dir(repo)
+        .args(["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")])
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 fn load_session_cwd(conn: &Connection, session_id: &str) -> Result<String> {
