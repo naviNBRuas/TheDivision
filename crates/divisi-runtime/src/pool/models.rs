@@ -31,9 +31,10 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
 
 /// Ids that are clearly not chat models.
 fn not_chat(id: &str) -> bool {
-    const SKIP: [&str; 22] = [
+    const SKIP: [&str; 23] = [
         "embed", "whisper", "tts", "audio", "speech", "transcri", "image", "dall", "flux", "stable-diffusion", "sdxl",
         "guard", "moderation", "rerank", "ocr", "vision-preview", "clip", "bge", "e5-", "safety", "realtime", "search",
+        "reward",
     ];
     let l = id.to_lowercase();
     SKIP.iter().any(|s| l.contains(s))
