@@ -98,6 +98,10 @@ pub fn note(conn: &Connection, agent: &str, output: &str) -> bool {
         return record(conn, agent, until, output).is_ok();
     }
     if divisi_core::ratelimit::looks_like_rate_limit(output) {
+        // A daily or monthly allowance comes back when its period resets, not after a guessed backoff.
+        if let Some(until) = period_reset(output, now) {
+            return record_with(conn, agent, until, output, strikes_of(conn, agent) + 1, "quota").is_ok();
+        }
         let strikes = strikes_of(conn, agent);
         return record_with(conn, agent, now + backoff(strikes), output, strikes + 1, "quota").is_ok();
     }
@@ -105,6 +109,22 @@ pub fn note(conn: &Connection, agent: &str, output: &str) -> bool {
         return record_with(conn, agent, now + AUTH_BENCH, output, strikes_of(conn, agent), "auth").is_ok();
     }
     false
+}
+
+/// When a quota that names its period ("daily free allocation", "free-models-per-day", "monthly
+/// included credits") resets: the next UTC midnight, or the first of next month.
+fn period_reset(output: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    use chrono::{Datelike, TimeZone};
+    let l = output.to_lowercase();
+    if ["monthly", "per month", "this month"].iter().any(|k| l.contains(k)) {
+        let (y, m) = if now.month() == 12 { (now.year() + 1, 1) } else { (now.year(), now.month() + 1) };
+        return Utc.with_ymd_and_hms(y, m, 1, 0, 5, 0).single();
+    }
+    if ["daily", "per day", "per-day", "a day", "today", "rpd", "24 hours", "24h"].iter().any(|k| l.contains(k)) {
+        let tomorrow = now.date_naive().succ_opt()?;
+        return Utc.from_local_datetime(&tomorrow.and_hms_opt(0, 5, 0)?).single();
+    }
+    None
 }
 
 fn record_with(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str, strikes: u32, kind: &str) -> Result<()> {
@@ -315,6 +335,14 @@ mod tests {
             .unwrap();
         }
         assert!(!note_failure_streak(&conn, "divisi-nvidia"));
+    }
+
+    #[test]
+    fn a_daily_quota_is_benched_until_the_next_utc_midnight() {
+        let conn = db();
+        assert!(note(&conn, "divisi-cloudflare", "Provider error (429 Too Many Requests): you have used up your daily free allocation"));
+        let until = active(&conn, Utc::now()).unwrap()["divisi-cloudflare"];
+        assert_eq!(until.date_naive(), Utc::now().date_naive().succ_opt().unwrap());
     }
 
     #[test]

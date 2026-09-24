@@ -1267,7 +1267,7 @@ fn execute(
                 // transcript of a long run that timed out or failed on its own merits can quote "rate
                 // limits" and "quota" as subject matter (a sprint about webhooks did) and bench a
                 // healthy agent for hours; a timeout is never itself a quota message.
-                let combined_output = format!("{}\n{}", stdout_tail(&outcome.stdout, 2000), outcome.stderr);
+                let combined_output = error_lines(&outcome.stdout, &outcome.stderr);
                 let unavailable = !outcome.timed_out && divisi_core::ratelimit::looks_like_unavailable(&combined_output);
                 // If the agent said when it recovers, keep routing away until then.
                 if unavailable {
@@ -1469,6 +1469,19 @@ fn remember_failure(
             expires_in_seconds: None,
         },
     );
+}
+
+/// The lines a CLI reports its own failures on: stderr, plus the last lines of stdout, keeping only
+/// short ones. Live-verification finding (2026-09-24): grok was benched as out of quota because its
+/// own review prose mentioned "line limits"; an agent's error line is short, its prose is not.
+fn error_lines(stdout: &str, stderr: &str) -> String {
+    let tail: Vec<&str> = stdout_tail(stdout, 2000).lines().rev().take(15).collect();
+    stderr
+        .lines()
+        .chain(tail.into_iter().rev())
+        .filter(|l| l.len() <= 300)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The last `max` bytes of `stdout`, cut on a char boundary.
