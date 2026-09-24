@@ -22,7 +22,16 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const MASTER_KEY_SECRET_NAME: &str = "single-redact-master-key";
-const TTL_MS: i64 = 3 * 60 * 60 * 1000; // 3 hours
+/// Sliding: every successful `resolve` pushes an alias's expiry out again, so
+/// a goal that keeps dispatching (and retrying) keeps its aliases alive.
+const TTL_MS: i64 = 24 * 60 * 60 * 1000; // 24 hours
+/// scrypt `log_n` for alias ciphertexts. The master passphrase is 256 random
+/// bits, so key stretching adds nothing; age's default device-calibrated
+/// factor cost ~1s per alias and made decryption refuse under load.
+const ALIAS_LOG_N: u8 = 10;
+/// Highest `log_n` accepted on decrypt — covers aliases written with age's
+/// calibrated default before `ALIAS_LOG_N` existed, whatever the load now.
+const MAX_DECRYPT_LOG_N: u8 = 22;
 
 pub struct PendingAlias {
     pub alias: String,
@@ -89,7 +98,10 @@ fn generate_passphrase() -> String {
 }
 
 fn encrypt(passphrase: &SecretString, plaintext: &str) -> Result<Vec<u8>> {
-    let encryptor = age::Encryptor::with_user_passphrase(passphrase.clone());
+    let mut recipient = age::scrypt::Recipient::new(passphrase.clone());
+    recipient.set_work_factor(ALIAS_LOG_N);
+    let encryptor = age::Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
+        .context("initializing age encryption")?;
     let mut out = Vec::new();
     let mut writer = encryptor.wrap_output(&mut out).context("initializing age encryption")?;
     writer.write_all(plaintext.as_bytes()).context("writing plaintext")?;
@@ -100,8 +112,10 @@ fn encrypt(passphrase: &SecretString, plaintext: &str) -> Result<Vec<u8>> {
 fn decrypt(passphrase: &SecretString, ciphertext: &[u8]) -> Result<String> {
     let decryptor = age::Decryptor::new(ciphertext).context("stored alias ciphertext is not valid age data")?;
     let mut out = Vec::new();
+    let mut identity = age::scrypt::Identity::new(passphrase.clone());
+    identity.set_max_work_factor(MAX_DECRYPT_LOG_N);
     let mut reader = decryptor
-        .decrypt(std::iter::once(&age::scrypt::Identity::new(passphrase.clone()) as &dyn age::Identity))
+        .decrypt(std::iter::once(&identity as &dyn age::Identity))
         .context("decrypting alias value")?;
     reader.read_to_end(&mut out).context("reading decrypted alias value")?;
     String::from_utf8(out).context("decrypted alias value is not valid UTF-8")
@@ -189,6 +203,10 @@ pub fn resolve(store: &RedactStore, secret_store: &dyn single_secret_store::Secr
             .optional()?
             .ok_or_else(|| anyhow!("unresolvable alias {alias} (expired or unknown)"))?;
         let real_value = decrypt(&passphrase, &ciphertext)?;
+        store.conn.execute(
+            "UPDATE redact_aliases SET expires_at = ?1 WHERE session_id = ?2 AND alias = ?3",
+            params![now_ms() + TTL_MS, session_id, alias],
+        )?;
         out.push_str(&real_value);
         last = end;
     }
@@ -455,8 +473,9 @@ fn find_high_entropy_tokens(text: &str) -> Vec<(usize, usize)> {
 
 /// True if `word` ends in a short, common file-extension shape
 /// (`.md`, `.rs`, `.toml`, `.yaml`, ...) — a `.` followed by 1-5 lowercase
-/// letters and nothing else.
+/// letters, ignoring trailing sentence punctuation (`notes.md:`, `a.rs),`).
 fn looks_like_a_filename(word: &str) -> bool {
+    let word = word.trim_end_matches([':', ',', ';', ')', '.', '!', '?']);
     match word.rsplit_once('.') {
         Some((stem, ext)) => {
             !stem.is_empty() && (1..=5).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_lowercase())
@@ -613,6 +632,55 @@ mod tests {
         let (out, aliases) = scan_and_replace(&store, &keychain, "sess1", text).unwrap();
         assert_eq!(aliases.len(), 0, "{out}");
         assert_eq!(out, text);
+    }
+
+    /// Live regression (2026-09-24): the epic conductor writes
+    /// `SPRINT FILE 02-shared-contracts.md:` — the trailing `:` hid the
+    /// `.md` extension, so every conductor goal carried a redacted
+    /// filename and failed once its alias expired.
+    #[test]
+    fn does_not_redact_filenames_followed_by_punctuation() {
+        let (conn, keychain) = setup();
+        let store = RedactStore { conn: &conn };
+        let text = "SPRINT FILE 02-shared-contracts.md:\n# E31/02 (see 01-architecture-challenge-and-adrs.md), \
+                     then 00-discovery-and-baseline-2.md; done";
+        let (out, aliases) = scan_and_replace(&store, &keychain, "sess1", text).unwrap();
+        assert_eq!(aliases.len(), 0, "{out}");
+        assert_eq!(out, text);
+    }
+
+    /// The master passphrase is 256 random bits, so scrypt stretching adds
+    /// nothing; a device-calibrated work factor made every alias cost ~1s to
+    /// write and made decryption refuse ("Excessive work parameter") when
+    /// the machine was busy running goals.
+    #[test]
+    fn aliases_use_a_fixed_low_scrypt_work_factor() {
+        let (conn, keychain) = setup();
+        let store = RedactStore { conn: &conn };
+        scan_and_replace(&store, &keychain, "sess1", "DATABASE_PASSWORD=Xk9mQ2vL8pR4nT7wZ1cF6").unwrap();
+        let ct: Vec<u8> = conn.query_row("SELECT ciphertext FROM redact_aliases", [], |r| r.get(0)).unwrap();
+        let header = String::from_utf8_lossy(&ct[..ct.len().min(120)]).to_string();
+        let log_n: u8 = header
+            .lines()
+            .find_map(|l| l.strip_prefix("-> scrypt "))
+            .and_then(|rest| rest.split_whitespace().nth(1))
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("no scrypt stanza in {header}"));
+        assert_eq!(log_n, ALIAS_LOG_N);
+    }
+
+    /// Goals outlive the alias TTL (they retry for hours); every successful
+    /// resolve pushes the expiry out again so a live goal keeps working.
+    #[test]
+    fn resolve_extends_alias_expiry() {
+        let (conn, keychain) = setup();
+        let store = RedactStore { conn: &conn };
+        let (out, _) = scan_and_replace(&store, &keychain, "sess1", "DATABASE_PASSWORD=Xk9mQ2vL8pR4nT7wZ1cF6").unwrap();
+        let soon = now_ms() + 1000;
+        conn.execute("UPDATE redact_aliases SET expires_at = ?1", params![soon]).unwrap();
+        resolve(&store, &keychain, &out).unwrap();
+        let expires: i64 = conn.query_row("SELECT expires_at FROM redact_aliases", [], |r| r.get(0)).unwrap();
+        assert!(expires > now_ms() + TTL_MS - 60_000, "expiry not extended: {expires}");
     }
 
     /// Live-verification regression: a real planner-prompt JSON schema
