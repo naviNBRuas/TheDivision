@@ -429,7 +429,10 @@ pub fn integrate(
         \"residual_gaps\":[\"...\"],\"unrecoverable\":BOOL}}\n\
         checks_pass is true ONLY if the results show every requirement of the GOAL was actually done \
         (files changed, tests or builds run and passing); exploring, planning or describing work is not \
-        doing it. List each unmet requirement in residual_gaps.\n\
+        doing it. List each unmet requirement in residual_gaps. \
+        unrecoverable is true ONLY when no agent could ever finish it: it needs a human decision, \
+        credentials or a live external system, or contradicts itself. Work that is missing, unimplemented \
+        or failed is NOT unrecoverable; another round will do it.\n\
         Fix only trivial glue (imports, a rename mismatch).\n\n\
         GOAL:\n{goal_text}\n\nSUBTASK RESULTS:{body}\n"
     );
