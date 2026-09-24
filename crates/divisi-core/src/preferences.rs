@@ -41,6 +41,11 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         )",
         (),
     )?;
+    // divisi's own MCP tools were `singlecli:<tool>` before the rename; carry learned verdicts over.
+    conn.execute(
+        "UPDATE OR IGNORE preferences SET pattern = 'divisi:' || substr(pattern, 11) WHERE pattern LIKE 'singlecli:%'",
+        (),
+    )?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS approvals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -364,7 +369,7 @@ mod tests {
     fn one_time_allow_unblocks_exactly_one_retry_then_asks_again() {
         let conn = test_conn();
         // First call: nothing known yet, escalate.
-        let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+        let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "divisi:task_run", None).unwrap() else {
             panic!("expected pending")
         };
         // Human resolves with a plain one-time --allow (no --remember).
@@ -374,13 +379,13 @@ mod tests {
         // go through — this is the exact `task_run` retry-after-approve
         // loop that used to re-escalate into a brand-new pending approval
         // every time because nothing ever consulted the resolved row.
-        let verdict = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap();
+        let verdict = evaluate_and_learn(&[], &conn, "divisi:task_run", None).unwrap();
         assert!(matches!(verdict, Verdict::Allow));
 
         // A one-time grant is exactly that — one time. A further retry
         // must escalate again, not silently keep allowing (that's what
         // `--remember` is for).
-        let Verdict::PendingApproval(_) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+        let Verdict::PendingApproval(_) = evaluate_and_learn(&[], &conn, "divisi:task_run", None).unwrap() else {
             panic!("expected the grant to be spent and a fresh pending approval raised")
         };
     }
@@ -388,13 +393,13 @@ mod tests {
     #[test]
     fn one_time_deny_also_blocks_exactly_one_retry_then_asks_again() {
         let conn = test_conn();
-        let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+        let Verdict::PendingApproval(id) = evaluate_and_learn(&[], &conn, "divisi:task_run", None).unwrap() else {
             panic!("expected pending")
         };
         resolve(&conn, id, false, false).unwrap();
 
-        assert!(matches!(evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap(), Verdict::Deny));
-        let Verdict::PendingApproval(_) = evaluate_and_learn(&[], &conn, "singlecli:task_run", None).unwrap() else {
+        assert!(matches!(evaluate_and_learn(&[], &conn, "divisi:task_run", None).unwrap(), Verdict::Deny));
+        let Verdict::PendingApproval(_) = evaluate_and_learn(&[], &conn, "divisi:task_run", None).unwrap() else {
             panic!("expected the grant to be spent and a fresh pending approval raised")
         };
     }

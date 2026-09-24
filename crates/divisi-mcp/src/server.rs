@@ -96,7 +96,7 @@ impl DivisiServer {
     /// than bypassing it, since they can trigger real agent runs." Mirrors
     /// `divisi-gateway::gateway`'s `check_permission`/`invoke_mcp` pattern
     /// exactly (that's the only other caller of `permissions::evaluate` in
-    /// this codebase) — same resource-string shape (`"singlecli:{tool}"`
+    /// this codebase) — same resource-string shape (`"divisi:{tool}"`
     /// here, vs. `"mcp:{server}:{tool}"` there), same denied/pending JSON
     /// shape, same "open a fresh SQLite connection directly rather than
     /// round-tripping through the daemon socket" reasoning (this check must
@@ -107,7 +107,7 @@ impl DivisiServer {
     /// argument parsing — so a denied/pending call never reaches `self.send`
     /// (or even validates its arguments) at all.
     fn permission_gate(tool_name: &str) -> anyhow::Result<Option<Value>> {
-        let resource = format!("singlecli:{tool_name}");
+        let resource = format!("divisi:{tool_name}");
         let dirs = divisi_core::DivisiDirs::discover()?;
         let rules = divisi_core::permissions::load(&dirs.permissions_file())?;
         let db_path = dirs.db_path();
@@ -618,7 +618,7 @@ mod tests {
     fn task_run_denied_by_permission_never_reaches_self_send() {
         let _env = isolated_env();
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
-        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("singlecli:task_run")).unwrap();
+        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("divisi:task_run")).unwrap();
 
         let server = DivisiServer::new().unwrap();
         // Deliberately empty args: task_run would normally fail immediately
@@ -650,7 +650,7 @@ mod tests {
     fn task_run_allowed_by_permission_proceeds_to_self_send() {
         let _env = isolated_env();
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
-        divisi_core::permissions::save(&dirs.permissions_file(), &allow_rule("singlecli:task_run")).unwrap();
+        divisi_core::permissions::save(&dirs.permissions_file(), &allow_rule("divisi:task_run")).unwrap();
 
         let server = DivisiServer::new().unwrap();
         let args: Map<String, Value> =
@@ -669,7 +669,7 @@ mod tests {
     fn orchestrate_run_denied_by_permission_never_reaches_self_send() {
         let _env = isolated_env();
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
-        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("singlecli:orchestrate_run")).unwrap();
+        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("divisi:orchestrate_run")).unwrap();
 
         let server = DivisiServer::new().unwrap();
         let result = server.orchestrate_run(&Map::new()).unwrap();
@@ -680,7 +680,7 @@ mod tests {
     fn orchestrate_parallel_run_denied_by_permission_never_reaches_self_send() {
         let _env = isolated_env();
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
-        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("singlecli:orchestrate_parallel_run")).unwrap();
+        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("divisi:orchestrate_parallel_run")).unwrap();
 
         let server = DivisiServer::new().unwrap();
         let result = server.orchestrate_parallel_run(&Map::new()).unwrap();
@@ -691,7 +691,7 @@ mod tests {
     fn orchestrate_graph_run_denied_by_permission_never_reaches_self_send() {
         let _env = isolated_env();
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
-        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("singlecli:orchestrate_graph_run")).unwrap();
+        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("divisi:orchestrate_graph_run")).unwrap();
 
         let server = DivisiServer::new().unwrap();
         let result = server.orchestrate_graph_run(&Map::new()).unwrap();
@@ -702,7 +702,7 @@ mod tests {
     fn worktree_merge_apply_denied_by_permission_never_reaches_self_send() {
         let _env = isolated_env();
         let dirs = divisi_core::DivisiDirs::discover().unwrap();
-        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("singlecli:worktree_merge_apply")).unwrap();
+        divisi_core::permissions::save(&dirs.permissions_file(), &deny_rule("divisi:worktree_merge_apply")).unwrap();
 
         let server = DivisiServer::new().unwrap();
         // Deliberately empty args: worktree_merge_apply would normally

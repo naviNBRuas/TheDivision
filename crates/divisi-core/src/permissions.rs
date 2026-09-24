@@ -48,7 +48,14 @@ pub fn load(path: &Path) -> Result<PermissionSet> {
         return Ok(PermissionSet::default());
     }
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    toml::from_str(&text).with_context(|| format!("parsing {} as TOML", path.display()))
+    let mut set: PermissionSet = toml::from_str(&text).with_context(|| format!("parsing {} as TOML", path.display()))?;
+    // divisi's own MCP tools were `singlecli:<tool>` before the rename.
+    for r in &mut set.tools {
+        if let Some(rest) = r.pattern.strip_prefix("singlecli:") {
+            r.pattern = format!("divisi:{rest}");
+        }
+    }
+    Ok(set)
 }
 
 pub fn save(path: &Path, set: &PermissionSet) -> Result<()> {
