@@ -1354,12 +1354,21 @@ fn dispatch(
                 // call on its best discovered model (most keys were never validated otherwise); any
                 // other provider is left as real usage last left it.
                 if provider.quirks.validate_url.is_none() {
-                    if !crate::pool::models::discoverable(provider) {
+                    // A keyless provider (anonymous access) has no key to check.
+                    if matches!(provider.auth, divisi_core::free_pool::Auth::Keyless(_)) {
                         continue;
                     }
                     for key in divisi_core::pool_keys::list(&conn, Some(provider.id))? {
                         let secret_name = divisi_core::pool_keys::secret_name(provider.id, &key.key_id);
-                        let Some(secret) = divisi_core::secrets::SecretStore::get(&store, &secret_name)? else { continue };
+                        let Some(secret) = divisi_core::secrets::SecretStore::get(&store, &secret_name)? else {
+                            // Registered but nothing in the keyring: re-add it with `divisi provider add-free`.
+                            conn.execute(
+                                "INSERT INTO pool_key_notes (platform, key_id, note, at) VALUES (?1, ?2, ?3, ?4)
+                                 ON CONFLICT(platform, key_id) DO UPDATE SET note = excluded.note, at = excluded.at",
+                                rusqlite::params![provider.id, key.key_id, format!("no secret stored in the keyring for {secret_name}; re-add it with `divisi provider add-free {} --key-id {}`", provider.id, key.key_id), chrono::Utc::now().to_rfc3339()],
+                            )?;
+                            continue;
+                        };
                         let (verdict, note) = chat_probe(&conn, provider, &secret);
                         if let Some(ok) = verdict {
                             divisi_core::pool_keys::mark_validated(&conn, provider.id, &key.key_id, ok)?;
@@ -2371,9 +2380,28 @@ fn write_settings_with_backup(
 fn chat_probe(conn: &rusqlite::Connection, provider: &divisi_core::free_pool::FreeProvider, key: &str) -> (Option<bool>, String) {
     use crate::pool::client::{ChatMessage, PoolError, PoolRequest};
     // A free tier can refuse one model (a "pro" one, say) and serve the next, so try a few.
+    if !crate::pool::models::discoverable(provider) {
+        // Native wires pick their own model: one call says whether the key works.
+        let req = PoolRequest {
+            messages: vec![ChatMessage { role: "user".into(), content: "Reply with the single word OK.".into() }],
+            max_tokens: Some(16),
+            ..Default::default()
+        };
+        return match crate::pool::client::native::dispatch_for_wire(&req, provider, key) {
+            Ok(_) => (Some(true), "answered".into()),
+            Err(PoolError::RateLimited { .. }) => (Some(true), "rate limited (key works)".into()),
+            Err(PoolError::AuthFailed) => (Some(false), "key rejected (401)".into()),
+            Err(e) => (None, format!("{e:?}").chars().take(200).collect()),
+        };
+    }
     let models = crate::pool::models::best(conn, provider, key, crate::pool::ledger::now_ms());
     if models.is_empty() {
-        return (None, "could not list models (GET /models failed or listed no chat model)".to_string());
+        let why = match crate::pool::models::discover(provider, key) {
+            Ok(_) => "the model list has no chat model".to_string(),
+            Err(e) => format!("{e:#}").chars().take(200).collect(),
+        };
+        let rejected = why.contains("401") || why.contains("403");
+        return (rejected.then_some(false), format!("could not list models: {why}"));
     }
     let mut seen = Vec::new();
     for model in models.into_iter().take(4) {

@@ -70,6 +70,10 @@ fn size_b(id: &str) -> Option<f64> {
 pub fn score(id: &str) -> f64 {
     let l = id.to_lowercase();
     let mut s = 0.0;
+    // A model the provider marks free (`:free`, `-free`) is the one a free key can actually call.
+    if l.contains("free") {
+        s += 10.0;
+    }
     if let Some(b) = size_b(&l) {
         s += (b.min(400.0) / 400.0) * 4.0 + if b < 14.0 { -2.0 } else { 0.0 };
     }
@@ -110,7 +114,7 @@ pub fn rank(body: &Value, platform: &str) -> Vec<String> {
     ids
 }
 
-fn discover(provider: &FreeProvider, key: &str) -> Result<Vec<String>> {
+pub fn discover(provider: &FreeProvider, key: &str) -> Result<Vec<String>> {
     let url = format!("{}/models", provider.base_url.trim_end_matches('/'));
     let client = reqwest::blocking::Client::new();
     let resp = apply_auth(client.get(&url).timeout(Duration::from_secs(15)), provider.auth, key).send().context("listing models")?;
@@ -201,6 +205,12 @@ mod tests {
     fn gemini_style_names_are_unprefixed() {
         let body = json!({"models": [{"name": "models/gemini-2.5-flash"}, {"name": "models/text-embedding-004"}]});
         assert_eq!(rank(&body, "google"), vec!["gemini-2.5-flash".to_string()]);
+    }
+
+    #[test]
+    fn models_marked_free_rank_first() {
+        let body = json!({"data": [{"id": "deepseek-v4-pro"}, {"id": "glm-5.2"}, {"id": "mimo-v2.5-free"}]});
+        assert_eq!(rank(&body, "opencode-zen")[0], "mimo-v2.5-free");
     }
 
     #[test]
