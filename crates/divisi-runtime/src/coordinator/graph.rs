@@ -142,10 +142,14 @@ impl TaskGraph {
             .filter(|n| matches!(n.status, NodeStatus::Pending | NodeStatus::Ready))
             .filter(|n| n.earliest_retry_at_ms.is_none_or(|t| t <= now_ms))
             .filter(|n| {
-                n.depends_on.iter().all(|dep| {
+                // A dependency on a node that isn't in the graph (or on itself) can never be met.
+                // Live finding (2026-09-24): planners copied a sprint's own step numbers into
+                // `depends_on` ("s3".."s8" in a graph of s9-1..s9-6), so goals sat `running` with
+                // 0 dispatches for hours. Such a dependency is ignored rather than waited on.
+                n.depends_on.iter().filter(|dep| **dep != n.id).all(|dep| {
                     matches!(
                         self.find(dep).map(|d| d.status),
-                        Some(NodeStatus::Done) | Some(NodeStatus::Skipped)
+                        None | Some(NodeStatus::Done) | Some(NodeStatus::Skipped)
                     )
                 })
             })
@@ -278,6 +282,13 @@ mod tests {
             output_ref: None,
             earliest_retry_at_ms: None,
         }
+    }
+
+    #[test]
+    fn dangling_and_self_dependencies_do_not_block_a_node() {
+        let g = TaskGraph { nodes: vec![node("s9-1", &["s3", "s8"]), node("s9-2", &["s9-1"]), node("s9-3", &["s9-3"])] };
+        let ready: Vec<&str> = g.ready_set_at(0).iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ready, ["s9-1", "s9-3"], "s9-2 still waits on its real dependency");
     }
 
     #[test]
