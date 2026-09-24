@@ -2023,18 +2023,35 @@ fn dispatch(
 fn notch_agents(ctx: &Context) -> Vec<divisi_protocol::AgentInfo> {
     use divisi_protocol::AuthState;
     let cfg = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs);
-    let probed: std::collections::HashMap<String, String> = crate::state::open(&ctx.dirs.db_path())
-        .ok()
+    let conn = crate::state::open(&ctx.dirs.db_path()).ok();
+    let probed: std::collections::HashMap<String, String> = conn
+        .as_ref()
         .and_then(|conn| {
             let mut st = conn.prepare("SELECT agent, category FROM agent_auth_probe").ok()?;
             let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).ok()?;
             Some(rows.filter_map(|r| r.ok()).collect())
         })
         .unwrap_or_default();
+    // A real task completed in the last day is stronger evidence than any probe.
+    let since = (chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339();
+    let worked: std::collections::HashSet<String> = conn
+        .as_ref()
+        .and_then(|conn| {
+            let mut st = conn.prepare("SELECT DISTINCT agent FROM tasks WHERE status = 'completed' AND updated_at > ?1").ok()?;
+            let rows = st.query_map([&since], |r| r.get::<_, String>(0)).ok()?;
+            Some(rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
     agent_list_info_cached(ctx)
         .into_iter()
         .filter(|a| !cfg.disabled_agents.iter().any(|d| d == &a.name))
+        // Not installed / cannot run headless: not part of the pool, so not a login problem to show.
+        .filter(|a| !matches!(probed.get(&a.name).map(String::as_str), Some("not_installed" | "not_dispatchable")))
         .map(|mut a| {
+            if worked.contains(&a.name) {
+                a.authenticated = AuthState::Authenticated;
+                return a;
+            }
             match probed.get(&a.name).map(String::as_str) {
                 Some("authed" | "exhausted" | "no_auth_needed") => a.authenticated = AuthState::Authenticated,
                 Some("needs_login") => a.authenticated = AuthState::NotAuthenticated,

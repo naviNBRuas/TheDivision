@@ -13,7 +13,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 const PROBE_PROMPT: &str = "Reply with exactly the single word: ready";
-const PROBE_TIMEOUT: Duration = Duration::from_secs(90);
+// 150s: crush needs ~2 minutes to start and answer; at 90s it read "unresponsive" while working.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(150);
 /// How many agents are probed at once.
 const PARALLEL: usize = 6;
 
