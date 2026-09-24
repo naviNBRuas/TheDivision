@@ -496,6 +496,17 @@ pub enum Request {
     /// command). The key value is prompted for client-side (hidden input)
     /// when not passed, so it never crosses the wire unencrypted longer
     /// than necessary.
+    /// Turn one free-pool key off with a category (`disable`), back on (`enable`), or delete it and its
+    /// keychain secret (`remove`). Clears the key's benches either way.
+    ProviderPoolKeyState {
+        platform: String,
+        key_id: String,
+        action: String,
+        #[serde(default)]
+        category: Option<String>,
+        #[serde(default)]
+        note: Option<String>,
+    },
     ProviderAddFree {
         id: String,
         key: String,

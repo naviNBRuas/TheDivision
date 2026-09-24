@@ -1271,6 +1271,28 @@ fn dispatch(
                 .collect();
             Ok(ResponseData::FreeProviders(infos))
         }
+        Request::ProviderPoolKeyState { platform, key_id, action, category, note } => {
+            let conn = crate::state::open(&ctx.dirs.db_path())?;
+            match action.as_str() {
+                "disable" => {
+                    let category = category.unwrap_or_else(|| "disabled".to_string());
+                    divisi_core::pool_keys::disable_with_category(&conn, &platform, &key_id, &category, note.as_deref())?;
+                }
+                "enable" => divisi_core::pool_keys::enable_clearing_category(&conn, &platform, &key_id)?,
+                "remove" => {
+                    if !divisi_core::pool_keys::remove(&conn, &platform, &key_id)? {
+                        anyhow::bail!("no pool key {platform}:{key_id}");
+                    }
+                    let store = divisi_core::secrets::SecretTool;
+                    let _ = divisi_core::secrets::SecretStore::delete(&store, &divisi_core::pool_keys::secret_name(&platform, &key_id));
+                }
+                other => anyhow::bail!("unknown action {other} (disable, enable, remove)"),
+            }
+            // A disabled or removed key is not "benched": drop its cooldown rows so pool status counts only
+            // keys that will come back on their own.
+            let _ = conn.execute("DELETE FROM pool_cooldowns WHERE platform = ?1 AND key_id = ?2", rusqlite::params![platform, key_id]);
+            Ok(ResponseData::Empty)
+        }
         Request::ProviderAddFree { id, key, key_id } => {
             let provider = divisi_core::free_pool::by_id(&id).ok_or_else(|| {
                 anyhow::anyhow!("no such free provider: {id} (see `divisi provider list-free`)")
@@ -2508,8 +2530,11 @@ fn pool_key_statuses(conn: &rusqlite::Connection, dirs: &divisi_core::DivisiDirs
             keys_disabled: counts.disabled,
             notes: keys
                 .iter()
-                .filter(|k| !k.valid)
+                .filter(|k| !k.valid || k.disabled)
                 .filter_map(|k| {
+                    if let Some(c) = divisi_core::pool_keys::category(&conn, provider.id, &k.key_id) {
+                        return Some(format!("{}: disabled ({c})", k.key_id));
+                    }
                     conn.query_row("SELECT note FROM pool_key_notes WHERE platform = ?1 AND key_id = ?2", rusqlite::params![provider.id, k.key_id], |r| r.get::<_, String>(0))
                         .ok()
                         .map(|n| format!("{}: {n}", k.key_id))

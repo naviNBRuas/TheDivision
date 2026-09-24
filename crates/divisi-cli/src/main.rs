@@ -1220,6 +1220,28 @@ enum ProviderCommand {
         #[arg(long)]
         key_id: Option<String>,
     },
+    /// Turn one free-pool key off with a category (e.g. `paid-only`, `dead`, `needs-account`). It stays off,
+    /// and out of `pool status`, until `enable-pool-key`.
+    DisablePoolKey {
+        platform: String,
+        #[arg(default_value = "default")]
+        key_id: String,
+        #[arg(long, default_value = "disabled")]
+        category: String,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Turn a free-pool key back on and forget its category.
+    EnablePoolKey {
+        platform: String,
+        #[arg(default_value = "default")]
+        key_id: String,
+    },
+    /// Delete a free-pool key (registry row and keychain secret), e.g. one confirmed dead.
+    RemovePoolKey {
+        platform: String,
+        key_id: String,
+    },
     /// Reconcile the vendored catalog into `providers.toml` (`divisi-<id>` presets) and `free-pool.toml` (enabled/disabled state). Idempotent.
     SyncPool,
     /// Per free-pool provider: keyed?, last validation, disabled reason, live cooldown state, and headroom (a real remaining-quota count for providers with a declared rate limit, "unbounded/unknown" otherwise).
@@ -2820,6 +2842,21 @@ fn main() -> anyhow::Result<()> {
                 };
                 let response = client::send(&socket_path, Request::ProviderAddFree { id, key, key_id })?;
                 render::print(response, false);
+            }
+            ProviderCommand::DisablePoolKey { platform, key_id, category, note } => {
+                let r = client::send(&socket_path, Request::ProviderPoolKeyState { platform: platform.clone(), key_id: key_id.clone(), action: "disable".into(), category: Some(category.clone()), note })?;
+                render::print(r, false);
+                println!("disabled {platform}:{key_id} ({category})");
+            }
+            ProviderCommand::EnablePoolKey { platform, key_id } => {
+                let r = client::send(&socket_path, Request::ProviderPoolKeyState { platform: platform.clone(), key_id: key_id.clone(), action: "enable".into(), category: None, note: None })?;
+                render::print(r, false);
+                println!("enabled {platform}:{key_id}");
+            }
+            ProviderCommand::RemovePoolKey { platform, key_id } => {
+                let r = client::send(&socket_path, Request::ProviderPoolKeyState { platform: platform.clone(), key_id: key_id.clone(), action: "remove".into(), category: None, note: None })?;
+                render::print(r, false);
+                println!("removed {platform}:{key_id}");
             }
             ProviderCommand::SyncPool => {
                 let response = client::send(&socket_path, Request::ProviderSyncPool)?;

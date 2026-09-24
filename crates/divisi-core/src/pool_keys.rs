@@ -160,6 +160,65 @@ pub fn enable(conn: &Connection, platform: &str, key_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Why a person turned a key off, kept apart from the automatic `disabled` flag so a deliberate
+/// "paid-only, not paying for now" is visible and survives `validate` runs. Categories are free text;
+/// the CLI uses `paid-only`, `dead` and `needs-account`.
+fn ensure_category_schema(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pool_key_categories (
+            platform TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            note TEXT,
+            at TEXT NOT NULL,
+            PRIMARY KEY (platform, key_id)
+        )",
+        (),
+    )?;
+    Ok(())
+}
+
+/// Disables a key and records why.
+pub fn disable_with_category(conn: &Connection, platform: &str, key_id: &str, category: &str, note: Option<&str>) -> Result<()> {
+    ensure_schema(conn)?;
+    ensure_category_schema(conn)?;
+    let n = conn.execute("UPDATE pool_provider_keys SET disabled = 1 WHERE platform = ?1 AND key_id = ?2", params![platform, key_id])?;
+    if n == 0 {
+        anyhow::bail!("no pool key {platform}:{key_id}");
+    }
+    conn.execute(
+        "INSERT INTO pool_key_categories (platform, key_id, category, note, at) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(platform, key_id) DO UPDATE SET category = excluded.category, note = excluded.note, at = excluded.at",
+        params![platform, key_id, category, note, chrono::Utc::now().to_rfc3339()],
+    )?;
+    Ok(())
+}
+
+/// The category a person gave a disabled key, if any.
+pub fn category(conn: &Connection, platform: &str, key_id: &str) -> Option<String> {
+    ensure_category_schema(conn).ok()?;
+    conn.query_row("SELECT category FROM pool_key_categories WHERE platform = ?1 AND key_id = ?2", params![platform, key_id], |r| r.get(0))
+        .optional()
+        .ok()
+        .flatten()
+}
+
+/// Re-enables a key and forgets its category.
+pub fn enable_clearing_category(conn: &Connection, platform: &str, key_id: &str) -> Result<()> {
+    ensure_category_schema(conn)?;
+    enable(conn, platform, key_id)?;
+    conn.execute("DELETE FROM pool_key_categories WHERE platform = ?1 AND key_id = ?2", params![platform, key_id])?;
+    Ok(())
+}
+
+/// Deletes a key's registry row and category. The caller deletes the keychain secret.
+pub fn remove(conn: &Connection, platform: &str, key_id: &str) -> Result<bool> {
+    ensure_schema(conn)?;
+    ensure_category_schema(conn)?;
+    conn.execute("DELETE FROM pool_key_categories WHERE platform = ?1 AND key_id = ?2", params![platform, key_id])?;
+    Ok(conn.execute("DELETE FROM pool_provider_keys WHERE platform = ?1 AND key_id = ?2", params![platform, key_id])? > 0)
+}
+
 pub fn is_disabled(conn: &Connection, platform: &str, key_id: &str) -> Result<bool> {
     let disabled: Option<i64> = conn
         .query_row(
@@ -187,6 +246,22 @@ fn row_to_key(row: &rusqlite::Row) -> rusqlite::Result<PoolProviderKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_categorised_key_stays_disabled_until_enabled_and_can_be_removed() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        add(&conn, "cerebras", "default").unwrap();
+        disable_with_category(&conn, "cerebras", "default", "paid-only", Some("402 on every model")).unwrap();
+        assert!(is_disabled(&conn, "cerebras", "default").unwrap());
+        assert_eq!(category(&conn, "cerebras", "default").as_deref(), Some("paid-only"));
+        assert!(disable_with_category(&conn, "cerebras", "nope", "dead", None).is_err());
+        enable_clearing_category(&conn, "cerebras", "default").unwrap();
+        assert!(!is_disabled(&conn, "cerebras", "default").unwrap());
+        assert_eq!(category(&conn, "cerebras", "default"), None);
+        assert!(remove(&conn, "cerebras", "default").unwrap());
+        assert!(list(&conn, Some("cerebras")).unwrap().is_empty());
+    }
 
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
