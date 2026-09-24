@@ -268,11 +268,13 @@ impl Dispatcher for RealDispatcher<'_> {
     }
 }
 
+/// Sized for a `divisi-pool` coding run (~30s per model turn, commands up to
+/// `pool_coder::COMMAND_SECS`); CLI agents finish well inside these.
 fn timeout_for(effort: Effort) -> Duration {
     match effort {
-        Effort::Quick => Duration::from_secs(180),
-        Effort::Standard => Duration::from_secs(420),
-        Effort::Deep => Duration::from_secs(900),
+        Effort::Quick => Duration::from_secs(600),
+        Effort::Standard => Duration::from_secs(1500),
+        Effort::Deep => Duration::from_secs(2700),
     }
 }
 
@@ -1186,6 +1188,17 @@ fn load_session_cwd(conn: &Connection, session_id: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    /// Live 2026-09-24: pool coder turns average ~30s and one shell command may take
+    /// `COMMAND_SECS`, so the old 180/420/900s budgets timed out half of all pool runs
+    /// mid-progress (a quick node died inside its first `cargo test`).
+    #[test]
+    fn node_timeouts_fit_real_pool_coder_runs() {
+        let cmd = crate::pool_coder::COMMAND_SECS;
+        assert!(super::timeout_for(Effort::Quick).as_secs() >= 3 * cmd);
+        assert!(super::timeout_for(Effort::Standard).as_secs() >= 20 * 60);
+        assert!(super::timeout_for(Effort::Deep).as_secs() >= crate::pool_coder::MAX_STEPS as u64 * 30 + cmd);
+    }
+
     use super::*;
 
     #[test]

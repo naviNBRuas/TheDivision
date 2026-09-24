@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 /// Most model turns in one run.
 pub const MAX_STEPS: usize = 60;
 /// Longest a single shell command may run.
-const COMMAND_SECS: u64 = 180;
+pub const COMMAND_SECS: u64 = 180;
 /// Longest tool output kept in the conversation (head and tail are kept).
 const OUTPUT_CHARS: usize = 6000;
 /// Conversation size above which the oldest tool results are shortened; free tiers have small windows.
