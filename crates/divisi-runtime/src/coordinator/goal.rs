@@ -356,6 +356,12 @@ pub fn set_status(conn: &Connection, id: &str, status: GoalStatus) -> Result<()>
     Ok(())
 }
 
+/// Records why a goal ended without changing its status (a failed goal's "goal not met: ..." reason).
+pub fn set_blocked_reason(conn: &Connection, id: &str, reason: &str) -> Result<()> {
+    conn.execute("UPDATE goals SET blocked_reason = ?2, updated_at = ?3 WHERE id = ?1", params![id, reason, now()])?;
+    Ok(())
+}
+
 pub fn set_blocked(conn: &Connection, id: &str, reason: &str) -> Result<()> {
     conn.execute(
         "UPDATE goals SET status = 'blocked', blocked_reason = ?2, updated_at = ?3 WHERE id = ?1",

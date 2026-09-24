@@ -842,8 +842,16 @@ fn run_integrator(
     match crate::coordinator::brain::integrate(conn, ctx, &cwd, &goal.text, &outputs, table, health) {
         Ok(outcome) => {
             goal::set_summary(conn, &goal.id, &outcome.summary)?;
-            let final_status = if outcome.unrecoverable { GoalStatus::Failed } else { GoalStatus::Done };
+            // Live-verification finding (2026-09-24): goals whose integrator wrote "does not meet the
+            // goal" were still marked done, so sprints "finished" with nothing changed. Done now needs
+            // the integrator to confirm it; anything else fails with its reasons so the goal is retried.
+            let met = outcome.checks_pass && outcome.residual_gaps.is_empty() && !outcome.unrecoverable;
+            let final_status = if met { GoalStatus::Done } else { GoalStatus::Failed };
             goal::set_status(conn, &goal.id, final_status)?;
+            if !met {
+                let gaps = if outcome.residual_gaps.is_empty() { outcome.summary.clone() } else { outcome.residual_gaps.join("; ") };
+                goal::set_blocked_reason(conn, &goal.id, &format!("goal not met: {gaps}"))?;
+            }
             events::append(
                 conn,
                 &goal.session_id,

@@ -420,8 +420,11 @@ pub fn integrate(
     }
     let prompt = format!(
         "You are a build integrator. Verify the subtask results against the GOAL.\n\
-        Output ONLY JSON: {{\"summary\":\"...\",\"files_changed\":[],\"checks_pass\":true,\
-        \"residual_gaps\":[],\"unrecoverable\":false}}\n\
+        Output ONLY JSON: {{\"summary\":\"...\",\"files_changed\":[\"...\"],\"checks_pass\":BOOL,\
+        \"residual_gaps\":[\"...\"],\"unrecoverable\":BOOL}}\n\
+        checks_pass is true ONLY if the results show every requirement of the GOAL was actually done \
+        (files changed, tests or builds run and passing); exploring, planning or describing work is not \
+        doing it. List each unmet requirement in residual_gaps.\n\
         Fix only trivial glue (imports, a rename mismatch).\n\n\
         GOAL:\n{goal_text}\n\nSUBTASK RESULTS:{body}\n"
     );
