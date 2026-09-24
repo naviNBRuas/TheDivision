@@ -368,7 +368,7 @@ pub fn plan(
         pc.changed_files.len(),
         pc.project_docs.join(", "),
     );
-    let prompt = format!("{PLAN_INSTRUCTION}{ctx_blurb}\n\nGOAL:\n{goal_text}\n");
+    let prompt = format!("{PLAN_INSTRUCTION}{ctx_blurb}{}\n\nGOAL:\n{goal_text}\n", crate::coordinator::gates::stack_note(cwd));
     let v = run_role(conn, ctx, &agent, NodeKind::Plan, Effort::Standard, table, health, cwd, &prompt, &|v| parse_plan(v).is_ok())?;
     let specs = parse_plan(&v)?;
     Ok(specs_to_graph(&specs, table, health, prefer_pool))

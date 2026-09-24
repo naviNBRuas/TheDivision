@@ -452,6 +452,7 @@ pub fn tick(
                         continue;
                     }
                     let (session_cwd, isolated) = goal_workdir(ctx, cfg, &goal.id, &session_cwd)?;
+                    let prompt = format!("{prompt}{}", crate::coordinator::gates::stack_note(&session_cwd));
                     let opts = crate::task::OwnedRunTaskOptions {
                         description: prompt,
                         agent: agent.clone(),

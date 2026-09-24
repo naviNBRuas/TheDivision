@@ -97,12 +97,58 @@ pub fn build_gap(worktree: &Path, timeout: Duration) -> Option<String> {
     Some(format!("`{prog} {}` fails in the goal worktree:\n{}", args.join(" "), tail.join("\n")))
 }
 
+/// The repository's main stack, from its manifest files (checked from `dir` up to the repo root).
+pub fn stack_of(dir: &Path) -> Option<&'static str> {
+    const MANIFESTS: &[(&str, &str)] = &[
+        ("go.mod", "Go"),
+        ("Cargo.toml", "Rust"),
+        ("package.json", "TypeScript/JavaScript"),
+        ("pyproject.toml", "Python"),
+        ("requirements.txt", "Python"),
+    ];
+    let mut d = Some(dir);
+    while let Some(p) = d {
+        if let Some((_, lang)) = MANIFESTS.iter().find(|(m, _)| p.join(m).exists()) {
+            return Some(lang);
+        }
+        if p.join(".git").exists() {
+            break;
+        }
+        d = p.parent();
+    }
+    None
+}
+
+/// A line for planner and node prompts naming the stack. Live finding (2026-09-24): planners asked
+/// for `data_core.py` in a Go repository because nothing told them what the repository is written in.
+pub fn stack_note(dir: &Path) -> String {
+    match stack_of(dir) {
+        Some(lang) => format!(
+            "\n\nREPOSITORY STACK: this repository is written in {lang}. Write all code in {lang}, inside its existing \
+            packages and layout; never add standalone files in another language."
+        ),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn run(dir: &Path, args: &[&str]) {
         assert!(Command::new("git").current_dir(dir).args(args).status().unwrap().success(), "git {args:?}");
+    }
+
+    #[test]
+    fn stack_comes_from_the_nearest_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+        std::fs::create_dir_all(dir.path().join("internal/x")).unwrap();
+        assert_eq!(stack_of(dir.path()), None);
+        assert_eq!(stack_note(dir.path()), "");
+        std::fs::write(dir.path().join("go.mod"), "module m").unwrap();
+        assert_eq!(stack_of(&dir.path().join("internal/x")), Some("Go"));
+        assert!(stack_note(dir.path()).contains("written in Go"));
     }
 
     #[test]
