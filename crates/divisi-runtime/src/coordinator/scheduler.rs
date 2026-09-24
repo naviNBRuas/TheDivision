@@ -863,6 +863,23 @@ fn commit_goal_work(ctx: &Context, conn: &Connection, goal: &Goal) {
     let _ = events::append(conn, &goal.session_id, Some(&goal.id), EventKind::Message, &note);
 }
 
+/// `gates` run on the goal's branch against the base repo's current HEAD.
+fn branch_gate_gaps(ctx: &Context, goal: &Goal, session_cwd: &std::path::Path) -> Vec<String> {
+    let wt = ctx.dirs.state_dir().join("worktrees").join(format!("goal-{}", goal.id));
+    let Some(root) = divisi_core::project_context::resolve(session_cwd).repo_root else { return vec![] };
+    let base = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let Some(base) = base else { return vec![] };
+    let mut gaps = crate::coordinator::gates::branch_gaps(&wt, &base);
+    gaps.extend(crate::coordinator::gates::build_gap(&wt, std::time::Duration::from_secs(600)));
+    gaps
+}
+
 /// A one-line commit subject for a goal: its conductor tag when it has one, else its first words.
 fn commit_subject(text: &str) -> String {
     if let Some(tag) = text.strip_prefix("[conductor:").and_then(|t| t.split_once(']')).map(|(t, _)| t) {
@@ -904,7 +921,15 @@ fn run_integrator(
         .collect();
 
     match crate::coordinator::brain::integrate(conn, ctx, &cwd, &goal.text, &outputs, table, health) {
-        Ok(outcome) => {
+        Ok(mut outcome) => {
+            if isolated {
+                let gaps = branch_gate_gaps(ctx, goal, &session_cwd);
+                if !gaps.is_empty() {
+                    outcome.checks_pass = false;
+                    outcome.unrecoverable = false;
+                    outcome.residual_gaps.extend(gaps);
+                }
+            }
             goal::set_summary(conn, &goal.id, &outcome.summary)?;
             // Live-verification finding (2026-09-24): goals whose integrator wrote "does not meet the
             // goal" were still marked done, so sprints "finished" with nothing changed. Done now needs

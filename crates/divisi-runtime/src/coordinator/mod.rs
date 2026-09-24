@@ -14,6 +14,7 @@
 
 pub mod brain;
 pub mod events;
+pub mod gates;
 pub mod goal;
 pub mod graph;
 pub mod routing;

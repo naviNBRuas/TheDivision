@@ -167,6 +167,15 @@ pub const MAX_AUTO_COMMIT_FILES: usize = 200;
 /// Files larger than this are never auto-committed (binaries, dumps).
 pub const MAX_AUTO_COMMIT_BYTES: u64 = 5 * 1024 * 1024;
 
+/// Path fragments that are build output, never source.
+const BUILD_OUTPUT: &[&str] = &["__pycache__/", ".pyc", "node_modules/", ".pytest_cache/", "/target/", ".DS_Store"];
+
+/// Whether `path` (repo-relative) is build output that must never be committed.
+pub fn is_build_output(path: &str) -> bool {
+    let p = format!("/{path}");
+    BUILD_OUTPUT.iter().any(|j| p.contains(j))
+}
+
 /// Commits whatever a goal's agents left uncommitted in `worktree` onto its branch.
 ///
 /// Live finding (2026-09-24): agents wrote files but rarely committed, so finished goals queued
@@ -198,6 +207,7 @@ pub fn commit_pending(worktree: &Path, message: &str, author: Option<&str>) -> R
     }
     let keep: Vec<&String> = paths
         .iter()
+        .filter(|p| !is_build_output(p))
         .filter(|p| std::fs::metadata(worktree.join(p)).map(|m| m.len() <= MAX_AUTO_COMMIT_BYTES).unwrap_or(true))
         .collect();
     if keep.is_empty() {
@@ -308,6 +318,11 @@ mod tests {
         assert_eq!(commit_pending(dir.path(), "feat: goal work", Some("Ann Dev <ann@example.com>")).unwrap(), 2);
         assert_eq!(last_commit(dir.path()), "Ann Dev <ann@example.com>|feat: goal work");
         assert!(dir.path().join("big.bin").exists(), "the big file stays, uncommitted");
+        std::fs::create_dir(dir.path().join("__pycache__")).unwrap();
+        std::fs::write(dir.path().join("__pycache__/m.cpython-314.pyc"), "b").unwrap();
+        assert_eq!(commit_pending(dir.path(), "feat: y", None).unwrap(), 0, "build output is never committed");
+        assert!(is_build_output("a/__pycache__/x.pyc") && is_build_output("node_modules/x/index.js"));
+        assert!(!is_build_output("src/target_manager.rs") && !is_build_output("docs/node_modules.md"));
 
         for i in 0..=MAX_AUTO_COMMIT_FILES {
             std::fs::write(dir.path().join(format!("f{i}.txt")), "x").unwrap();
