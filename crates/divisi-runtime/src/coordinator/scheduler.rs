@@ -431,7 +431,7 @@ pub fn tick(
                             &format!("{node_id}: capacity window freed, resuming"),
                         )?;
                     }
-                    let prompt = build_node_prompt(&graph, node);
+                    let prompt = build_node_prompt(&graph, node, &goal.text);
                     let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
                     if !session_cwd.exists() {
                         // A session's cwd is resolved once at creation and
@@ -883,6 +883,16 @@ fn run_integrator(
             // goal" were still marked done, so sprints "finished" with nothing changed. Done now needs
             // the integrator to confirm it; anything else fails with its reasons so the goal is retried.
             let met = outcome.checks_pass && outcome.residual_gaps.is_empty() && !outcome.unrecoverable;
+            if !met && !outcome.unrecoverable && continue_round(ctx, conn, goal, graph, &cfg, &cwd, &outcome, table, health)? {
+                events::append(
+                    conn,
+                    &goal.session_id,
+                    Some(&goal.id),
+                    EventKind::Integrated,
+                    &serde_json::to_string(&outcome).unwrap_or_else(|_| outcome.summary.clone()),
+                )?;
+                return Ok(());
+            }
             let final_status = if met { GoalStatus::Done } else { GoalStatus::Failed };
             goal::set_status(conn, &goal.id, final_status)?;
             if !met {
@@ -917,9 +927,85 @@ fn run_integrator(
     Ok(())
 }
 
+/// Rounds a goal may run (the first plan plus continuations) before an unmet integration fails it.
+const MAX_GOAL_ROUNDS: u32 = 3;
+
+/// The round a graph is in: continuation nodes carry an `r<N>-` id prefix, first-round nodes none.
+fn graph_round(graph: &TaskGraph) -> u32 {
+    graph
+        .nodes
+        .iter()
+        .filter_map(|n| n.id.strip_prefix('r')?.split_once('-')?.0.parse::<u32>().ok())
+        .max()
+        .unwrap_or(1)
+}
+
+/// Appends `next`'s nodes to `graph` under `r<round>-` ids (dependencies renamed with them).
+fn append_round(graph: &mut TaskGraph, next: TaskGraph, round: u32) {
+    let rename = |id: &str| format!("r{round}-{id}");
+    for mut n in next.nodes {
+        n.id = rename(&n.id);
+        n.depends_on = n.depends_on.iter().map(|d| rename(d)).collect();
+        graph.nodes.push(n);
+    }
+}
+
+/// Live-verification finding (2026-09-24): an integrator listing residual gaps failed the goal at once,
+/// e.g. after 8 of 60 dispatches, and the conductor resubmitted it from scratch. While rounds and
+/// dispatch budget remain, plan a continuation for just the gaps and keep the goal running instead.
+/// Returns false (caller fails the goal) when no round is left or the continuation plan fails.
+#[allow(clippy::too_many_arguments)]
+fn continue_round(
+    ctx: &Context,
+    conn: &mut Connection,
+    goal: &Goal,
+    graph: &TaskGraph,
+    cfg: &CoordinatorConfig,
+    cwd: &std::path::Path,
+    outcome: &crate::coordinator::brain::IntegrationOutcome,
+    table: &RoutingTable,
+    health: &PoolHealth,
+) -> Result<bool> {
+    let round = graph_round(graph) + 1;
+    if round > MAX_GOAL_ROUNDS || goal_budget(goal, cfg).exhausted().is_some() {
+        return Ok(false);
+    }
+    let gaps: String = if outcome.residual_gaps.is_empty() {
+        format!("\n- {}", outcome.summary)
+    } else {
+        outcome.residual_gaps.iter().map(|g| format!("\n- {g}")).collect()
+    };
+    let text = format!(
+        "{}\n\nCONTINUATION (round {round} of {MAX_GOAL_ROUNDS}). An earlier round already did: {}\n\
+        Plan ONLY the work still missing; do not redo finished work:{gaps}",
+        goal.text, outcome.summary
+    );
+    let next = match crate::coordinator::brain::plan(conn, ctx, &text, cwd, table, health, cfg.prefer_pool) {
+        Ok(g) if !g.nodes.is_empty() => g,
+        _ => return Ok(false),
+    };
+    let added = next.nodes.len();
+    let mut g = graph.clone();
+    append_round(&mut g, next, round);
+    goal::save_graph(conn, &goal.id, &g)?;
+    goal::set_status(conn, &goal.id, GoalStatus::Running)?;
+    events::append(
+        conn,
+        &goal.session_id,
+        Some(&goal.id),
+        EventKind::Plan,
+        &format!("round {round}: planned {added} node(s) for the residual gaps"),
+    )?;
+    Ok(true)
+}
+
 /// feeds a node its dependencies' outputs and its siblings' current status
 /// alongside its own description.
-fn build_node_prompt(graph: &TaskGraph, node: &Node) -> String {
+///
+/// Live-verification finding (2026-09-24): nodes saw only the planner's one-line description, never
+/// the goal. The goal text often names a spec outside the checkout that pool coders can't read, so
+/// nodes invented a copy of the spec and "implemented" that. Every node now gets the goal itself.
+fn build_node_prompt(graph: &TaskGraph, node: &Node, goal_text: &str) -> String {
     let mut deps = String::new();
     for dep_id in &node.depends_on {
         if let Some(dep) = graph.find(dep_id) {
@@ -929,6 +1015,12 @@ fn build_node_prompt(graph: &TaskGraph, node: &Node) -> String {
         }
     }
     let mut prompt = node.desc.clone();
+    if !goal_text.trim().is_empty() {
+        prompt.push_str(&format!(
+            "\n\nOVERALL GOAL (context; do only your subtask above):\n{}",
+            crate::orchestrate::truncate(goal_text, 6000)
+        ));
+    }
     if !deps.is_empty() {
         prompt.push_str(&format!("\n\nUPSTREAM RESULTS:{deps}"));
     }
@@ -1512,16 +1604,32 @@ mod tests {
         let g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok"), node("s2", &["s1"], Effort::Standard, "grok")] };
         // no output_ref on s1 -> no UPSTREAM RESULTS section, but s1 still
         // shows up as a sibling for visibility.
-        let p = build_node_prompt(&g, g.find("s2").unwrap());
+        let p = build_node_prompt(&g, g.find("s2").unwrap(), "");
         assert!(!p.contains("UPSTREAM RESULTS"));
         assert!(p.contains("SIBLING NODE STATUS"));
         assert!(p.contains("s1: pending"));
     }
 
     #[test]
+    fn append_round_prefixes_ids_and_dependencies_and_bumps_the_round() {
+        let mut g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] };
+        assert_eq!(graph_round(&g), 1);
+        append_round(&mut g, TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok"), node("s2", &["s1"], Effort::Standard, "grok")] }, 2);
+        assert_eq!(g.find("r2-s2").unwrap().depends_on, vec!["r2-s1".to_string()]);
+        assert_eq!(graph_round(&g), 2);
+    }
+
+    #[test]
+    fn build_node_prompt_carries_the_goal() {
+        let g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] };
+        let p = build_node_prompt(&g, g.find("s1").unwrap(), "ship the memory fabric");
+        assert!(p.contains("OVERALL GOAL") && p.contains("ship the memory fabric"));
+    }
+
+    #[test]
     fn build_node_prompt_omits_sibling_section_when_alone() {
         let g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] };
-        let p = build_node_prompt(&g, g.find("s1").unwrap());
+        let p = build_node_prompt(&g, g.find("s1").unwrap(), "");
         assert_eq!(p, "s1");
     }
 
