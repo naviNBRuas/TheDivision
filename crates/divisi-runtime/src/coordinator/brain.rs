@@ -117,12 +117,17 @@ pub struct IntegrationOutcome {
     pub unrecoverable: bool,
 }
 
+/// Most nodes one plan may have.
+pub const MAX_PLAN_NODES: usize = 12;
+
 pub fn parse_plan(v: &Value) -> Result<Vec<PlanNodeSpec>> {
     let arr = v.as_array().context("planner output is not a JSON array")?;
     let specs: Vec<PlanNodeSpec> =
         serde_json::from_value(Value::Array(arr.clone())).context("planner array has a malformed element")?;
-    if specs.is_empty() || specs.len() > 8 {
-        bail!("planner returned {} nodes; expected 2–8", specs.len());
+    // The prompt asks for 2 to 8; up to MAX_PLAN_NODES is still accepted. Live finding (2026-09-24):
+    // valid 9-10 node plans for big sprints were rejected as "no parseable JSON" and blocked the goal.
+    if specs.is_empty() || specs.len() > MAX_PLAN_NODES {
+        bail!("planner returned {} nodes; expected 1–{MAX_PLAN_NODES}", specs.len());
     }
     Ok(specs)
 }
@@ -515,6 +520,13 @@ mod tests {
         assert_eq!(specs[1].depends_on, vec!["s1"]);
 
         assert!(parse_plan(&serde_json::json!([])).is_err());
+    }
+
+    #[test]
+    fn parse_plan_accepts_a_ten_node_plan_but_not_an_oversized_one() {
+        let n = |i: usize| serde_json::json!({"id":format!("s{i}"),"desc":"x","kind":"code","effort":"quick","depends_on":[]});
+        assert_eq!(parse_plan(&serde_json::Value::Array((1..=10).map(n).collect())).unwrap().len(), 10);
+        assert!(parse_plan(&serde_json::Value::Array((1..=MAX_PLAN_NODES + 1).map(n).collect())).is_err());
     }
 
     #[test]
