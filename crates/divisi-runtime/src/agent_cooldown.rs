@@ -205,7 +205,10 @@ pub fn succeeded(conn: &Connection, agent: &str) {
     if exempt(agent) || ensure_schema(conn).is_err() {
         return;
     }
-    let _ = conn.execute("UPDATE agent_cooldowns SET strikes = 0, verified_at = ?2 WHERE agent = ?1", params![agent, Utc::now().to_rfc3339()]);
+    // A real call that worked ends the bench too. Live finding (2026-09-24): divisi-huggingface
+    // answered "ready" yet stayed benched until the guessed Oct 1 reset, idle for a week.
+    let now = Utc::now().to_rfc3339();
+    let _ = conn.execute("UPDATE agent_cooldowns SET strikes = 0, verified_at = ?2, until = ?2 WHERE agent = ?1", params![agent, now]);
 }
 
 /// Agents whose cooldown has passed but that nothing has confirmed working since: the recovery probe's worklist.
@@ -316,6 +319,15 @@ mod tests {
         let active = active(&conn, now).unwrap();
         assert_eq!(active.keys().collect::<Vec<_>>(), ["codex"], "an expired cooldown is not active");
         assert!(active["codex"] > now + Duration::hours(29));
+    }
+
+    #[test]
+    fn a_verified_success_ends_the_bench() {
+        let conn = db();
+        ensure_schema(&conn).unwrap();
+        record(&conn, "divisi-huggingface", Utc::now() + Duration::days(7), "402 monthly credits").unwrap();
+        succeeded(&conn, "divisi-huggingface");
+        assert!(active(&conn, Utc::now() + Duration::seconds(1)).unwrap().is_empty());
     }
 
     #[test]
