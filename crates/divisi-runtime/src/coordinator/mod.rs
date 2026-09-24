@@ -111,7 +111,9 @@ pub fn plan_goal(
     };
 
     goal::save_graph(conn, goal_id, &graph)?;
-    goal::set_status(conn, goal_id, graph::GoalStatus::Running)?;
+    let chat_cfg = crate::assistant::gate::ChatConfig::load(&ctx.dirs);
+    let held = crate::assistant::chat::hold_for_fanout(conn, &chat_cfg, &goal.session_id, goal_id, graph.nodes.len())?;
+    goal::set_status(conn, goal_id, if held { graph::GoalStatus::Paused } else { graph::GoalStatus::Running })?;
     Ok(())
 }
 
@@ -152,6 +154,9 @@ pub fn resume_interrupted(ctx: &Context, conn: &mut Connection) -> Result<usize>
     for g in candidates {
         let mut this_touched = false;
         let was_paused = g.status == graph::GoalStatus::Paused;
+        if was_paused && crate::assistant::chat::awaiting_fanout_approval(conn, &g.id) {
+            continue; // held for a fan-out confirmation, not by a daemon stop
+        }
 
         let graph = goal::load_graph(conn, &g.id)?;
         if graph.nodes.is_empty() {

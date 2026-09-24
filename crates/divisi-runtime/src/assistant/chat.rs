@@ -215,6 +215,47 @@ pub fn chat_send(
     Ok(ChatOutcome { session_id, events: out })
 }
 
+/// The fan-out cap (spec §5, "a goal whose plan exceeds the fan-out cap"): called by the coordinator
+/// right after it plans a goal. It applies only to goals started from a chat thread (a session that
+/// has a `chat_user` event), the most conservative reading of the spec, so scripted and conductor goals
+/// are never held. Over the cap, it posts a `chat_confirm` whose approved action resumes the goal and
+/// returns true: the caller then leaves the goal `paused` instead of running it. A remembered "always
+/// allow" is not offered (large plans are judged one at a time).
+pub fn hold_for_fanout(conn: &Connection, cfg: &ChatConfig, session_id: &str, goal_id: &str, nodes: usize) -> Result<bool> {
+    if nodes <= cfg.fanout_cap || !is_chat_thread(conn, session_id) {
+        return Ok(false);
+    }
+    preferences::ensure_schema(conn)?;
+    let intent = Intent::GoalControl { goal_id: goal_id.to_owned(), action: super::GoalAction::Resume };
+    let resource = "chat:goal.fanout";
+    let summary = format!("run {goal_id}, whose plan has {nodes} steps (more than the fan-out cap of {})", cfg.fanout_cap);
+    let context = json!({"session": session_id, "intent": intent, "summary": summary, "remember_ok": false}).to_string();
+    let preferences::Verdict::PendingApproval(id) = preferences::evaluate_and_learn(&[], conn, resource, Some(&context))? else {
+        return Ok(false); // a stored preference already decided this resource; don't hold
+    };
+    let expires = chrono::Utc::now() + chrono::Duration::seconds(cfg.confirm_expiry_secs as i64);
+    let body = json!({"approval_id": id, "summary": summary, "action": intent, "resource": resource, "remember_ok": false, "expires_at": expires.to_rfc3339()});
+    events::append(conn, session_id, Some(goal_id), EventKind::ChatConfirm, &body.to_string())?;
+    Ok(true)
+}
+
+/// Whether `goal_id` is paused on an unanswered fan-out confirmation (a daemon restart must not resume it).
+pub fn awaiting_fanout_approval(conn: &Connection, goal_id: &str) -> bool {
+    preferences::list_pending(conn).unwrap_or_default().iter().any(|a| {
+        a.resource == "chat:goal.fanout"
+            && a.context.as_deref().and_then(|c| serde_json::from_str::<Value>(c).ok()).is_some_and(|v| v["intent"]["goal_id"] == goal_id)
+    })
+}
+
+fn is_chat_thread(conn: &Connection, session_id: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM coordinator_events WHERE session_id = ?1 AND kind = 'chat_user' LIMIT 1",
+        [session_id],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
 /// Runs an intent, turning a failure into a plain reply instead of an error.
 fn run(ctx: &Context, model: &dyn IntentModel, cfg: &ChatConfig, agent: Option<&str>, session_id: &str, intent: &Intent, thread: &[String], state: &str) -> Reply {
     let ask = |q: &str| model::answer(model, thread, state, q);
@@ -583,5 +624,23 @@ mod tests {
         let o = send(&e, &none(), "status, and my key is sk-abcdEFGH1234567890abcdEFGH1234567890abcd");
         let logged = body(&o, "chat_user")["text"].as_str().unwrap().to_owned();
         assert!(!logged.contains("sk-abcdEFGH"), "the raw key reached the conversation log: {logged}");
+    }
+
+    #[test]
+    fn a_chat_plan_over_the_fanout_cap_is_held_for_confirmation() {
+        let e = env();
+        let chat = send(&e, &none(), "status").session_id;
+        let cfg = ChatConfig { fanout_cap: 3, ..e.cfg.clone() };
+        let other = crate::coordinator::session::new_session(&e.conn, std::path::Path::new(".")).unwrap().id;
+
+        assert!(!hold_for_fanout(&e.conn, &cfg, &chat, "goal_x_0001", 3).unwrap(), "at the cap runs");
+        assert!(!hold_for_fanout(&e.conn, &cfg, &other, "goal_x_0002", 9).unwrap(), "non-chat goals are never held");
+        assert!(hold_for_fanout(&e.conn, &cfg, &chat, "goal_x_0003", 4).unwrap());
+        assert!(awaiting_fanout_approval(&e.conn, "goal_x_0003"));
+        assert!(!awaiting_fanout_approval(&e.conn, "goal_x_0002"));
+        let confirms: Vec<_> = events::since(&e.conn, &chat, 0).unwrap().into_iter().filter(|ev| ev.kind == "chat_confirm").collect();
+        let b: Value = serde_json::from_str(&confirms.last().unwrap().body).unwrap();
+        assert_eq!((b["resource"].as_str(), b["remember_ok"].as_bool()), (Some("chat:goal.fanout"), Some(false)));
+        assert_eq!(b["action"]["goal_id"], "goal_x_0003");
     }
 }

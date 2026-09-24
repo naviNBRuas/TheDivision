@@ -1,6 +1,6 @@
 # Conversational divisi: design
 
-Status: approved 2026-09-19. All four stages implemented and deployed 2026-09-20 (core and `divisi chat`, Zed, TUI, notch). Deferred: executing `Config` intents (they ask, then report that nothing was changed), and the fan-out cap rule.
+Status: approved 2026-09-19. All four stages implemented and deployed 2026-09-20 (core and `divisi chat`, Zed, TUI, notch). Deferred: executing `Config` intents (they ask, then report that nothing was changed). The fan-out cap rule landed 2026-09-24 (E27.08).
 Successor step: one implementation plan per delivery stage (writing-plans).
 Builds on: the divisi rename (`rebrand/divisi`, 0.24.0). Branch from it, not from `main`.
 
@@ -134,6 +134,14 @@ gate.
 - **Planning must verify** that the coordinator can pause a goal on plan size using its
   existing `paused` status. If it cannot, the fan-out rule is dropped from stage 1 and
   recorded as a follow-up; the other four rules do not depend on it.
+
+**Fan-out cap as built (2026-09-24, most conservative reading).** It applies only to goals started
+from a chat thread (a session with a `chat_user` event); conductor and scripted goals are never
+held. Right after planning, a plan with more nodes than `fanout_cap` leaves the goal `paused` and
+posts a `chat_confirm` (resource `chat:goal.fanout`, `remember` not offered) whose action is
+`GoalControl { resume }`. A daemon restart does not resume a goal held this way. Denied or expired,
+the goal stays paused. Planner output is capped at 12 nodes, so with the default cap only a lowered
+`fanout_cap` triggers it.
 
 **Configuration** (`config.toml`, section `[chat]`): `confirm_expiry_secs = 1800`,
 `fanout_cap = 12`, `default_mode = "auto"` (goal mode when a message does not say), and
