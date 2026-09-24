@@ -2494,7 +2494,9 @@ fn pool_key_statuses(conn: &rusqlite::Connection, dirs: &divisi_core::DivisiDirs
         statuses.push(divisi_protocol::PoolKeyStatusInfo {
             platform: provider.id.to_string(),
             keyed: key.is_some(),
-            valid: key.map(|k| k.valid).unwrap_or(false),
+            // A provider is usable when any of its keys works; one dead key among valid ones made
+            // openrouter/huggingface/xkiro look unverified (2026-09-24).
+            valid: counts.valid > 0,
             last_validated_at: key.and_then(|k| k.last_validated_at.clone()),
             disabled_reason,
             cooldown,

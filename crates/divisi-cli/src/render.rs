@@ -908,9 +908,18 @@ fn print_data(data: ResponseData) {
             if s.benched.is_empty() {
                 println!("  no benched keys");
             } else {
-                println!("  benched:");
-                for b in &s.benched {
-                    println!("    {:<12} {:<20} {:<12} {}s remaining ({})", b.platform, b.model, b.key_id, b.remaining_secs, b.provenance);
+                // Rate-limit benches clear on their own within the hour; credit/tier ones mean the key needs
+                // payment or a plan (retried after UTC midnight). Shown apart so the count reads right.
+                let (paid, temp): (Vec<_>, Vec<_>) = s.benched.iter().partition(|b| b.provenance == "credit" || b.provenance == "tier");
+                println!("  benched: {} rate-limited (temporary), {} need payment/plan or serve no such model", temp.len(), paid.len());
+                for (title, list) in [("  rate-limited:", &temp), ("  payment/plan/model:", &paid)] {
+                    if list.is_empty() {
+                        continue;
+                    }
+                    println!("{title}");
+                    for b in list.iter() {
+                        println!("    {:<12} {:<20} {:<12} {}s remaining ({})", b.platform, b.model, b.key_id, b.remaining_secs, b.provenance);
+                    }
                 }
             }
         }
