@@ -127,6 +127,33 @@ fn within(root: &Path, rel: &str) -> Result<PathBuf, String> {
     }
 }
 
+/// Read-only roots outside the checkout, from `DIVISI_POOL_READ_ROOTS` (`:`-separated absolute paths).
+/// Live finding (2026-09-24): goals point at specs in a sibling repo (nbr-workspace/docs/queue); pool
+/// coders were refused and invented their own copy of the spec. Writes stay confined to the checkout.
+fn read_roots() -> Vec<PathBuf> {
+    std::env::var("DIVISI_POOL_READ_ROOTS")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|p| Path::new(p).is_absolute())
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// `within`, or else an absolute path under one of the read-only roots. Credential-looking files are
+/// never readable from an extra root.
+fn readable(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    within(root, rel).or_else(|e| {
+        if !Path::new(rel).is_absolute() {
+            return Err(e);
+        }
+        let lower = rel.to_lowercase();
+        if ["secret", "credential", ".env", ".key", ".pem", "token"].iter().any(|w| lower.contains(w)) {
+            return Err(e);
+        }
+        read_roots().iter().find_map(|r| within(r, rel).ok()).ok_or(e)
+    })
+}
+
 fn clip(s: &str) -> String {
     if s.len() <= OUTPUT_CHARS {
         return s.to_string();
@@ -140,7 +167,7 @@ fn clip(s: &str) -> String {
 /// Runs one action; the returned text goes back to the model.
 pub fn perform(root: &Path, action: &Action) -> String {
     let res = match action {
-        Action::List(rel) => within(root, rel).and_then(|p| {
+        Action::List(rel) => readable(root, rel).and_then(|p| {
             let mut names: Vec<String> = std::fs::read_dir(&p)
                 .map_err(|e| format!("error: {e}"))?
                 .filter_map(|e| e.ok())
@@ -153,7 +180,7 @@ pub fn perform(root: &Path, action: &Action) -> String {
             names.sort();
             Ok(names.join("\n"))
         }),
-        Action::Read(rel) => within(root, rel).and_then(|p| {
+        Action::Read(rel) => readable(root, rel).and_then(|p| {
             let text = std::fs::read_to_string(&p).map_err(|e| format!("error: {e}"))?;
             Ok(text.lines().enumerate().map(|(i, l)| format!("{:>5}  {l}", i + 1)).collect::<Vec<_>>().join("\n"))
         }),
@@ -345,6 +372,15 @@ mod tests {
     fn paths_cannot_leave_the_checkout() {
         let dir = tempfile::tempdir().unwrap();
         assert!(perform(dir.path(), &Action::Read("../../etc/passwd".into())).contains("outside the checkout"));
+        let extra = tempfile::tempdir().unwrap();
+        std::fs::write(extra.path().join("spec.md"), "the spec").unwrap();
+        std::fs::write(extra.path().join("secrets.md"), "k").unwrap();
+        std::env::set_var("DIVISI_POOL_READ_ROOTS", extra.path());
+        let spec = extra.path().join("spec.md").to_string_lossy().into_owned();
+        assert!(perform(dir.path(), &Action::Read(spec.clone())).contains("the spec"), "an extra root is readable");
+        assert!(perform(dir.path(), &Action::Write { path: spec, content: "x".into() }).contains("outside the checkout"), "but never writable");
+        assert!(perform(dir.path(), &Action::Read(extra.path().join("secrets.md").to_string_lossy().into_owned())).contains("outside the checkout"));
+        std::env::remove_var("DIVISI_POOL_READ_ROOTS");
         assert!(perform(dir.path(), &Action::Write { path: "/tmp/x".into(), content: "y".into() }).contains("outside the checkout"));
     }
 
