@@ -118,7 +118,7 @@ static ALIAS_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// The session id is embedded in the alias token itself (rather than
 /// threaded separately into `resolve`) because a redacted goal's text
 /// gets rewritten and re-dispatched through several layers — coordinator
-/// planning, node prompts, `single-pool`'s dispatch — that don't all
+/// planning, node prompts, `divisi-pool`'s dispatch — that don't all
 /// carry an explicit session parameter today. `resolve` derives its scope
 /// purely by reading the token, so it works uniformly at every dispatch
 /// path with no additional plumbing, and a lookup still requires the
@@ -602,7 +602,7 @@ mod tests {
     /// found live when submitting real work to the coordinator, where
     /// `docs/queue/E03-vault-evolution/HANDOFF.md`-shaped text was
     /// getting redacted, corrupting the goal text every downstream agent
-    /// (not just single-pool) relies on to find the right files.
+    /// (not just divisi-pool) relies on to find the right files.
     #[test]
     fn does_not_redact_repo_paths_or_filenames() {
         let (conn, keychain) = setup();

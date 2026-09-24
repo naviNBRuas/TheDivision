@@ -510,7 +510,7 @@ pub enum Request {
         key_id: Option<String>,
     },
     /// Reconciles the vendored catalog into `providers.toml` as
-    /// `single-<id>` presets and into `free-pool.toml`'s per-provider
+    /// `divisi-<id>` presets and into `free-pool.toml`'s per-provider
     /// `enabled`/`disabled_reason` state. Idempotent.
     ProviderSyncPool,
     /// Per free-pool provider: keyed?, last validation, disabled reason
@@ -524,7 +524,7 @@ pub enum Request {
     /// already-keyed key for `platform` (or every platform's keys, if
     /// `platform` is `None`) — the only other way a key's
     /// `valid`/`last_validated_at` fields ever update is from a real
-    /// `single-pool` task outcome. For a provider with no `validate_url`
+    /// `divisi-pool` task outcome. For a provider with no `validate_url`
     /// quirk, its keys are skipped (nothing to probe) rather than errored.
     ProviderValidateKeys {
         platform: Option<String>,

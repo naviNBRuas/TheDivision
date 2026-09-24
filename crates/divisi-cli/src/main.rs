@@ -476,7 +476,7 @@ enum GoalCommand {
     RetryNode {
         goal_id: String,
         node_id: String,
-        /// Force this agent/provider instead of letting routing pick, e.g. `--agent single-nvidia`
+        /// Force this agent/provider instead of letting routing pick, e.g. `--agent divisi-nvidia`
         /// after a provider starts misbehaving — moves the task there right away.
         #[arg(long)]
         agent: Option<String>,
@@ -1220,7 +1220,7 @@ enum ProviderCommand {
         #[arg(long)]
         key_id: Option<String>,
     },
-    /// Reconcile the vendored catalog into `providers.toml` (`single-<id>` presets) and `free-pool.toml` (enabled/disabled state). Idempotent.
+    /// Reconcile the vendored catalog into `providers.toml` (`divisi-<id>` presets) and `free-pool.toml` (enabled/disabled state). Idempotent.
     SyncPool,
     /// Per free-pool provider: keyed?, last validation, disabled reason, live cooldown state, and headroom (a real remaining-quota count for providers with a declared rate limit, "unbounded/unknown" otherwise).
     KeyStatus {
@@ -1229,7 +1229,7 @@ enum ProviderCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Re-probes every already-keyed free-pool key (or just `--platform`'s) against its provider's validate_url, the same best-effort check `add-free` does at registration time -- for keys that were added before this existed, or whose status you want to refresh without waiting for a real single-pool task to happen to pick them. A provider with no validate_url quirk is skipped (nothing to probe), not errored. Prints the same table `key-status` does, reflecting the just-run probes.
+    /// Re-probes every already-keyed free-pool key (or just `--platform`'s) against its provider's validate_url, the same best-effort check `add-free` does at registration time -- for keys that were added before this existed, or whose status you want to refresh without waiting for a real divisi-pool task to happen to pick them. A provider with no validate_url quirk is skipped (nothing to probe), not errored. Prints the same table `key-status` does, reflecting the just-run probes.
     Validate {
         #[arg(long)]
         platform: Option<String>,
@@ -3687,7 +3687,7 @@ mod graph_task_parsing_tests {
             "divisi", "orchestrate-parallel",
             "--task", "grok:say ONE",
             "--task", "opencode:say TWO",
-            "--task", "single-nvidia:say THREE",
+            "--task", "divisi-nvidia:say THREE",
         ])
         .unwrap();
         match cli.command {
