@@ -2364,18 +2364,21 @@ fn write_settings_with_backup(
 /// rejects it or wants payment, `None` when the result says nothing about the key.
 fn chat_probe(conn: &rusqlite::Connection, provider: &divisi_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
     use crate::pool::client::{ChatMessage, PoolError, PoolRequest};
-    let model = crate::pool::models::best(conn, provider, key, crate::pool::ledger::now_ms()).into_iter().next()?;
-    let req = PoolRequest {
-        messages: vec![ChatMessage { role: "user".into(), content: "Reply with the single word OK.".into() }],
-        model: Some(model),
-        max_tokens: Some(16),
-        ..Default::default()
-    };
-    match crate::pool::client::native::dispatch_for_wire(&req, provider, key) {
-        Ok(_) | Err(PoolError::RateLimited { .. }) => Some(true),
-        Err(PoolError::AuthFailed | PoolError::PaymentRequired) => Some(false),
-        Err(_) => None,
+    // A free tier can refuse one model (a "pro" one, say) and serve the next, so try a few.
+    for model in crate::pool::models::best(conn, provider, key, crate::pool::ledger::now_ms()).into_iter().take(4) {
+        let req = PoolRequest {
+            messages: vec![ChatMessage { role: "user".into(), content: "Reply with the single word OK.".into() }],
+            model: Some(model),
+            max_tokens: Some(16),
+            ..Default::default()
+        };
+        match crate::pool::client::native::dispatch_for_wire(&req, provider, key) {
+            Ok(_) | Err(PoolError::RateLimited { .. }) => return Some(true),
+            Err(PoolError::AuthFailed) => return Some(false),
+            Err(_) => continue,
+        }
     }
+    None
 }
 
 fn probe_free_provider_key(provider: &divisi_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
