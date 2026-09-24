@@ -38,6 +38,12 @@ pub fn branch_gaps(worktree: &Path, base: &str) -> Vec<String> {
     let Some(added) = git(worktree, &["diff", "--name-only", "--diff-filter=A", &format!("{base}...HEAD")]) else {
         return gaps;
     };
+    // Live finding (2026-09-24): goals were marked done with an empty branch; nothing to merge.
+    let changed = git(worktree, &["diff", "--name-only", &format!("{base}...HEAD")]).unwrap_or_default();
+    if changed.trim().is_empty() {
+        gaps.push("the goal branch has no changes: nothing was implemented or committed".to_string());
+        return gaps;
+    }
     let base_files = git(worktree, &["ls-tree", "-r", "--name-only", base]).unwrap_or_default();
     let has_ext = |ext: &str| base_files.lines().any(|f| f.ends_with(&format!(".{ext}")));
     let repo_langs: Vec<&str> = LANGS.iter().filter(|(e, _)| has_ext(e)).map(|(_, l)| *l).collect();
@@ -162,6 +168,7 @@ mod tests {
         run(d, &["add", "."]);
         run(d, &["commit", "-q", "-m", "base"]);
         let base = git(d, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        assert_eq!(branch_gaps(d, &base), ["the goal branch has no changes: nothing was implemented or committed"]);
         std::fs::create_dir_all(d.join("internal/cdc/__pycache__")).unwrap();
         std::fs::write(d.join("internal/cdc/cdc.py"), "x = 1").unwrap();
         std::fs::write(d.join("internal/cdc/__pycache__/cdc.cpython-314.pyc"), "b").unwrap();
