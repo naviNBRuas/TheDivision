@@ -40,7 +40,7 @@ const SYSTEM: &str = r#"You are a careful software engineer working in a git che
 {"tool": "run", "command": "cargo test -p foo 2>&1 | tail -40"}   run a shell command in the checkout (bash, 180 s limit)
 {"tool": "done", "summary": "what you changed and how you verified it"}   finish
 
-Rules: paths are relative to the checkout. Look before you change things. Prefer edit_file over rewriting large files. Run the project's tests or build after changing code. Commit your work with git (sole author, message `type: description`, no trailers) before `done`. Never push. If the task is impossible, use `done` and say why."#;
+Rules: paths are relative to the checkout. Look before you change things. Prefer edit_file over rewriting large files. Run the project's tests or build after changing code. Stay on the branch you are on: never switch branches, stash or reset. Commit your work before `done` with a real message such as `fix: correct the sign in add()` or `docs: split E10 into sprints` (the prefix is one of feat, fix, refactor, docs, test, chore; no trailers). Never commit scratch files such as test output or notes to yourself. Never push. If the task is impossible, use `done` and say why."#;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
