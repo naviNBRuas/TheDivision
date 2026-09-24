@@ -1,5 +1,7 @@
 # E28 — Free-provider pool, adaptive routing, and self-healing autonomy Implementation Plan
 
+**Status (2026-09-24): shipped.** Pool engine (`pool/`), `single-pool`, self-heal (`self_heal/`). Since then: the pool discovers real model ids per provider (`pool/models.rs`) and runs as a multi-step coding agent (`pool_coder.rs`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** absorb the ~40-provider free-LLM landscape as first-class `ProviderSpec` presets, add a native pooled agent (`single-pool`) with an adaptive routing/quota engine, teach the E27 coordinator to hold a goal open across capacity exhaustion instead of failing it ("auto-continue"), and make the daemon/coordinator/agent layer self-heal and self-resume across restarts.

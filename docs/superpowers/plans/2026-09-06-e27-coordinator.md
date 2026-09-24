@@ -1,5 +1,7 @@
 # E27 — SingleCLI Coordinator + follow-ups Implementation Plan
 
+**Status (2026-09-24): shipped.** Sessions, goals, planner/supervisor/integrator roles, routing and budgets are all in `crates/divisi-runtime/src/coordinator/`. Checkboxes below were never ticked; the code is the record. Follow-ups live in nbr-workspace `docs/queue/E27-singlecli-followups/`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn SingleCLI from leaf ops (`task run`, broken `orchestrate-*`) into a coordinator: goal in → deterministic scheduler organises a self-correcting pool of agents, streaming progress; add a native `single acp` bridge, an OpenAI-compatible pool proxy, a `single loop` mode, and close the remaining E27.01 / follow-ups items.

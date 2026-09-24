@@ -1,5 +1,7 @@
 # divisi Rebrand Implementation Plan (Phase A, local)
 
+**Status (2026-09-24): mostly shipped.** Crates, binaries, config dir and keyring service are divisi (legacy names kept for back-compat). Remaining user-facing strings and docs: E27.02 and E27.03 in nbr-workspace `docs/queue/E27-singlecli-followups/`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Rename SingleCLI to divisi across the workspace, with compatibility shims and migrations, plus the new mark, its animation, and its TUI and notch surfaces, entirely locally.

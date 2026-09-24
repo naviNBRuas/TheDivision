@@ -1,5 +1,7 @@
 # E29 — Zed + SingleCLI Integration Implementation Plan
 
+**Status (2026-09-24): partly shipped** (ACP agent in Zed, now named "The Division"; conversational chat). Remaining items are being audited in nbr-workspace `docs/queue/E27-singlecli-followups/09-e29-zed-plan-audit.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship live secret redaction across every SingleCLI prompt entry point, make `single-pool` the default Zed ACP agent, add a `/single-status` slash command as the Zed status surface, and add cross-session goal-dedup — all additive to the E28 (`v0.11.0`) architecture.
