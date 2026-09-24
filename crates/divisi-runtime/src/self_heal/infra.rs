@@ -27,9 +27,6 @@ const RECOVERY_PROBES_PER_PASS: usize = 2;
 /// they left.
 fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
     let due = crate::agent_cooldown::needing_verification(conn, chrono::Utc::now())?;
-    if due.is_empty() {
-        return Ok("no agent is waiting to be re-verified".into());
-    }
     let mut back = Vec::new();
     let mut still = Vec::new();
     for name in due.iter().take(RECOVERY_PROBES_PER_PASS) {
@@ -44,7 +41,25 @@ fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
             }
         }
     }
-    Ok(format!("back in routing: [{}]; still unavailable: [{}]; waiting for a later pass: {}", back.join(", "), still.join(", "), due.len().saturating_sub(RECOVERY_PROBES_PER_PASS)))
+    // Guessed benches are checked early, so an agent that recovered is not kept out longer than needed.
+    let mut early_back = Vec::new();
+    for name in crate::agent_cooldown::early_probe_due(conn, chrono::Utc::now())?.into_iter().take(RECOVERY_PROBES_PER_PASS) {
+        let Some(snap) = crate::agent_cooldown::snapshot(conn, &name) else { continue };
+        let row = crate::agent_auth::probe_one(ctx, conn, &name, false);
+        if matches!(row.category.as_str(), "authed" | "no_auth_needed") {
+            let _ = crate::agent_cooldown::clear(conn, &name);
+            early_back.push(name);
+        } else {
+            crate::agent_cooldown::restore_after_probe(conn, &name, &snap);
+        }
+    }
+    Ok(format!(
+        "back in routing: [{}]; back early: [{}]; still unavailable: [{}]; waiting for a later pass: {}",
+        back.join(", "),
+        early_back.join(", "),
+        still.join(", "),
+        due.len().saturating_sub(RECOVERY_PROBES_PER_PASS)
+    ))
 }
 
 /// Removes `state/worktrees/task-<id>` worktrees whose task is no longer
@@ -505,7 +520,7 @@ mod tests {
         assert!(detail.contains("still unavailable: [no-such-agent]"), "{detail}");
         assert!(crate::agent_cooldown::active(&conn, chrono::Utc::now()).unwrap().contains_key("no-such-agent"));
         // nothing due now
-        assert!(agent_recovery(&ctx, &conn).unwrap().contains("no agent is waiting"));
+        assert!(agent_recovery(&ctx, &conn).unwrap().contains("still unavailable: []"));
     }
 
     #[test]

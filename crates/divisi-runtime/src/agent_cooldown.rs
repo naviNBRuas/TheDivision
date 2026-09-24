@@ -31,6 +31,9 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
     crate::task::add_column_if_missing(conn, "agent_cooldowns", "strikes", "INTEGER NOT NULL DEFAULT 0")?;
     crate::task::add_column_if_missing(conn, "agent_cooldowns", "kind", "TEXT NOT NULL DEFAULT 'quota'")?;
     crate::task::add_column_if_missing(conn, "agent_cooldowns", "verified_at", "TEXT")?;
+    // `stated` = the end time came from the agent itself or a named daily/monthly period, not a guess.
+    crate::task::add_column_if_missing(conn, "agent_cooldowns", "stated", "INTEGER NOT NULL DEFAULT 0")?;
+    crate::task::add_column_if_missing(conn, "agent_cooldowns", "probed_at", "TEXT")?;
     Ok(())
 }
 
@@ -91,16 +94,17 @@ pub fn note(conn: &Connection, agent: &str, output: &str) -> bool {
         return false;
     }
     let now = Utc::now();
+    // The agent's own word on when it recovers beats any guess, shorter or longer.
+    if let Some(until) = divisi_core::ratelimit::reset_time(output, Local::now()) {
+        return record_stated(conn, agent, until, output, "quota").is_ok();
+    }
     if looks_like_model_gone(output) {
         return record_with(conn, agent, now + GONE_BENCH, output, strikes_of(conn, agent), "gone").is_ok();
-    }
-    if let Some(until) = divisi_core::ratelimit::reset_time(output, Local::now()) {
-        return record(conn, agent, until, output).is_ok();
     }
     if divisi_core::ratelimit::looks_like_rate_limit(output) {
         // A daily or monthly allowance comes back when its period resets, not after a guessed backoff.
         if let Some(until) = period_reset(output, now) {
-            return record_with(conn, agent, until, output, strikes_of(conn, agent) + 1, "quota").is_ok();
+            return record_stated(conn, agent, until, output, "quota").is_ok();
         }
         let strikes = strikes_of(conn, agent);
         return record_with(conn, agent, now + backoff(strikes), output, strikes + 1, "quota").is_ok();
@@ -125,6 +129,65 @@ fn period_reset(output: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
         return Utc.from_local_datetime(&tomorrow.and_hms_opt(0, 5, 0)?).single();
     }
     None
+}
+
+/// A bench whose end the agent (or its quota period) stated: replaces whatever was there.
+fn record_stated(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str, kind: &str) -> Result<()> {
+    let reason: String = reason.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(200).collect();
+    conn.execute(
+        "INSERT INTO agent_cooldowns (agent, until, reason, noted_at, kind, stated) VALUES (?1, ?2, ?3, ?4, ?5, 1)
+         ON CONFLICT(agent) DO UPDATE SET until = excluded.until, reason = excluded.reason, noted_at = excluded.noted_at,
+            kind = excluded.kind, stated = 1, verified_at = NULL",
+        params![agent, until.to_rfc3339(), reason, Utc::now().to_rfc3339(), kind],
+    )?;
+    Ok(())
+}
+
+/// Minutes between early probes of a guessed bench, by kind: an agent can recover long before a
+/// guessed backoff or a 7-day "gone" bench ends, and a bench should last no longer than needed.
+fn early_probe_minutes(kind: &str) -> i64 {
+    match kind {
+        "gone" => 6 * 60,
+        "auth" => 60,
+        _ => 20,
+    }
+}
+
+/// Agents still inside a guessed bench whose last check is older than `early_probe_minutes`.
+pub fn early_probe_due(conn: &Connection, now: DateTime<Utc>) -> Result<Vec<String>> {
+    ensure_schema(conn)?;
+    let mut stmt = conn.prepare("SELECT agent, until, kind, noted_at, probed_at FROM agent_cooldowns WHERE stated = 0")?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, Option<String>>(4)?))
+    })?;
+    let parse = |t: &str| DateTime::parse_from_rfc3339(t).ok().map(|t| t.with_timezone(&Utc));
+    let mut out = Vec::new();
+    for row in rows {
+        let (agent, until, kind, noted, probed) = row?;
+        let Some(until) = parse(&until) else { continue };
+        let last = probed.as_deref().and_then(parse).into_iter().chain(parse(&noted)).max();
+        if until > now && last.is_none_or(|l| now - l >= Duration::minutes(early_probe_minutes(&kind))) {
+            out.push(agent);
+        }
+    }
+    Ok(out)
+}
+
+/// A snapshot of one bench, so an early probe that finds the agent still unavailable leaves the
+/// bench exactly as it was instead of escalating it.
+pub fn snapshot(conn: &Connection, agent: &str) -> Option<(String, String, u32, String)> {
+    conn.query_row("SELECT until, reason, strikes, kind FROM agent_cooldowns WHERE agent = ?1", [agent], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+    })
+    .ok()
+}
+
+pub fn restore_after_probe(conn: &Connection, agent: &str, snap: &(String, String, u32, String)) {
+    let _ = conn.execute(
+        "UPDATE agent_cooldowns SET until = CASE WHEN stated = 1 THEN until ELSE ?2 END, reason = CASE WHEN stated = 1 THEN reason ELSE ?3 END,
+            strikes = ?4, kind = CASE WHEN stated = 1 THEN kind ELSE ?5 END, probed_at = ?6 WHERE agent = ?1",
+        params![agent, snap.0, snap.1, snap.2, snap.3, Utc::now().to_rfc3339()],
+    );
 }
 
 fn record_with(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str, strikes: u32, kind: &str) -> Result<()> {
@@ -335,6 +398,35 @@ mod tests {
             .unwrap();
         }
         assert!(!note_failure_streak(&conn, "divisi-nvidia"));
+    }
+
+    #[test]
+    fn a_stated_reset_replaces_a_longer_guess_and_is_never_probed_early() {
+        let conn = db();
+        assert!(note(&conn, "grok", "Error: You reached your free usage limit for now, try again later"));
+        for _ in 0..4 {
+            note(&conn, "grok", "Error: You reached your free usage limit for now, try again later");
+        }
+        let guess = active(&conn, Utc::now()).unwrap()["grok"];
+        let soon = (Local::now() + Duration::hours(1)).format("%b %-d, %Y %-I:%M %p").to_string();
+        assert!(note(&conn, "grok", &format!("ERROR: You've hit your usage limit. try again at {soon}")));
+        let until = active(&conn, Utc::now()).unwrap()["grok"];
+        assert!(until < guess && until < Utc::now() + Duration::hours(2), "the stated time wins over the long guess: {until} vs {guess}");
+        assert!(!early_probe_due(&conn, Utc::now() + Duration::minutes(30)).unwrap().contains(&"grok".to_string()));
+    }
+
+    #[test]
+    fn a_guessed_bench_is_probed_early_and_a_failed_probe_leaves_it_as_it_was() {
+        let conn = db();
+        assert!(note(&conn, "agy", "RESOURCE_EXHAUSTED (code 429): exhausted your capacity"));
+        assert!(early_probe_due(&conn, Utc::now()).unwrap().is_empty(), "not right away");
+        let later = Utc::now() + Duration::minutes(21);
+        assert_eq!(early_probe_due(&conn, later).unwrap(), vec!["agy".to_string()]);
+        let snap = snapshot(&conn, "agy").unwrap();
+        note(&conn, "agy", "RESOURCE_EXHAUSTED (code 429): exhausted your capacity");
+        restore_after_probe(&conn, "agy", &snap);
+        assert_eq!(snapshot(&conn, "agy").unwrap(), snap);
+        assert!(early_probe_due(&conn, Utc::now() + Duration::minutes(5)).unwrap().is_empty(), "just probed");
     }
 
     #[test]
