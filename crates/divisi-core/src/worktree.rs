@@ -162,6 +162,65 @@ pub fn diff(repo_root: &Path, branch: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// Most changed files `commit_pending` will commit on its own; more than this is left for a person.
+pub const MAX_AUTO_COMMIT_FILES: usize = 200;
+/// Files larger than this are never auto-committed (binaries, dumps).
+pub const MAX_AUTO_COMMIT_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Commits whatever a goal's agents left uncommitted in `worktree` onto its branch.
+///
+/// Live finding (2026-09-24): agents wrote files but rarely committed, so finished goals queued
+/// empty branches for merge and their work stayed stranded in the worktree. Returns the number of
+/// files committed (0 when clean). Refuses (Err, nothing committed) when more than
+/// `MAX_AUTO_COMMIT_FILES` changed: one goal once swept 2,909 vault files into a commit. Files over
+/// `MAX_AUTO_COMMIT_BYTES` are skipped. `author` is `Name <email>` (else the repo's own identity).
+pub fn commit_pending(worktree: &Path, message: &str, author: Option<&str>) -> Result<usize> {
+    let git = |args: &[&str]| Command::new("git").current_dir(worktree).args(args).output();
+    let out = git(&["status", "--porcelain", "-z", "-uall"]).context("spawning git status")?;
+    if !out.status.success() {
+        bail!("git status failed: {}", String::from_utf8_lossy(&out.stderr));
+    }
+    let raw = String::from_utf8_lossy(&out.stdout).into_owned();
+    let mut paths: Vec<String> = Vec::new();
+    let mut entries = raw.split('\0').filter(|e| !e.is_empty());
+    while let Some(e) = entries.next() {
+        let (code, path) = e.split_at(3.min(e.len()));
+        if code.starts_with('R') || code.starts_with('C') {
+            entries.next(); // the rename's source path
+        }
+        paths.push(path.to_string());
+    }
+    if paths.is_empty() {
+        return Ok(0);
+    }
+    if paths.len() > MAX_AUTO_COMMIT_FILES {
+        bail!("{} changed files is more than {MAX_AUTO_COMMIT_FILES}; left uncommitted for a person to review", paths.len());
+    }
+    let keep: Vec<&String> = paths
+        .iter()
+        .filter(|p| std::fs::metadata(worktree.join(p)).map(|m| m.len() <= MAX_AUTO_COMMIT_BYTES).unwrap_or(true))
+        .collect();
+    if keep.is_empty() {
+        return Ok(0);
+    }
+    let mut add = vec!["add", "-A", "--"];
+    add.extend(keep.iter().map(|p| p.as_str()));
+    let out = git(&add).context("spawning git add")?;
+    if !out.status.success() {
+        bail!("git add failed: {}", String::from_utf8_lossy(&out.stderr));
+    }
+    let mut cmd = Command::new("git");
+    cmd.current_dir(worktree);
+    if let Some((name, email)) = author.and_then(|a| a.rsplit_once('<')).map(|(n, e)| (n.trim().to_string(), e.trim_end_matches('>').trim().to_string())) {
+        cmd.args(["-c", &format!("user.name={name}"), "-c", &format!("user.email={email}")]);
+    }
+    let out = cmd.args(["commit", "-q", "--no-verify", "-m", message]).output().context("spawning git commit")?;
+    if !out.status.success() {
+        bail!("git commit failed: {}", String::from_utf8_lossy(&out.stderr));
+    }
+    Ok(keep.len())
+}
+
 /// Merges `branch` into the repo's current `HEAD` (`git merge --no-ff
 /// branch`) — `--no-ff` always creates a merge commit, so the fact that
 /// this went through an isolated worktree stays visible in history
@@ -229,6 +288,32 @@ mod tests {
         std::fs::write(dir.join("README.md"), "hi").unwrap();
         run(&["add", "."]);
         run(&["commit", "-q", "-m", "initial"]);
+    }
+
+    fn last_commit(dir: &Path) -> String {
+        let o = Command::new("git").current_dir(dir).args(["log", "-1", "--format=%an <%ae>|%s"]).output().unwrap();
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn commit_pending_commits_leftover_work_skips_big_files_and_refuses_sweeps() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        assert_eq!(commit_pending(dir.path(), "feat: x", None).unwrap(), 0, "clean tree commits nothing");
+
+        std::fs::create_dir(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/a.rs"), "fn a() {}").unwrap();
+        std::fs::write(dir.path().join("README.md"), "changed").unwrap();
+        std::fs::write(dir.path().join("big.bin"), vec![0u8; (MAX_AUTO_COMMIT_BYTES + 1) as usize]).unwrap();
+        assert_eq!(commit_pending(dir.path(), "feat: goal work", Some("Ann Dev <ann@example.com>")).unwrap(), 2);
+        assert_eq!(last_commit(dir.path()), "Ann Dev <ann@example.com>|feat: goal work");
+        assert!(dir.path().join("big.bin").exists(), "the big file stays, uncommitted");
+
+        for i in 0..=MAX_AUTO_COMMIT_FILES {
+            std::fs::write(dir.path().join(format!("f{i}.txt")), "x").unwrap();
+        }
+        assert!(commit_pending(dir.path(), "feat: sweep", None).is_err());
+        assert_eq!(last_commit(dir.path()), "Ann Dev <ann@example.com>|feat: goal work", "nothing committed on refusal");
     }
 
     #[test]

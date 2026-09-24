@@ -848,6 +848,30 @@ pub fn goal_workdir(ctx: &Context, cfg: &CoordinatorConfig, goal_id: &str, sessi
     Ok((wt.join(rel), true))
 }
 
+/// Commits what the goal's agents left uncommitted in its worktree, so the branch a merge is queued
+/// for carries the work (see `divisi_core::worktree::commit_pending`). Author from
+/// `DIVISI_COMMIT_AUTHOR` (`Name <email>`), else the repo's identity. Failures are logged as events.
+fn commit_goal_work(ctx: &Context, conn: &Connection, goal: &Goal) {
+    let wt = ctx.dirs.state_dir().join("worktrees").join(format!("goal-{}", goal.id));
+    let msg = format!("feat: {}", commit_subject(&goal.text));
+    let author = std::env::var("DIVISI_COMMIT_AUTHOR").ok().filter(|a| a.contains('<'));
+    let note = match divisi_core::worktree::commit_pending(&wt, &msg, author.as_deref()) {
+        Ok(0) => return,
+        Ok(n) => format!("committed {n} file(s) the agents left uncommitted on {}", goal_branch(&goal.id)),
+        Err(e) => format!("left the goal worktree uncommitted: {e:#}"),
+    };
+    let _ = events::append(conn, &goal.session_id, Some(&goal.id), EventKind::Message, &note);
+}
+
+/// A one-line commit subject for a goal: its conductor tag when it has one, else its first words.
+fn commit_subject(text: &str) -> String {
+    if let Some(tag) = text.strip_prefix("[conductor:").and_then(|t| t.split_once(']')).map(|(t, _)| t) {
+        return format!("goal work for {tag}");
+    }
+    let first = text.lines().next().unwrap_or("").trim();
+    first.chars().take(60).collect::<String>().trim_end().to_string()
+}
+
 pub fn goal_branch(goal_id: &str) -> String {
     format!("divisi/goal-{goal_id}")
 }
@@ -863,6 +887,9 @@ fn run_integrator(
     let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
     let cfg = CoordinatorConfig::load(&ctx.dirs);
     let (cwd, isolated) = goal_workdir(ctx, &cfg, &goal.id, &session_cwd)?;
+    if isolated {
+        commit_goal_work(ctx, conn, goal);
+    }
     let outputs: Vec<(String, String)> = graph
         .nodes
         .iter()
@@ -1617,6 +1644,12 @@ mod tests {
         append_round(&mut g, TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok"), node("s2", &["s1"], Effort::Standard, "grok")] }, 2);
         assert_eq!(g.find("r2-s2").unwrap().depends_on, vec!["r2-s1".to_string()]);
         assert_eq!(graph_round(&g), 2);
+    }
+
+    #[test]
+    fn commit_subject_uses_the_conductor_tag_or_the_first_words() {
+        assert_eq!(commit_subject("[conductor:E02/03-storage] [E02 / 03.md] # Sprint"), "goal work for E02/03-storage");
+        assert_eq!(commit_subject("add tests for the parser\nmore"), "add tests for the parser");
     }
 
     #[test]
