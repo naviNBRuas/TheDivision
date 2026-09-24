@@ -155,10 +155,19 @@ fn scratch_repo() -> Result<tempfile::TempDir> {
 /// Runs one agent through a real probe. `deep` also tries it from an empty home.
 /// opencode's default model is a keyed provider's, so a bare probe measures that key rather than
 /// whether opencode itself needs a login. Pin its own free model for the probe so the answer is about opencode.
-fn free_model_env(name: &str) -> BTreeMap<String, String> {
+/// The empty-home probe needs a free model for opencode. It uses the model set in opencode's
+/// isolated home (`.config/opencode/opencode.json`), which is what real tasks run on, and falls back
+/// to big-pickle. Live finding (2026-09-24): big-pickle hung for minutes while other free models
+/// answered, so the hardcoded model kept opencode benched although its configured model worked.
+fn free_model_env(name: &str, home: Option<&std::path::Path>) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     if name == "opencode" {
-        env.insert("OPENCODE_CONFIG_CONTENT".to_string(), r#"{"model":"opencode/big-pickle"}"#.to_string());
+        let configured = home
+            .and_then(|h| std::fs::read_to_string(h.join(".config/opencode/opencode.json")).ok())
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(str::to_owned));
+        let model = configured.unwrap_or_else(|| "opencode/big-pickle".to_owned());
+        env.insert("OPENCODE_CONFIG_CONTENT".to_string(), serde_json::json!({ "model": model }).to_string());
     }
     env
 }
@@ -206,7 +215,7 @@ pub fn probe_one(ctx: &Context, conn: &Connection, name: &str, deep: bool) -> Ag
         }
     };
     let mut env = divisi_core::provider_keys::resolve_env_for_agent(&ctx.dirs, name);
-    let free_model = free_model_env(name);
+    let free_model = free_model_env(name, home.as_deref());
     env.extend(free_model.clone());
     let backend = ExecBackend::host_with_env(home.as_deref(), &env);
     let outcome = adapter.run_prompt(scratch.path(), PROBE_PROMPT, &backend, None, PROBE_TIMEOUT, None);
@@ -292,6 +301,16 @@ pub fn report(ctx: &Context, conn: &Connection, probe: bool, deep: bool, only: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opencode_probe_uses_the_model_configured_in_its_home() {
+        let home = tempfile::tempdir().unwrap();
+        assert!(free_model_env("opencode", Some(home.path()))["OPENCODE_CONFIG_CONTENT"].contains("big-pickle"));
+        std::fs::create_dir_all(home.path().join(".config/opencode")).unwrap();
+        std::fs::write(home.path().join(".config/opencode/opencode.json"), r#"{"model":"opencode/nemotron-3-ultra-free"}"#).unwrap();
+        assert!(free_model_env("opencode", Some(home.path()))["OPENCODE_CONFIG_CONTENT"].contains("nemotron-3-ultra-free"));
+        assert!(free_model_env("kilocode", Some(home.path())).is_empty());
+    }
     use chrono::{Duration as Dur, TimeZone};
 
     fn now() -> DateTime<Local> {
