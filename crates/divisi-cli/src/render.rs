@@ -568,6 +568,9 @@ fn print_data(data: ResponseData) {
                 if let Some(reason) = s.disabled_reason {
                     println!("               disabled by default: {reason}");
                 }
+                for note in s.notes {
+                    println!("               {note}");
+                }
             }
         }
         ResponseData::BillingProviders(providers) => {

@@ -1360,9 +1360,15 @@ fn dispatch(
                     for key in divisi_core::pool_keys::list(&conn, Some(provider.id))? {
                         let secret_name = divisi_core::pool_keys::secret_name(provider.id, &key.key_id);
                         let Some(secret) = divisi_core::secrets::SecretStore::get(&store, &secret_name)? else { continue };
-                        if let Some(ok) = chat_probe(&conn, provider, &secret) {
+                        let (verdict, note) = chat_probe(&conn, provider, &secret);
+                        if let Some(ok) = verdict {
                             divisi_core::pool_keys::mark_validated(&conn, provider.id, &key.key_id, ok)?;
                         }
+                        conn.execute(
+                            "INSERT INTO pool_key_notes (platform, key_id, note, at) VALUES (?1, ?2, ?3, ?4)
+                             ON CONFLICT(platform, key_id) DO UPDATE SET note = excluded.note, at = excluded.at",
+                            rusqlite::params![provider.id, key.key_id, note, chrono::Utc::now().to_rfc3339()],
+                        )?;
                     }
                     continue;
                 }
@@ -2362,23 +2368,32 @@ fn write_settings_with_backup(
 /// `ProviderValidateKeys` (re-probe on demand).
 /// `Some(true)` when the key answers (or is merely rate limited), `Some(false)` when the provider
 /// rejects it or wants payment, `None` when the result says nothing about the key.
-fn chat_probe(conn: &rusqlite::Connection, provider: &divisi_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
+fn chat_probe(conn: &rusqlite::Connection, provider: &divisi_core::free_pool::FreeProvider, key: &str) -> (Option<bool>, String) {
     use crate::pool::client::{ChatMessage, PoolError, PoolRequest};
     // A free tier can refuse one model (a "pro" one, say) and serve the next, so try a few.
-    for model in crate::pool::models::best(conn, provider, key, crate::pool::ledger::now_ms()).into_iter().take(4) {
+    let models = crate::pool::models::best(conn, provider, key, crate::pool::ledger::now_ms());
+    if models.is_empty() {
+        return (None, "could not list models (GET /models failed or listed no chat model)".to_string());
+    }
+    let mut seen = Vec::new();
+    for model in models.into_iter().take(4) {
         let req = PoolRequest {
             messages: vec![ChatMessage { role: "user".into(), content: "Reply with the single word OK.".into() }],
-            model: Some(model),
+            model: Some(model.clone()),
             max_tokens: Some(16),
             ..Default::default()
         };
         match crate::pool::client::native::dispatch_for_wire(&req, provider, key) {
-            Ok(_) | Err(PoolError::RateLimited { .. }) => return Some(true),
-            Err(PoolError::AuthFailed) => return Some(false),
-            Err(_) => continue,
+            Ok(_) => return (Some(true), format!("{model} -> answered")),
+            Err(PoolError::RateLimited { .. }) => return (Some(true), format!("{model} -> rate limited (key works)")),
+            Err(PoolError::AuthFailed) => return (Some(false), format!("{model} -> key rejected (401)")),
+            Err(e) => {
+                let e = format!("{e:?}");
+                seen.push(format!("{model} -> {}", e.chars().take(160).collect::<String>()));
+            }
         }
     }
-    None
+    (None, seen.join(" | "))
 }
 
 fn probe_free_provider_key(provider: &divisi_core::free_pool::FreeProvider, key: &str) -> Option<bool> {
@@ -2466,6 +2481,15 @@ fn pool_key_statuses(conn: &rusqlite::Connection, dirs: &divisi_core::DivisiDirs
             keys_invalid: counts.invalid,
             keys_unvalidated: counts.unvalidated,
             keys_disabled: counts.disabled,
+            notes: keys
+                .iter()
+                .filter(|k| !k.valid)
+                .filter_map(|k| {
+                    conn.query_row("SELECT note FROM pool_key_notes WHERE platform = ?1 AND key_id = ?2", rusqlite::params![provider.id, k.key_id], |r| r.get::<_, String>(0))
+                        .ok()
+                        .map(|n| format!("{}: {n}", k.key_id))
+                })
+                .collect(),
             auth_kind: if keyless { "keyless" } else { "key" }.to_string(),
             auth_state: auth_state.to_string(),
             can_validate: provider.quirks.validate_url.is_some(),

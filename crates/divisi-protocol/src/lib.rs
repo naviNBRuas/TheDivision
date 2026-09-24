@@ -1888,6 +1888,9 @@ pub struct PoolKeyStatusInfo {
     pub keys_unvalidated: u32,
     #[serde(default)]
     pub keys_disabled: u32,
+    /// What the last validation of each key saw (`key_id: model -> result`), for keys that did not pass.
+    #[serde(default)]
+    pub notes: Vec<String>,
     /// `"key"` or `"keyless"` (the provider needs no credential).
     #[serde(default)]
     pub auth_kind: String,

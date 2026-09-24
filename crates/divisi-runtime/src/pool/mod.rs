@@ -23,6 +23,10 @@ use rusqlite::Connection;
 /// avoids a second `ensure_*_schema` call site per phase.
 pub fn ensure_pool_schema(conn: &Connection) -> Result<()> {
     divisi_core::pool_keys::ensure_schema(conn)?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pool_key_notes (platform TEXT NOT NULL, key_id TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (platform, key_id))",
+        (),
+    )?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS pool_usage (
