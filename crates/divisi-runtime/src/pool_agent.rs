@@ -228,11 +228,17 @@ fn estimate_tokens(text: &str) -> u64 {
 /// `code`/`plan`/`integrate` role node, which need either real
 /// tool-calling or strict single-shot JSON compliance that those
 /// providers' wire contracts don't guarantee.
+/// How long a key that failed validation stays out of the pool before it is tried again.
+const INVALID_KEY_REST_HOURS: i64 = 6;
+
 pub fn candidates_from_keys(conn: &Connection, require_structured_output: bool) -> Result<Vec<(String, String, String)>> {
     let keys = divisi_core::pool_keys::list(conn, None)?;
+    // A key that failed validation recently sits out for a few hours, then gets tried again.
+    let recent = chrono::Utc::now() - chrono::Duration::hours(INVALID_KEY_REST_HOURS);
     Ok(keys
         .into_iter()
         .filter(|k| !k.disabled)
+        .filter(|k| k.valid || k.last_validated_at.as_deref().and_then(|t| t.parse::<chrono::DateTime<chrono::Utc>>().ok()).is_none_or(|t| t < recent))
         .filter(|k| !require_structured_output || divisi_core::free_pool::structured_output_ok(&k.platform))
         .filter_map(|k| divisi_core::free_pool::by_id(&k.platform).map(|p| (k.platform.clone(), p.id.to_string(), k.key_id.clone())))
         .collect())

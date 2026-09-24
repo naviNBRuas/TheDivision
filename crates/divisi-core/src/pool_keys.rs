@@ -126,8 +126,11 @@ pub fn list(conn: &Connection, platform: Option<&str>) -> Result<Vec<PoolProvide
 pub fn mark_validated(conn: &Connection, platform: &str, key_id: &str, valid: bool) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
-        "UPDATE pool_provider_keys SET last_validated_at = ?1, valid = ?2, disabled = disabled OR ?4 WHERE platform = ?3 AND key_id = ?5",
-        params![now, valid as i64, platform, !valid as i64, key_id],
+        // A key that answers is back in the pool; one that fails is only marked invalid. Its pool
+        // cooldown keeps it out for a while and the next validation decides again -- a failed probe
+        // used to disable a key for good, which left 18 working keys switched off (2026-09-24).
+        "UPDATE pool_provider_keys SET last_validated_at = ?1, valid = ?2, disabled = CASE WHEN ?2 = 1 THEN 0 ELSE disabled END WHERE platform = ?3 AND key_id = ?4",
+        params![now, valid as i64, platform, key_id],
     )
     .context("marking pool provider key validated")?;
     Ok(())
@@ -221,7 +224,7 @@ mod tests {
         mark_validated(&conn, "kilo", "default", false).unwrap();
         let keys = list(&conn, Some("kilo")).unwrap();
         assert!(!keys[0].valid);
-        assert!(keys[0].disabled, "a key confirmed bad must be disabled, not just marked invalid");
+        assert!(!keys[0].disabled, "a failed validation is timed (see candidates_from_keys), never a permanent disable");
     }
 
     #[test]
@@ -236,7 +239,7 @@ mod tests {
     fn enable_reverses_a_disable_from_bad_evidence() {
         let conn = test_conn();
         add(&conn, "kilo", "default").unwrap();
-        mark_validated(&conn, "kilo", "default", false).unwrap();
+        disable(&conn, "kilo", "default").unwrap();
         assert!(is_disabled(&conn, "kilo", "default").unwrap());
 
         enable(&conn, "kilo", "default").unwrap();

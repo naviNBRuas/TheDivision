@@ -133,7 +133,8 @@ fn stale_pool_key_disable(conn: &Connection, cfg: &SelfHealConfig) -> Result<Str
             continue; // never validated at all yet -- not "failing", just new.
         };
         if now - last_validated >= grace {
-            divisi_core::pool_keys::disable(conn, &key.platform, &key.key_id)?;
+            // Reported, not disabled: a key that recovers (a new month, restored credit) goes back
+            // into the pool on its next successful validation.
             disabled.push(format!("{}:{}", key.platform, key.key_id));
         }
     }
@@ -141,7 +142,7 @@ fn stale_pool_key_disable(conn: &Connection, cfg: &SelfHealConfig) -> Result<Str
     if disabled.is_empty() {
         return Ok("no pool key past its validation grace period".to_string());
     }
-    Ok(format!("auto-disabled: {}", disabled.join(", ")))
+    Ok(format!("failing validation (re-key or wait for its reset): {}", disabled.join(", ")))
 }
 
 #[cfg(test)]
@@ -203,7 +204,7 @@ mod tests {
         let cfg = SelfHealConfig::default(); // 24h grace
         let detail = stale_pool_key_disable(&conn, &cfg).unwrap();
         assert!(detail.contains("groq:default"), "{detail}");
-        assert!(divisi_core::pool_keys::is_disabled(&conn, "groq", "default").unwrap());
+        assert!(!divisi_core::pool_keys::is_disabled(&conn, "groq", "default").unwrap(), "reported, never disabled");
     }
 
     #[test]
