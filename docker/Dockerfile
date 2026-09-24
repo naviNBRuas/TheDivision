@@ -1,14 +1,14 @@
-# Shared image for SingleCLI's opt-in Docker execution backend (see
-# `single agent docker enable`, `single-runtime::docker`). One image with
+# Shared image for divisi's opt-in Docker execution backend (see
+# `divisi agent docker enable`, `divisi-runtime::docker`). One image with
 # every supported agent CLI installed, rather than an image per agent —
 # simpler to build/maintain, works for any agent out of the box.
 #
-# Build (from the repo root): docker build -t singlecli-agents -f docker/Dockerfile .
+# Build (from the repo root): docker build -t divisi-agents -f docker/Dockerfile .
 #
-# Stage 1 builds `single` just to run its own
-# `single internal print-bootstrap-script`, which prints a shell script
-# derived from `single_core::registry::builtin_registry()`'s real,
-# verified `bootstrap_install` commands — the same ones `single setup`
+# Stage 1 builds `divisi` just to run its own
+# `divisi internal print-bootstrap-script`, which prints a shell script
+# derived from `divisi_core::registry::builtin_registry()`'s real,
+# verified `bootstrap_install` commands — the same ones `divisi setup`
 # runs on a host install. That keeps this image in sync with the registry
 # automatically instead of a separately maintained, driftable install
 # list.
@@ -28,7 +28,7 @@
 FROM rust:1-slim-bookworm AS builder
 WORKDIR /build
 COPY . .
-RUN cargo build --release --bin single
+RUN cargo build --release --bin divisi
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,9 +40,9 @@ RUN pipx ensurepath && pipx install uv 2>/dev/null || pip3 install --break-syste
 
 ENV PATH="/root/.local/bin:/root/.local/share/claude/bin:/root/.npm-global/bin:${PATH}"
 
-COPY --from=builder /build/target/release/single /usr/local/bin/single
+COPY --from=builder /build/target/release/divisi /usr/local/bin/divisi
 
-RUN single internal print-bootstrap-script > /tmp/install-agents.sh \
+RUN divisi internal print-bootstrap-script > /tmp/install-agents.sh \
     && sh /tmp/install-agents.sh \
     && rm /tmp/install-agents.sh
 

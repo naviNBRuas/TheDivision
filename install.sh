@@ -1,11 +1,11 @@
 #!/bin/sh
-# SingleCLI installer.
+# divisi installer.
 #
 #   curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.sh | sh
 #
-# Downloads the prebuilt `single` (CLI/TUI) and `single-runtimed` (runtime
-# daemon) binaries for your platform from the latest GitHub release and
-# installs them to $SINGLE_INSTALL_DIR (default: ~/.local/bin).
+# Downloads the prebuilt divisi binaries (`divisi` CLI/TUI, `divisid` runtime daemon, `divisi-mcp`,
+# `divisi-gateway`, `divisi-agent`, `divisi-lsp`, `divisi-notch`) for your platform from the latest
+# GitHub release and installs them to $DIVISI_INSTALL_DIR (default: ~/.local/bin).
 #
 # Supported platforms: Linux x86_64/arm64, macOS x86_64/arm64 (Intel and
 # Apple Silicon). Anything else: build from source with
@@ -13,9 +13,10 @@
 
 set -eu
 
+# The repository keeps its pre-rename name until it is renamed on GitHub (which redirects).
 REPO="naviNBRuas/SingleCLI"
-INSTALL_DIR="${SINGLE_INSTALL_DIR:-$HOME/.local/bin}"
-VERSION="${SINGLE_VERSION:-latest}"
+INSTALL_DIR="${DIVISI_INSTALL_DIR:-${SINGLE_INSTALL_DIR:-$HOME/.local/bin}}"
+VERSION="${DIVISI_VERSION:-${SINGLE_VERSION:-latest}}"
 
 info() { printf '>> %s\n' "$1"; }
 error() { printf 'error: %s\n' "$1" >&2; exit 1; }
@@ -47,28 +48,39 @@ main() {
   info "Detected platform: $target"
 
   if [ "$VERSION" = "latest" ]; then
-    url="https://github.com/$REPO/releases/latest/download/singlecli-$target.tar.gz"
+    base="https://github.com/$REPO/releases/latest/download"
   else
-    url="https://github.com/$REPO/releases/download/$VERSION/singlecli-$target.tar.gz"
+    base="https://github.com/$REPO/releases/download/$VERSION"
   fi
 
   work_dir="$(mktemp -d)"
   trap 'rm -rf "$work_dir"' EXIT
 
-  info "Downloading $url"
-  if ! curl -fsSL "$url" -o "$work_dir/singlecli.tar.gz"; then
-    error "download failed — is there a release for $target yet? See https://github.com/$REPO/releases"
-  fi
+  # Releases before the rename shipped `singlecli-<target>.tar.gz`.
+  asset=""
+  for name in "divisi-$target" "singlecli-$target"; do
+    info "Downloading $base/$name.tar.gz"
+    if curl -fsSL "$base/$name.tar.gz" -o "$work_dir/divisi.tar.gz"; then
+      asset="$name"
+      break
+    fi
+  done
+  [ -n "$asset" ] || error "download failed — is there a release for $target yet? See https://github.com/$REPO/releases"
 
-  tar -xzf "$work_dir/singlecli.tar.gz" -C "$work_dir"
+  tar -xzf "$work_dir/divisi.tar.gz" -C "$work_dir"
 
   mkdir -p "$INSTALL_DIR"
-  extracted_dir="$work_dir/singlecli-$target"
-  cp "$extracted_dir/single" "$INSTALL_DIR/single"
-  cp "$extracted_dir/single-runtimed" "$INSTALL_DIR/single-runtimed"
-  chmod +x "$INSTALL_DIR/single" "$INSTALL_DIR/single-runtimed"
+  installed=""
+  for bin in divisi divisid divisi-mcp divisi-gateway divisi-agent divisi-lsp divisi-notch; do
+    if [ -f "$work_dir/$asset/$bin" ]; then
+      cp "$work_dir/$asset/$bin" "$INSTALL_DIR/$bin"
+      chmod +x "$INSTALL_DIR/$bin"
+      installed="$installed $bin"
+    fi
+  done
+  [ -n "$installed" ] || error "the $asset archive contained no divisi binaries"
 
-  info "Installed to $INSTALL_DIR/single and $INSTALL_DIR/single-runtimed"
+  info "Installed to $INSTALL_DIR:$installed"
 
   case ":$PATH:" in
     *":$INSTALL_DIR:"*) ;;
@@ -81,7 +93,7 @@ main() {
       ;;
   esac
 
-  info "Run 'single doctor' to check what SingleCLI can manage on this machine, or just 'single' to open the TUI."
+  info "Run 'divisi doctor' to check what divisi can manage on this machine, or just 'divisi' to open the TUI."
 }
 
 main

@@ -40,7 +40,7 @@ pub fn generate(specs: &[LspServerSpec]) -> Value {
     }
     json!({
         "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-        "name": "single-lsp-marketplace",
+        "name": "divisi-lsp-marketplace",
         "description": "Dynamic LSP proxy for divisi's unified language server registry.",
         "owner": { "name": "Navin B. Ruas", "email": "founder@nbr.company" },
         "plugins": [

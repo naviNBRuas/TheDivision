@@ -1,7 +1,7 @@
 name: nightly
 
 # Keeps a single rolling pre-release ("nightly") in sync with main, so
-# `single update --channel nightly` always gets whatever's on HEAD instead
+# `divisi update --channel nightly` always gets whatever's on HEAD instead
 # of waiting for the next tagged version — the "grow as I commit stuff to
 # main" channel.
 
@@ -51,15 +51,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out="singlecli-${{ matrix.target }}"
+          out="divisi-${{ matrix.target }}"
           mkdir -p "$out"
-          cp target/${{ matrix.rust_target }}/release/single "$out/"
-          cp target/${{ matrix.rust_target }}/release/single-runtimed "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisid "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-mcp "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-gateway "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-agent "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-lsp "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-notch "$out/"
           tar -czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@v4
         with:
-          name: singlecli-${{ matrix.target }}
-          path: singlecli-${{ matrix.target }}.tar.gz
+          name: divisi-${{ matrix.target }}
+          path: divisi-${{ matrix.target }}.tar.gz
 
   publish:
     needs: build
@@ -87,4 +92,4 @@ jobs:
           files: artifacts/*.tar.gz
           body: |
             Automatically rebuilt from `main` @ ${{ github.sha }}.
-            Not a stable release — install with `single update --channel nightly --yes` if you want to track development, or use the latest `v*` release for anything else.
+            Not a stable release — install with `divisi update --channel nightly --yes` if you want to track development, or use the latest `v*` release for anything else.

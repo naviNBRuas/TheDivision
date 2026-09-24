@@ -14,7 +14,7 @@
 //!   when already current just re-downloads the same build, which is
 //!   harmless, not silently wrong.
 //!
-//! Platform detection and the `singlecli-<target>.tar.gz` asset naming
+//! Platform detection and the `divisi-<target>.tar.gz` asset naming (`singlecli-` before the rename)
 //! exactly mirror `install.sh`, so both stay consistent with the same
 //! release artifacts.
 
@@ -79,12 +79,12 @@ pub fn check_latest(channel: &str) -> Result<ReleaseInfo> {
         .context("parsing GitHub releases response")?;
 
     let target = detect_target()?;
-    let asset_name = format!("singlecli-{target}.tar.gz");
-    let asset = release
-        .assets
+    // Releases before the rename shipped `singlecli-<target>`; newer ones ship `divisi-<target>`.
+    let names = [format!("divisi-{target}.tar.gz"), format!("singlecli-{target}.tar.gz")];
+    let asset = names
         .iter()
-        .find(|a| a.name == asset_name)
-        .with_context(|| format!("no asset named {asset_name} in release {}", release.tag_name))?;
+        .find_map(|n| release.assets.iter().find(|a| &a.name == n))
+        .with_context(|| format!("no asset named {} in release {}", names[0], release.tag_name))?;
 
     Ok(ReleaseInfo { tag: release.tag_name, asset_url: asset.browser_download_url.clone() })
 }
@@ -152,9 +152,13 @@ pub fn apply(release: &ReleaseInfo) -> Result<PathBuf> {
     }
 
     let target = detect_target()?;
-    let extracted_dir = tmp_dir.path().join(format!("singlecli-{target}"));
+    let extracted_dir = [format!("divisi-{target}"), format!("singlecli-{target}")]
+        .iter()
+        .map(|d| tmp_dir.path().join(d))
+        .find(|p| p.exists())
+        .unwrap_or_else(|| tmp_dir.path().join(format!("divisi-{target}")));
     let mut replaced = Vec::new();
-    for binary in ["divisi", "divisid", "divisi-gateway"] {
+    for binary in ["divisi", "divisid", "divisi-mcp", "divisi-gateway", "divisi-agent", "divisi-lsp", "divisi-notch"] {
         let src = extracted_dir.join(binary);
         if !src.exists() {
             continue;

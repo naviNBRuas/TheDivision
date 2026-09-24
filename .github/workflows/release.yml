@@ -52,16 +52,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out="singlecli-${{ matrix.target }}"
+          out="divisi-${{ matrix.target }}"
           mkdir -p "$out"
-          cp target/${{ matrix.rust_target }}/release/single "$out/"
-          cp target/${{ matrix.rust_target }}/release/single-runtimed "$out/"
-          cp target/${{ matrix.rust_target }}/release/single-mcp "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisid "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-mcp "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-gateway "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-agent "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-lsp "$out/"
+          cp target/${{ matrix.rust_target }}/release/divisi-notch "$out/"
           tar -czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@v4
         with:
-          name: singlecli-${{ matrix.target }}
-          path: singlecli-${{ matrix.target }}.tar.gz
+          name: divisi-${{ matrix.target }}
+          path: divisi-${{ matrix.target }}.tar.gz
 
   # Best-effort: same build, on the slow/scarce runner. Not in `build`'s
   # matrix and not something `release` waits on, so a long Intel-Mac queue
@@ -81,16 +85,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out="singlecli-macos-x86_64"
+          out="divisi-macos-x86_64"
           mkdir -p "$out"
-          cp target/x86_64-apple-darwin/release/single "$out/"
-          cp target/x86_64-apple-darwin/release/single-runtimed "$out/"
-          cp target/x86_64-apple-darwin/release/single-mcp "$out/"
+          cp target/x86_64-apple-darwin/release/divisi "$out/"
+          cp target/x86_64-apple-darwin/release/divisid "$out/"
+          cp target/x86_64-apple-darwin/release/divisi-mcp "$out/"
+          cp target/x86_64-apple-darwin/release/divisi-gateway "$out/"
+          cp target/x86_64-apple-darwin/release/divisi-agent "$out/"
+          cp target/x86_64-apple-darwin/release/divisi-lsp "$out/"
+          cp target/x86_64-apple-darwin/release/divisi-notch "$out/"
           tar -czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@v4
         with:
-          name: singlecli-macos-x86_64
-          path: singlecli-macos-x86_64.tar.gz
+          name: divisi-macos-x86_64
+          path: divisi-macos-x86_64.tar.gz
 
   release:
     needs: build
@@ -99,12 +107,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: singlecli-linux-*
+          pattern: divisi-linux-*
           merge-multiple: true
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: singlecli-macos-arm64
+          pattern: divisi-macos-arm64
           merge-multiple: true
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -122,7 +130,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: singlecli-macos-x86_64
+          name: divisi-macos-x86_64
           path: artifacts
       - name: Attach asset to existing release
         uses: softprops/action-gh-release@v2

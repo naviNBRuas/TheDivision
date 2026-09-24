@@ -31,12 +31,12 @@ struct DockerSettingsFile {
     settings: Vec<DockerSetting>,
 }
 
-/// `single-agent-<agent>` or `single-agent-<agent>-<account>` — the
+/// `divisi-agent-<agent>` or `divisi-agent-<agent>-<account>` — the
 /// container name `divisi-runtime::docker`'s lifecycle functions use.
 pub fn container_name(agent: &str, account: Option<&str>) -> String {
     match account {
-        Some(name) => format!("single-agent-{agent}-{name}"),
-        None => format!("single-agent-{agent}"),
+        Some(name) => format!("divisi-agent-{agent}-{name}"),
+        None => format!("divisi-agent-{agent}"),
     }
 }
 
@@ -95,8 +95,8 @@ mod tests {
 
     #[test]
     fn container_name_includes_account_only_when_given() {
-        assert_eq!(container_name("claude", None), "single-agent-claude");
-        assert_eq!(container_name("claude", Some("work")), "single-agent-claude-work");
+        assert_eq!(container_name("claude", None), "divisi-agent-claude");
+        assert_eq!(container_name("claude", Some("work")), "divisi-agent-claude-work");
     }
 
     #[test]
