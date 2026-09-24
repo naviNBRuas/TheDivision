@@ -35,6 +35,10 @@ fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
             "authed" | "no_auth_needed" => back.push(name.clone()),
             // exhausted / needs_login were re-benched by the probe itself; anything else is benched here
             "exhausted" | "needs_login" => still.push(name.clone()),
+            "unresponsive" => {
+                crate::agent_cooldown::rebench_unresponsive(conn, name, &format!("recovery probe: unresponsive: {}", row.evidence));
+                still.push(name.clone());
+            }
             other => {
                 crate::agent_cooldown::rebench(conn, name, &format!("recovery probe: {other}: {}", row.evidence));
                 still.push(name.clone());

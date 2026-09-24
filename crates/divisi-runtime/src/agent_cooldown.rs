@@ -252,6 +252,19 @@ pub fn rebench(conn: &Connection, agent: &str, why: &str) {
     let _ = record_with(conn, agent, Utc::now() + backoff(strikes), why, strikes + 1, "probe");
 }
 
+/// A probe that got no answer in time says nothing about quota or login, so it benches `agent` for
+/// a flat `UNRESPONSIVE_BENCH` without adding a strike. Live finding (2026-09-24): opencode, the most
+/// reliable agent, sat out 2.5h after one slow probe as timeouts escalated like real failures.
+pub fn rebench_unresponsive(conn: &Connection, agent: &str, why: &str) {
+    if exempt(agent) || ensure_schema(conn).is_err() {
+        return;
+    }
+    let strikes = strikes_of(conn, agent);
+    let _ = record_with(conn, agent, Utc::now() + UNRESPONSIVE_BENCH, why, strikes, "probe");
+}
+
+pub const UNRESPONSIVE_BENCH: Duration = Duration::minutes(20);
+
 /// The probe found `agent` working: it is confirmed and its strikes are gone.
 pub fn mark_verified(conn: &Connection, agent: &str) {
     succeeded(conn, agent);
@@ -299,6 +312,17 @@ mod tests {
         let active = active(&conn, now).unwrap();
         assert_eq!(active.keys().collect::<Vec<_>>(), ["codex"], "an expired cooldown is not active");
         assert!(active["codex"] > now + Duration::hours(29));
+    }
+
+    #[test]
+    fn an_unresponsive_probe_benches_briefly_and_adds_no_strike() {
+        let conn = db();
+        ensure_schema(&conn).unwrap();
+        let now = Utc::now();
+        rebench_unresponsive(&conn, "opencode", "timeout");
+        rebench_unresponsive(&conn, "opencode", "timeout");
+        assert!(active(&conn, now).unwrap()["opencode"] <= now + UNRESPONSIVE_BENCH + Duration::minutes(1));
+        assert_eq!(strikes_of(&conn, "opencode"), 0);
     }
 
     #[test]
