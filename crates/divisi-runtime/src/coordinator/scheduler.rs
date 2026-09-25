@@ -408,115 +408,136 @@ pub fn tick(
     }
 
     for goal in goal::active(conn)? {
-        // a goal still `planning` with no graph is the planner's job, not
-        // the scheduler's — leave it (the handler kicks planning off).
-        let graph = goal::load_graph(conn, &goal.id)?;
-        if graph.nodes.is_empty() {
-            continue;
+        // One goal's error (a repo whose HEAD has no commits failing `git worktree add`, a vanished
+        // cwd, ...) blocks that goal with the reason instead of aborting the pass for every goal.
+        if let Err(e) = tick_goal(ctx, conn, cfg, table, health, dispatcher, &goal) {
+            let reason = format!("tick failed: {e:#}");
+            tracing::warn!(goal = %goal.id, error = %reason, "coordinator tick failed for one goal; blocking it");
+            goal::set_blocked(conn, &goal.id, &reason)?;
+            events::append(conn, &goal.session_id, Some(&goal.id), EventKind::Blocked, &reason)?;
         }
-        if goal.status == GoalStatus::Planning {
-            goal::set_status(conn, &goal.id, GoalStatus::Running)?;
-        }
+    }
+    Ok(())
+}
 
-        let cap = build_capacity(conn, ctx, cfg)?;
-        let budget = goal_budget(&goal, cfg);
-        let actions = tick_pure(&graph, cfg, &cap, &budget, table, health);
+/// One goal's share of a scheduling pass: admit ready nodes, block, fail or integrate.
+fn tick_goal(
+    ctx: &Context,
+    conn: &mut Connection,
+    cfg: &CoordinatorConfig,
+    table: &RoutingTable,
+    health: &PoolHealth,
+    dispatcher: &dyn Dispatcher,
+    goal: &Goal,
+) -> Result<()> {
+    // a goal still `planning` with no graph is the planner's job, not
+    // the scheduler's — leave it (the handler kicks planning off).
+    let graph = goal::load_graph(conn, &goal.id)?;
+    if graph.nodes.is_empty() {
+        return Ok(());
+    }
+    if goal.status == GoalStatus::Planning {
+        goal::set_status(conn, &goal.id, GoalStatus::Running)?;
+    }
 
-        for action in actions {
-            match action {
-                TickAction::Noop => {}
-                TickAction::Block { reason } => {
-                    goal::set_blocked(conn, &goal.id, &reason)?;
-                    events::append(conn, &goal.session_id, Some(&goal.id), EventKind::Blocked, &reason)?;
+    let cap = build_capacity(conn, ctx, cfg)?;
+    let budget = goal_budget(&goal, cfg);
+    let actions = tick_pure(&graph, cfg, &cap, &budget, table, health);
+
+    for action in actions {
+        match action {
+            TickAction::Noop => {}
+            TickAction::Block { reason } => {
+                goal::set_blocked(conn, &goal.id, &reason)?;
+                events::append(conn, &goal.session_id, Some(&goal.id), EventKind::Blocked, &reason)?;
+            }
+            TickAction::Fail { reason } => {
+                goal::set_status(conn, &goal.id, GoalStatus::Failed)?;
+                events::append(conn, &goal.session_id, Some(&goal.id), EventKind::NodeFailed, &reason)?;
+            }
+            TickAction::RunIntegrator => {
+                run_integrator(ctx, conn, &goal, &graph, table, health)?;
+            }
+            TickAction::Dispatch { node_id, agent, effort, worktree, max_steps: _ } => {
+                let Some(node) = graph.find(&node_id) else { continue };
+                // E28 spec §8: a real re-admission out of
+                // `waiting_on_capacity` -- its retry stamp passed and
+                // `ready_set_at` let it back into this tick's ready
+                // set. Clear the hold and log the resume before the
+                // ordinary dispatch bookkeeping below.
+                if goal.status == GoalStatus::WaitingOnCapacity {
+                    goal::clear_waiting_on_capacity(conn, &goal.id)?;
+                    events::append(
+                        conn,
+                        &goal.session_id,
+                        Some(&goal.id),
+                        EventKind::CapacityResumed,
+                        &format!("{node_id}: capacity window freed, resuming"),
+                    )?;
                 }
-                TickAction::Fail { reason } => {
-                    goal::set_status(conn, &goal.id, GoalStatus::Failed)?;
+                let prompt = build_node_prompt(&graph, node, &goal.text);
+                let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
+                if !session_cwd.exists() {
+                    // A session's cwd is resolved once at creation and
+                    // reused verbatim on every tick; unlike a per-relay
+                    // worktree (`prepare_shared_cwd`, recreated fresh
+                    // each call) there's nothing here to regenerate --
+                    // if it's gone (tmp cleanup, a manually deleted
+                    // scratch dir, ...) every dispatch attempt would
+                    // otherwise fail identically forever. Fail this
+                    // node now with a clear reason instead of feeding
+                    // the coordinator an infinite retry loop.
+                    let reason = format!(
+                        "{node_id}: session cwd {} no longer exists (stale/cleaned-up path)",
+                        session_cwd.display()
+                    );
+                    goal::update_node(conn, &goal.id, &node_id, NodeStatus::Failed, None, None, None)?;
                     events::append(conn, &goal.session_id, Some(&goal.id), EventKind::NodeFailed, &reason)?;
+                    continue;
                 }
-                TickAction::RunIntegrator => {
-                    run_integrator(ctx, conn, &goal, &graph, table, health)?;
-                }
-                TickAction::Dispatch { node_id, agent, effort, worktree, max_steps: _ } => {
-                    let Some(node) = graph.find(&node_id) else { continue };
-                    // E28 spec §8: a real re-admission out of
-                    // `waiting_on_capacity` -- its retry stamp passed and
-                    // `ready_set_at` let it back into this tick's ready
-                    // set. Clear the hold and log the resume before the
-                    // ordinary dispatch bookkeeping below.
-                    if goal.status == GoalStatus::WaitingOnCapacity {
-                        goal::clear_waiting_on_capacity(conn, &goal.id)?;
+                let (session_cwd, isolated) = goal_workdir(ctx, cfg, &goal.id, &session_cwd)?;
+                let prompt = format!("{prompt}{}", crate::coordinator::gates::stack_note(&session_cwd));
+                let opts = crate::task::OwnedRunTaskOptions {
+                    description: prompt,
+                    agent: agent.clone(),
+                    cwd: session_cwd,
+                    // Inside a goal worktree every node shares that tree, so a test or review node
+                    // sees what the code nodes changed.
+                    use_worktree: worktree && !isolated,
+                    account: None,
+                    real_home: false,
+                    no_memory_context: false,
+                    timeout: timeout_for(effort),
+                    allow_fallback: true,
+                    usage_json: cfg.usage_json_agents.iter().any(|a| a == &agent),
+                    // `code` work nodes are the one graph-dispatched
+                    // kind that needs real tool-calling — exclude
+                    // aihorde-class free-pool providers (`no_tools`)
+                    // the same way brain roles exclude them for JSON.
+                    require_structured_output: node.kind == NodeKind::Code,
+                    pool_agentic: true,
+                };
+                match dispatcher.dispatch(opts) {
+                    Ok(task_id) => {
+                        goal::update_node(conn, &goal.id, &node_id, NodeStatus::Running, Some(task_id), None, None)?;
+                        goal::bump_dispatches(conn, &goal.id)?;
                         events::append(
                             conn,
                             &goal.session_id,
                             Some(&goal.id),
-                            EventKind::CapacityResumed,
-                            &format!("{node_id}: capacity window freed, resuming"),
+                            EventKind::NodeStarted,
+                            &format!("{node_id} → {agent} (#{task_id})"),
                         )?;
                     }
-                    let prompt = build_node_prompt(&graph, node, &goal.text);
-                    let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
-                    if !session_cwd.exists() {
-                        // A session's cwd is resolved once at creation and
-                        // reused verbatim on every tick; unlike a per-relay
-                        // worktree (`prepare_shared_cwd`, recreated fresh
-                        // each call) there's nothing here to regenerate --
-                        // if it's gone (tmp cleanup, a manually deleted
-                        // scratch dir, ...) every dispatch attempt would
-                        // otherwise fail identically forever. Fail this
-                        // node now with a clear reason instead of feeding
-                        // the coordinator an infinite retry loop.
-                        let reason = format!(
-                            "{node_id}: session cwd {} no longer exists (stale/cleaned-up path)",
-                            session_cwd.display()
-                        );
+                    Err(e) => {
                         goal::update_node(conn, &goal.id, &node_id, NodeStatus::Failed, None, None, None)?;
-                        events::append(conn, &goal.session_id, Some(&goal.id), EventKind::NodeFailed, &reason)?;
-                        continue;
-                    }
-                    let (session_cwd, isolated) = goal_workdir(ctx, cfg, &goal.id, &session_cwd)?;
-                    let prompt = format!("{prompt}{}", crate::coordinator::gates::stack_note(&session_cwd));
-                    let opts = crate::task::OwnedRunTaskOptions {
-                        description: prompt,
-                        agent: agent.clone(),
-                        cwd: session_cwd,
-                        // Inside a goal worktree every node shares that tree, so a test or review node
-                        // sees what the code nodes changed.
-                        use_worktree: worktree && !isolated,
-                        account: None,
-                        real_home: false,
-                        no_memory_context: false,
-                        timeout: timeout_for(effort),
-                        allow_fallback: true,
-                        usage_json: cfg.usage_json_agents.iter().any(|a| a == &agent),
-                        // `code` work nodes are the one graph-dispatched
-                        // kind that needs real tool-calling — exclude
-                        // aihorde-class free-pool providers (`no_tools`)
-                        // the same way brain roles exclude them for JSON.
-                        require_structured_output: node.kind == NodeKind::Code,
-                        pool_agentic: true,
-                    };
-                    match dispatcher.dispatch(opts) {
-                        Ok(task_id) => {
-                            goal::update_node(conn, &goal.id, &node_id, NodeStatus::Running, Some(task_id), None, None)?;
-                            goal::bump_dispatches(conn, &goal.id)?;
-                            events::append(
-                                conn,
-                                &goal.session_id,
-                                Some(&goal.id),
-                                EventKind::NodeStarted,
-                                &format!("{node_id} → {agent} (#{task_id})"),
-                            )?;
-                        }
-                        Err(e) => {
-                            goal::update_node(conn, &goal.id, &node_id, NodeStatus::Failed, None, None, None)?;
-                            events::append(
-                                conn,
-                                &goal.session_id,
-                                Some(&goal.id),
-                                EventKind::NodeFailed,
-                                &format!("{node_id}: dispatch failed: {e}"),
-                            )?;
-                        }
+                        events::append(
+                            conn,
+                            &goal.session_id,
+                            Some(&goal.id),
+                            EventKind::NodeFailed,
+                            &format!("{node_id}: dispatch failed: {e}"),
+                        )?;
                     }
                 }
             }
@@ -2034,5 +2055,52 @@ mod tests {
         maybe_auto_merge(&conn, &g, "review").unwrap();
 
         assert!(divisi_core::pending_merge::list_pending(&conn).unwrap().is_empty());
+    }
+
+    /// Live finding (2026-09-25): a goal in a repo whose HEAD has no commits made `goal_workdir`'s
+    /// `git worktree add` fail, and that error aborted the whole tick, so no goal dispatched anything.
+    #[test]
+    fn a_goal_whose_tick_errors_is_blocked_and_the_other_goals_still_dispatch() {
+        use crate::coordinator::{goal, graph::{GoalMode, GoalStatus}, session};
+        struct Recording(std::cell::RefCell<Vec<std::path::PathBuf>>);
+        impl Dispatcher for Recording {
+            fn dispatch(&self, opts: crate::task::OwnedRunTaskOptions) -> Result<i64> {
+                self.0.borrow_mut().push(opts.cwd.clone());
+                Ok(5000 + self.0.borrow().len() as i64)
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(&tmp.path().join("home"));
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+
+        let broken = tmp.path().join("broken");
+        std::fs::create_dir_all(&broken).unwrap();
+        // HEAD on an unborn branch while another branch exists: git cannot infer an orphan worktree.
+        for args in [
+            &["init", "-q"][..],
+            &["checkout", "-q", "-b", "side"],
+            &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"],
+            &["symbolic-ref", "HEAD", "refs/heads/unborn"],
+        ] {
+            assert!(std::process::Command::new("git").args(args).current_dir(&broken).status().unwrap().success());
+        }
+        let healthy = tmp.path().join("healthy");
+        std::fs::create_dir_all(&healthy).unwrap();
+
+        let mut goals = Vec::new();
+        for dir in [&broken, &healthy] {
+            let s = session::new_session(&conn, dir).unwrap();
+            let g = goal::create(&mut conn, &s.id, "g", GoalMode::Auto, 25, 60).unwrap();
+            goal::save_graph(&mut conn, &g.id, &TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] }).unwrap();
+            goals.push(g);
+        }
+
+        let rec = Recording(Default::default());
+        tick(&ctx, &mut conn, &CoordinatorConfig::default(), &RoutingTable::default(), &PoolHealth::default(), &rec).unwrap();
+
+        assert_eq!(rec.0.borrow().as_slice(), [healthy.clone()]);
+        assert_eq!(goal::get(&conn, &goals[0].id).unwrap().unwrap().status, GoalStatus::Blocked);
     }
 }

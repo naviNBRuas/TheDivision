@@ -142,7 +142,7 @@ fn coordinator_tick_loop(registry: crate::registry::TaskRegistry) {
             crate::coordinator::drive(&ctx, &mut conn, &registry)
         });
         if let Err(e) = result {
-            tracing::debug!(error = %e, "coordinator tick failed");
+            tracing::warn!(error = %e, "coordinator tick failed");
         }
     }
 }
