@@ -291,10 +291,15 @@ fn run_role(
         }
         // A rate-limited answer is not a bad sample: wait for the burst to clear and try again without
         // spending an attempt (bounded), instead of blocking the goal while the pool is merely busy.
+        // Retry the same agent after the wait. Live finding (2026-09-25): moving on here sent planner and
+        // integrator prompts from a briefly saturated pool to agentic CLIs (opencode, kilocode) that
+        // explored the repo past the 240 s limit, timed out and got benched themselves.
         if divisi_core::ratelimit::looks_like_rate_limit(&out) && rate_limit_waits < RATE_LIMIT_WAITS {
             rate_limit_waits += 1;
             attempts_left += 1;
+            tried.pop();
             std::thread::sleep(RATE_LIMIT_BACKOFF);
+            continue;
         }
         current = routing::select_agent_excluding(table, kind, effort, health, &tried).unwrap_or(current);
     }

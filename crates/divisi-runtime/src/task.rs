@@ -1451,8 +1451,10 @@ fn maybe_fail_over(conn: &Connection, ctx: &Context, id: i64, opts: &RunTaskOpti
         timeout: opts.timeout,
         allow_fallback: true,
         usage_json: false,
-        require_structured_output: false,
-        pool_agentic: true,
+        // The hop keeps the caller's contract: a brain role's JSON-only prompt must not become a
+        // multi-step coding run on the pool just because the first agent was rate-limited.
+        require_structured_output: opts.require_structured_output,
+        pool_agentic: opts.pool_agentic,
     };
     match create_for_cwd(conn, next_opts.description, next_opts.agent, next_opts.cwd) {
         Ok(next_id) => {
