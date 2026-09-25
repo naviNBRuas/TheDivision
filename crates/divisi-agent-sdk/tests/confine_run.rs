@@ -16,6 +16,7 @@ fn host_agents_cannot_write_outside_their_working_directory_under_a_confined_roo
     std::fs::create_dir_all(&work).unwrap();
     std::fs::create_dir_all(&shared).unwrap();
     std::env::set_var("DIVISI_CONFINE_ROOTS", &root);
+    std::env::set_var("DIVISI_CONFINE_WRITABLE", &work);
 
     let script = format!("echo ok > in.txt; echo leak > {}/leak.txt", shared.display());
     let backend = ExecBackend::Host { home: None, extra_env: None };
