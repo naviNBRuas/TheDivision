@@ -335,11 +335,21 @@ fn db_integrity(ctx: &Context, conn: &Connection, allow_db_restore: bool) -> Res
 /// bounded.
 const DB_BACKUP_RETENTION_COUNT: usize = 20;
 
-/// Deletes every `<db_name>.bak-<timestamp>` under `db_dir` beyond the
-/// newest [`DB_BACKUP_RETENTION_COUNT`]. Best-effort: a failed delete is
+/// Byte budget for the whole backup family. Live finding (2026-09-25): the count cap alone let 20
+/// hourly copies of a 330 MB db take 6.6 GB and grow with the db, on a disk the conductor already
+/// runs near its 30 GB floor. The newest backups are kept until their total would pass this.
+const DB_BACKUP_BYTE_BUDGET: u64 = 2 << 30;
+
+/// Backups kept whatever the byte budget says, so a restore always has a fallback when the newest
+/// copy fails `quick_check`.
+const DB_BACKUP_MIN_KEEP: usize = 2;
+
+/// Deletes `<db_name>.bak-<timestamp>` files under `db_dir`, oldest first, beyond the newest
+/// [`DB_BACKUP_RETENTION_COUNT`] or once the kept ones' total size would pass `byte_budget`, always
+/// keeping the newest [`DB_BACKUP_MIN_KEEP`]. Best-effort: a failed delete is
 /// skipped rather than aborting the rest (a stray extra backup is far
 /// cheaper than a self-heal pass erroring out over housekeeping).
-fn prune_old_backups(db_dir: &std::path::Path, db_name: &str) -> Result<usize> {
+fn prune_old_backups(db_dir: &std::path::Path, db_name: &str, byte_budget: u64) -> Result<usize> {
     let prefix = format!("{db_name}.bak-");
     let mut candidates: Vec<std::path::PathBuf> = std::fs::read_dir(db_dir)?
         .filter_map(|e| e.ok())
@@ -349,10 +359,12 @@ fn prune_old_backups(db_dir: &std::path::Path, db_name: &str) -> Result<usize> {
     // Same newest-last lexicographic sort as `newest_backup` — the
     // `%Y%m%dT%H%M%SZ` timestamp format sorts correctly as plain strings.
     candidates.sort();
-    let excess = candidates.len().saturating_sub(DB_BACKUP_RETENTION_COUNT);
+    let mut kept_bytes = 0u64;
     let mut removed = 0;
-    for old in &candidates[..excess] {
-        if std::fs::remove_file(old).is_ok() {
+    for (age_rank, path) in candidates.iter().rev().enumerate() {
+        kept_bytes += std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        let over = age_rank >= DB_BACKUP_RETENTION_COUNT || kept_bytes > byte_budget;
+        if age_rank >= DB_BACKUP_MIN_KEEP && over && std::fs::remove_file(path).is_ok() {
             removed += 1;
         }
     }
@@ -363,7 +375,7 @@ fn prune_old_backups(db_dir: &std::path::Path, db_name: &str) -> Result<usize> {
 /// `db_backup_interval_secs` — writes a fresh copy only when the newest
 /// existing backup is older than the interval (or there isn't one yet),
 /// so this doesn't churn a full-db copy on every single pass. Also prunes
-/// down to [`DB_BACKUP_RETENTION_COUNT`] on every pass regardless of
+/// down to [`DB_BACKUP_RETENTION_COUNT`] and [`DB_BACKUP_BYTE_BUDGET`] on every pass regardless of
 /// whether this call wrote a new one, so retention self-heals even if the
 /// interval gate above has already let extras accumulate.
 fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<String> {
@@ -373,7 +385,7 @@ fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<S
     }
     let db_dir = db_path.parent().unwrap_or(&db_path);
     let db_name = db_path.file_name().and_then(|n| n.to_str()).unwrap_or("divisi.db");
-    let pruned = prune_old_backups(db_dir, db_name).unwrap_or(0);
+    let pruned = prune_old_backups(db_dir, db_name, DB_BACKUP_BYTE_BUDGET).unwrap_or(0);
 
     if let Some(existing) = newest_backup(db_dir, db_name)? {
         match std::fs::metadata(&existing).and_then(|meta| meta.modified()).and_then(|m| m.elapsed().map_err(std::io::Error::other)) {
@@ -435,7 +447,7 @@ fn db_backup(ctx: &Context, conn: &Connection, cfg: &SelfHealConfig) -> Result<S
         anyhow::bail!("fresh backup failed quick_check -- live db is damaged, kept the existing backups ({pruned} pruned)");
     }
     std::fs::rename(&staging, &backup_path).context("moving db backup into place")?;
-    let pruned = pruned + prune_old_backups(db_dir, db_name).unwrap_or(0);
+    let pruned = pruned + prune_old_backups(db_dir, db_name, DB_BACKUP_BYTE_BUDGET).unwrap_or(0);
     Ok(format!("wrote {} ({pruned} pruned)", backup_path.display()))
 }
 
@@ -825,5 +837,31 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().starts_with(&format!("{db_name}.bak-")))
             .collect();
         assert_eq!(remaining.len(), DB_BACKUP_RETENTION_COUNT, "backups beyond the retention limit must be pruned: {remaining:?}");
+    }
+
+    #[test]
+    fn backup_pruning_keeps_total_size_under_the_byte_budget_but_never_fewer_than_the_minimum() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let backups = |dir: &std::path::Path| -> Vec<String> {
+            let mut v: Vec<String> = std::fs::read_dir(dir)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with("divisi.db.bak-"))
+                .collect();
+            v.sort();
+            v
+        };
+        for i in 0..6 {
+            std::fs::write(dir.join(format!("divisi.db.bak-2026010{i}T000000Z")), vec![0u8; 1000]).unwrap();
+        }
+        // 3.5 backups fit the budget: the newest 3 are kept.
+        assert_eq!(prune_old_backups(dir, "divisi.db", 3500).unwrap(), 3);
+        assert_eq!(backups(dir), ["divisi.db.bak-20260103T000000Z", "divisi.db.bak-20260104T000000Z", "divisi.db.bak-20260105T000000Z"]);
+        // A budget smaller than one backup still keeps the newest DB_BACKUP_MIN_KEEP.
+        prune_old_backups(dir, "divisi.db", 10).unwrap();
+        assert_eq!(backups(dir).len(), DB_BACKUP_MIN_KEEP);
+        assert_eq!(backups(dir).last().unwrap(), "divisi.db.bak-20260105T000000Z");
     }
 }
