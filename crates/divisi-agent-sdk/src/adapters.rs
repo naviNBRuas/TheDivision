@@ -2,7 +2,12 @@ use crate::adapter::{run_with_prompt_flag, AgentAdapter};
 use crate::backend::ExecBackend;
 use crate::backup::backup_before_write;
 use crate::formats;
-use crate::run::{run_command_live, run_command_with_home, run_interactive_with_home};
+use crate::run::{run_command_live, run_command_live_fail_fast, run_command_with_home, run_interactive_with_home, FailFast};
+
+/// opencode and its fork kilo retry a rate-limited free model silently until the timeout. With
+/// `--print-logs --log-level ERROR` the provider's error reaches stderr, and three of them end the run
+/// early as a rate-limited failure (see `run::FailFast`).
+const OPENCODE_FAMILY_FAIL_FAST: FailFast = FailFast { pattern: "rate limit exceeded", occurrences: 3 };
 use anyhow::Result;
 use divisi_protocol::{IntegrationWrite, McpServerSpec, RunOutcome};
 use std::path::Path;
@@ -309,14 +314,25 @@ impl AgentAdapter for OpenCodeAdapter {
         timeout: Duration,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<RunOutcome> {
-        run_command_live(
+        run_command_live_fail_fast(
             "opencode",
-            &["run".to_string(), "--auto".to_string(), "--".to_string(), prompt.to_string(), "--dir".to_string(), cwd.display().to_string()],
+            &[
+                "run".to_string(),
+                "--auto".to_string(),
+                "--print-logs".to_string(),
+                "--log-level".to_string(),
+                "ERROR".to_string(),
+                "--".to_string(),
+                prompt.to_string(),
+                "--dir".to_string(),
+                cwd.display().to_string(),
+            ],
             cwd,
             backend,
             live_output_path,
             timeout,
             cancel,
+            Some(OPENCODE_FAMILY_FAIL_FAST),
         )
     }
 
@@ -1213,11 +1229,14 @@ impl AgentAdapter for KiloCodeAdapter {
         timeout: Duration,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<RunOutcome> {
-        run_command_live(
+        run_command_live_fail_fast(
             "kilo",
             &[
                 "run".to_string(),
                 "--auto".to_string(),
+                "--print-logs".to_string(),
+                "--log-level".to_string(),
+                "ERROR".to_string(),
                 "--model".to_string(),
                 "kilo/kilo-auto/free".to_string(),
                 "--".to_string(),
@@ -1228,6 +1247,7 @@ impl AgentAdapter for KiloCodeAdapter {
             live_output_path,
             timeout,
             cancel,
+            Some(OPENCODE_FAMILY_FAIL_FAST),
         )
     }
 

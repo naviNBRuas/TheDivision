@@ -73,6 +73,33 @@ pub fn run_command_live(
     timeout: Duration,
     cancel: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<RunOutcome> {
+    run_command_live_fail_fast(command, args, cwd, backend, live_output_path, timeout, cancel, None)
+}
+
+/// A stderr signature that means the run cannot succeed, and how many times it must appear before
+/// the child is killed. Live finding (2026-09-25): opencode, on a rate-limited OpenCode Zen free model,
+/// logs "Rate limit exceeded" and retries the same model until divisi's timeout, so every node routed
+/// to it burned 25 minutes and then failed as a plain timeout that never benched the agent.
+#[derive(Debug, Clone, Copy)]
+pub struct FailFast {
+    pub pattern: &'static str,
+    pub occurrences: usize,
+}
+
+/// `run_command_live`, but kills the child early once `fail_fast`'s pattern (case-insensitive) has
+/// appeared `occurrences` times on stderr. The outcome is a failure (not a timeout) whose stderr
+/// carries the provider's own error text, so rate-limit classification benches the agent.
+#[allow(clippy::too_many_arguments)]
+pub fn run_command_live_fail_fast(
+    command: &str,
+    args: &[String],
+    cwd: &Path,
+    backend: &ExecBackend,
+    live_output_path: Option<&Path>,
+    timeout: Duration,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+    fail_fast: Option<FailFast>,
+) -> Result<RunOutcome> {
     let start = Instant::now();
     let mut cmd = match backend {
         ExecBackend::Host { home, extra_env } => {
@@ -148,6 +175,7 @@ pub fn run_command_live(
     });
 
     let deadline = start + timeout;
+    let mut failed_fast = false;
     let (timed_out, cancelled) = loop {
         match child.try_wait().context("polling child process")? {
             Some(_) => break (false, false),
@@ -158,6 +186,15 @@ pub fn run_command_live(
             None if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) => {
                 kill_child(&mut child);
                 break (false, true);
+            }
+            None if fail_fast.is_some_and(|f| {
+                let pattern = f.pattern.to_lowercase();
+                stderr_buf.lock().map(|b| b.to_lowercase().matches(&pattern).count() >= f.occurrences).unwrap_or(false)
+            }) =>
+            {
+                kill_child(&mut child);
+                failed_fast = true;
+                break (false, false);
             }
             None => std::thread::sleep(Duration::from_millis(100)),
         }
@@ -171,9 +208,12 @@ pub fn run_command_live(
     }
 
     let exit_code = child.wait().ok().and_then(|s| s.code());
-    let success = !timed_out && !cancelled && exit_code == Some(0);
+    let success = !timed_out && !cancelled && !failed_fast && exit_code == Some(0);
     let stdout = Arc::try_unwrap(stdout_buf).map(|m| m.into_inner().unwrap_or_default()).unwrap_or_default();
-    let stderr = Arc::try_unwrap(stderr_buf).map(|m| m.into_inner().unwrap_or_default()).unwrap_or_default();
+    let mut stderr = Arc::try_unwrap(stderr_buf).map(|m| m.into_inner().unwrap_or_default()).unwrap_or_default();
+    if let (true, Some(f)) = (failed_fast, fail_fast) {
+        stderr.push_str(&format!("\ndivisi: stopped {command} after {} \"{}\" errors on stderr\n", f.occurrences, f.pattern));
+    }
 
     Ok(RunOutcome {
         success,
@@ -304,6 +344,24 @@ fn drain_into(pipe: impl Read, buf: Arc<Mutex<String>>, tee: Option<Arc<Mutex<st
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fail_fast_kills_a_child_that_keeps_logging_a_fatal_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = "for i in 1 2 3; do echo 'ERROR stream error: Rate limit exceeded' >&2; done; sleep 30".to_string();
+        let backend = crate::backend::ExecBackend::Host { home: None, extra_env: None };
+        let ff = Some(super::FailFast { pattern: "rate limit exceeded", occurrences: 3 });
+        let t = std::time::Instant::now();
+        let out = super::run_command_live_fail_fast("sh", &["-c".to_string(), script], dir.path(), &backend, None, std::time::Duration::from_secs(20), None, ff).unwrap();
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "should stop early, took {:?}", t.elapsed());
+        assert!(!out.success && !out.timed_out, "{out:?}");
+        assert!(out.stderr.contains("Rate limit exceeded") && out.stderr.contains("divisi: stopped sh"), "{}", out.stderr);
+
+        // Fewer occurrences than the threshold: the run finishes normally.
+        let script = "echo 'Rate limit exceeded' >&2; echo done".to_string();
+        let out = super::run_command_live_fail_fast("sh", &["-c".to_string(), script], dir.path(), &backend, None, std::time::Duration::from_secs(20), None, ff).unwrap();
+        assert!(out.success && out.stdout.contains("done"), "{out:?}");
+    }
+
     #[test]
     fn toolchain_caches_point_at_existing_real_dirs_only() {
         let home = tempfile::tempdir().unwrap();
