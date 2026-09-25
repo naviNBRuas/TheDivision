@@ -925,7 +925,8 @@ fn branch_gate_gaps(ctx: &Context, goal: &Goal, session_cwd: &std::path::Path) -
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
     let Some(base) = base else { return vec![] };
     let mut gaps = crate::coordinator::gates::branch_gaps(&wt, &base);
-    gaps.extend(crate::coordinator::gates::build_gap(&wt, std::time::Duration::from_secs(600)));
+    gaps.extend(crate::coordinator::gates::doc_gaps(&wt, &base, chrono::Local::now().date_naive()));
+    gaps.extend(crate::coordinator::gates::build_gap(&wt, &base, std::time::Duration::from_secs(600)));
     gaps
 }
 
