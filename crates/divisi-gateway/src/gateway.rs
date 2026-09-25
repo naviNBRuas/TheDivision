@@ -291,11 +291,7 @@ fn check_permission(resource: &str) -> Result<divisi_core::preferences::Verdict>
     let dirs = divisi_core::DivisiDirs::discover().context("resolving divisi config directory")?;
     let rules = divisi_core::permissions::load(&dirs.permissions_file())?;
     let db_path = dirs.db_path();
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
-    }
-    let conn = rusqlite::Connection::open(&db_path).with_context(|| format!("opening {}", db_path.display()))?;
-    divisi_core::preferences::ensure_schema(&conn)?;
+    let conn = divisi_core::preferences::open_db(&db_path).with_context(|| format!("opening {}", db_path.display()))?;
     divisi_core::preferences::evaluate_and_learn(&rules.tools, &conn, resource, Some("divisi-gateway invoke_mcp"))
 }
 

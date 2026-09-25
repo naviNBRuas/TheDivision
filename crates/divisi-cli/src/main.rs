@@ -3229,12 +3229,7 @@ fn run_claude_pretooluse_hook() -> anyhow::Result<()> {
 
     let dirs = DivisiDirs::discover()?;
     let rules = divisi_core::permissions::load(&dirs.permissions_file())?;
-    let db_path = dirs.db_path();
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let conn = rusqlite::Connection::open(&db_path)?;
-    divisi_core::preferences::ensure_schema(&conn)?;
+    let conn = divisi_core::preferences::open_db(&dirs.db_path())?;
 
     let verdict = divisi_core::preferences::evaluate_and_learn(
         &rules.tools,

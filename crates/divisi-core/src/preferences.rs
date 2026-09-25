@@ -29,6 +29,21 @@ use crate::permissions::{Decision, Rule};
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 
+/// Opens the shared state db for a permission check from a process other than divisid (the Claude
+/// hook, divisi-mcp, divisi-gateway), with the same WAL mode and 30 s busy timeout divisid's own
+/// `state::open` uses. rusqlite's default 5 s timeout was too short while divisid wrote under memory
+/// pressure, and a pool task whose tool call hit "database is locked" failed outright.
+pub fn open_db(db_path: &std::path::Path) -> Result<Connection> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let conn = Connection::open(db_path)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.busy_timeout(std::time::Duration::from_secs(30))?;
+    ensure_schema(&conn)?;
+    Ok(conn)
+}
+
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS preferences (
@@ -308,6 +323,31 @@ pub fn evaluate_and_learn(rules: &[Rule], conn: &Connection, resource: &str, con
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The permission checks in the Claude hook, divisi-mcp and the gateway run in separate processes
+    /// from divisid and write (learn / request approval). With a bare `Connection::open` a concurrent
+    /// writer failed pool tasks outright with "database is locked"; `open_db` must make them wait.
+    #[test]
+    fn open_db_lets_concurrent_permission_checks_write_without_locking_each_other_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("state").join("divisi.db");
+        open_db(&db_path).unwrap();
+
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let db_path = db_path.clone();
+                std::thread::spawn(move || {
+                    let conn = open_db(&db_path).unwrap();
+                    for j in 0..20 {
+                        evaluate_and_learn(&[], &conn, &format!("divisi:tool-{i}-{j}"), Some("test")).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+    }
 
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
