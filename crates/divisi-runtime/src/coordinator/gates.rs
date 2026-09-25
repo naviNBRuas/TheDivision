@@ -65,6 +65,36 @@ pub fn docs_only_gap(worktree: &Path, base: &str, goal_text: &str) -> Option<Str
     })
 }
 
+/// Whether `path` is a schema migration: a `.sql` or numbered file (`0005_x.py`, `20240101_x.ts`)
+/// inside a `migrations`/`migration`/`alembic/versions`/`db/migrate` directory. Helpers such as
+/// nbr-core's `migrations/embed.go` are not migrations.
+fn is_migration(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    let (name, dirs) = parts.split_last().unwrap_or((&"", &[]));
+    let in_dir = dirs.iter().any(|d| matches!(*d, "migrations" | "migration"))
+        || dirs.windows(2).any(|w| matches!(w, ["alembic", "versions"] | ["db", "migrate"]));
+    in_dir && (name.ends_with(".sql") || name.starts_with(|c: char| c.is_ascii_digit()))
+}
+
+/// Existing migrations the goal branch modified, deleted or renamed. An applied migration is
+/// immutable: databases that ran it never re-run it, so an edit silently forks the schema. Live
+/// finding (2026-09-25): an ontology goal rewrote nbr-core migrations 005, 173 and 230, dropping an
+/// index and a tenancy comment, instead of adding a new migration.
+pub fn migration_gaps(worktree: &Path, base: &str) -> Vec<String> {
+    let Some(touched) = git(worktree, &["diff", "--name-only", "--no-renames", "--diff-filter=MD", &format!("{base}...HEAD")]) else {
+        return Vec::new();
+    };
+    touched
+        .lines()
+        .filter(|f| is_migration(f))
+        .map(|f| {
+            format!(
+                "{f} is an existing migration and must not be edited or deleted; restore it from the base branch and put the schema change in a new, higher-numbered migration"
+            )
+        })
+        .collect()
+}
+
 /// Gaps in the goal branch checked out at `worktree`, compared with `base` (a commit-ish).
 pub fn branch_gaps(worktree: &Path, base: &str) -> Vec<String> {
     let mut gaps = Vec::new();
@@ -309,6 +339,41 @@ mod tests {
         assert!(docs_only_gap(d, &base, "Sprint\n**Kind:** docs\n").is_some());
         // Code goals, and prose that merely mentions docs, are not restricted.
         assert_eq!(docs_only_gap(d, &base, "Sprint\n**Kind:** code\nUpdate the docs only if needed."), None);
+    }
+
+    #[test]
+    fn flags_edits_to_existing_migrations_but_not_new_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        run(d, &["init", "-q"]);
+        run(d, &["config", "user.email", "t@example.com"]);
+        run(d, &["config", "user.name", "T"]);
+        std::fs::create_dir_all(d.join("migrations")).unwrap();
+        std::fs::create_dir_all(d.join("alembic/versions")).unwrap();
+        std::fs::write(d.join("migrations/005_x.up.sql"), "CREATE TABLE x ();").unwrap();
+        std::fs::write(d.join("migrations/006_y.up.sql"), "CREATE TABLE y ();").unwrap();
+        std::fs::write(d.join("alembic/versions/0001_init.py"), "def upgrade(): pass").unwrap();
+        std::fs::write(d.join("migrations/embed.go"), "package migrations").unwrap();
+        std::fs::write(d.join("main.go"), "package main").unwrap();
+        run(d, &["add", "."]);
+        run(d, &["commit", "-q", "-m", "base"]);
+        let base = git(d, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        assert!(migration_gaps(d, &base).is_empty(), "no changes, no gap");
+
+        std::fs::write(d.join("migrations/005_x.up.sql"), "CREATE TABLE x (id int);").unwrap();
+        std::fs::remove_file(d.join("migrations/006_y.up.sql")).unwrap();
+        std::fs::write(d.join("migrations/007_z.up.sql"), "CREATE TABLE z ();").unwrap();
+        std::fs::write(d.join("main.go"), "package main // changed").unwrap();
+        std::fs::write(d.join("migrations/embed.go"), "package migrations // changed").unwrap();
+        run(d, &["add", "-A"]);
+        run(d, &["commit", "-q", "-m", "goal"]);
+        let gaps = migration_gaps(d, &base).join("\n");
+        assert!(gaps.contains("migrations/005_x.up.sql") && gaps.contains("migrations/006_y.up.sql"), "{gaps}");
+        assert!(!gaps.contains("007_z") && !gaps.contains("main.go") && !gaps.contains("embed.go"), "{gaps}");
+
+        std::fs::write(d.join("alembic/versions/0001_init.py"), "def upgrade(): drop()").unwrap();
+        run(d, &["commit", "-qam", "alembic"]);
+        assert!(migration_gaps(d, &base).join("\n").contains("alembic/versions/0001_init.py"));
     }
 
     #[test]
