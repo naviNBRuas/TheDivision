@@ -26,6 +26,7 @@ const RECOVERY_PROBES_PER_PASS: usize = 2;
 /// wait. This is what makes grok, agy, codex, claude and the rest rejoin routing without anyone noticing
 /// they left.
 fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
+    let skipped = drop_unroutable_benches(ctx, conn);
     let due = crate::agent_cooldown::needing_verification(conn, chrono::Utc::now())?;
     let mut back = Vec::new();
     let mut still = Vec::new();
@@ -58,12 +59,34 @@ fn agent_recovery(ctx: &Context, conn: &Connection) -> Result<String> {
         }
     }
     Ok(format!(
-        "back in routing: [{}]; back early: [{}]; still unavailable: [{}]; waiting for a later pass: {}",
+        "back in routing: [{}]; back early: [{}]; still unavailable: [{}]; waiting for a later pass: {}; dropped benches of unroutable agents: [{}]",
         back.join(", "),
         early_back.join(", "),
         still.join(", "),
-        due.len().saturating_sub(RECOVERY_PROBES_PER_PASS)
+        due.len().saturating_sub(RECOVERY_PROBES_PER_PASS),
+        skipped.join(", ")
     ))
+}
+
+/// Forgets benches of agents routing can never pick: pre-rebrand names (`single-bai`, now
+/// `divisi-bai`) and agents in `disabled_agents`. Live finding (2026-09-25): recovery spent its two
+/// probes per pass on `single-nvidia`/`single-bai`/`single-cerebras`, which failed ("provider 'bai' is
+/// not registered") and were re-benched, so real agents waited longer to rejoin.
+fn drop_unroutable_benches(ctx: &Context, conn: &Connection) -> Vec<String> {
+    let disabled = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs).disabled_agents;
+    let benched: Vec<String> = conn
+        .prepare("SELECT agent FROM agent_cooldowns")
+        .and_then(|mut st| st.query_map([], |r| r.get::<_, String>(0))?.collect())
+        .unwrap_or_default();
+    let mut dropped = Vec::new();
+    for name in &benched {
+        if divisi_core::agent_names::canonical(name) != *name || disabled.iter().any(|d| d == name) {
+            if crate::agent_cooldown::clear(conn, name).unwrap_or(false) {
+                dropped.push(name.clone());
+            }
+        }
+    }
+    dropped
 }
 
 /// Removes `state/worktrees/task-<id>` worktrees whose task is no longer
