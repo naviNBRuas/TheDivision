@@ -32,6 +32,39 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
+/// Documentation file extensions a docs-only goal may change.
+const DOC_EXTS: &[&str] = &["md", "mdx", "markdown", "txt", "rst", "adoc"];
+
+/// Whether a goal's text declares it documentation-only: a `**Kind:** docs` line, or a `**Status:**` line
+/// saying "docs only" (the conductor inlines the sprint file, so its header lines are in the goal text).
+fn declares_docs_only(goal_text: &str) -> bool {
+    goal_text.lines().any(|l| {
+        let l = l.trim_start_matches(['>', ' ']).to_lowercase();
+        (l.starts_with("**kind:**") && l["**kind:**".len()..].trim() == "docs")
+            || (l.starts_with("**status:**") && l.contains("docs only"))
+    })
+}
+
+/// A docs-only goal that changed anything other than documentation. Live finding (2026-09-25): a
+/// "docs only" rules-of-engagement sprint came back rewriting nbr-core's authorization engine and router
+/// and adding a migration; the integrator marked it done.
+pub fn docs_only_gap(worktree: &Path, base: &str, goal_text: &str) -> Option<String> {
+    if !declares_docs_only(goal_text) {
+        return None;
+    }
+    let changed = git(worktree, &["diff", "--name-only", &format!("{base}...HEAD")])?;
+    let code: Vec<&str> = changed
+        .lines()
+        .filter(|f| !Path::new(f).extension().and_then(|e| e.to_str()).is_some_and(|e| DOC_EXTS.contains(&e.to_lowercase().as_str())))
+        .collect();
+    (!code.is_empty()).then(|| {
+        format!(
+            "this sprint is documentation-only, but the branch changes non-documentation files ({}); revert them and change only documentation",
+            code.join(", ")
+        )
+    })
+}
+
 /// Gaps in the goal branch checked out at `worktree`, compared with `base` (a commit-ish).
 pub fn branch_gaps(worktree: &Path, base: &str) -> Vec<String> {
     let mut gaps = Vec::new();
@@ -251,6 +284,31 @@ mod tests {
 
     fn run(dir: &Path, args: &[&str]) {
         assert!(Command::new("git").current_dir(dir).args(args).status().unwrap().success(), "git {args:?}");
+    }
+
+    #[test]
+    fn docs_only_goals_may_change_only_documentation() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        run(d, &["init", "-q"]);
+        run(d, &["config", "user.email", "t@example.com"]);
+        run(d, &["config", "user.name", "T"]);
+        std::fs::write(d.join("main.go"), "package main").unwrap();
+        run(d, &["add", "."]);
+        run(d, &["commit", "-q", "-m", "base"]);
+        let base = git(d, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        std::fs::create_dir_all(d.join("docs/security")).unwrap();
+        std::fs::write(d.join("docs/security/rules.md"), "# Rules").unwrap();
+        std::fs::write(d.join("main.go"), "package main // changed").unwrap();
+        run(d, &["add", "."]);
+        run(d, &["commit", "-q", "-m", "goal"]);
+
+        let docs_goal = "Implement sprint.\n**Status:** queued — docs only (defines the rules)\n";
+        let gap = docs_only_gap(d, &base, docs_goal).expect("a code change in a docs-only goal is a gap");
+        assert!(gap.contains("main.go") && !gap.contains("rules.md"), "{gap}");
+        assert!(docs_only_gap(d, &base, "Sprint\n**Kind:** docs\n").is_some());
+        // Code goals, and prose that merely mentions docs, are not restricted.
+        assert_eq!(docs_only_gap(d, &base, "Sprint\n**Kind:** code\nUpdate the docs only if needed."), None);
     }
 
     #[test]
