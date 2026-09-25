@@ -42,4 +42,24 @@ impl<'a> ExecBackend<'a> {
     pub fn host_with_env(home: Option<&'a Path>, extra_env: &'a BTreeMap<String, String>) -> Self {
         ExecBackend::Host { home, extra_env: Some(extra_env) }
     }
+
+    /// The env applied on top of the child's inherited environment, if any.
+    pub fn extra_env(&self) -> Option<&'a BTreeMap<String, String>> {
+        match self {
+            ExecBackend::Host { extra_env, .. } | ExecBackend::Docker { extra_env, .. } => *extra_env,
+        }
+    }
+
+    /// The same backend, applying `extra_env` instead of its own.
+    pub fn with_extra_env<'b>(&self, extra_env: &'b BTreeMap<String, String>) -> ExecBackend<'b>
+    where
+        'a: 'b,
+    {
+        match self {
+            ExecBackend::Host { home, .. } => ExecBackend::Host { home: *home, extra_env: Some(extra_env) },
+            ExecBackend::Docker { container, workdir, .. } => {
+                ExecBackend::Docker { container, workdir, extra_env: Some(extra_env) }
+            }
+        }
+    }
 }

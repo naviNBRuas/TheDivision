@@ -8,6 +8,21 @@ use crate::run::{run_command_live, run_command_live_fail_fast, run_command_with_
 /// `--print-logs --log-level ERROR` the provider's error reaches stderr, and three of them end the run
 /// early as a rate-limited failure (see `run::FailFast`).
 const OPENCODE_FAMILY_FAIL_FAST: FailFast = FailFast { pattern: "rate limit exceeded", occurrences: 3 };
+
+/// opencode and kilo cut each shell command off at 2 minutes. A Go or Rust build/test routinely takes
+/// longer, and kilo's next turn after such a timeout fails with "The messages do not match the
+/// ModelMessage[] schema", ending the whole run. Both read a default from these vars; 10 minutes.
+const OPENCODE_FAMILY_ENV: [(&str, &str); 2] =
+    [("OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS", "600000"), ("KILO_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS", "600000")];
+
+/// The backend's env plus `OPENCODE_FAMILY_ENV`, without overriding anything already set.
+fn opencode_family_env(backend: &ExecBackend) -> std::collections::BTreeMap<String, String> {
+    let mut env = backend.extra_env().cloned().unwrap_or_default();
+    for (key, value) in OPENCODE_FAMILY_ENV {
+        env.entry(key.to_string()).or_insert_with(|| value.to_string());
+    }
+    env
+}
 use anyhow::Result;
 use divisi_protocol::{IntegrationWrite, McpServerSpec, RunOutcome};
 use std::path::Path;
@@ -314,6 +329,7 @@ impl AgentAdapter for OpenCodeAdapter {
         timeout: Duration,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<RunOutcome> {
+        let env = opencode_family_env(backend);
         run_command_live_fail_fast(
             "opencode",
             &[
@@ -328,7 +344,7 @@ impl AgentAdapter for OpenCodeAdapter {
                 cwd.display().to_string(),
             ],
             cwd,
-            backend,
+            &backend.with_extra_env(&env),
             live_output_path,
             timeout,
             cancel,
@@ -1229,6 +1245,7 @@ impl AgentAdapter for KiloCodeAdapter {
         timeout: Duration,
         cancel: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<RunOutcome> {
+        let env = opencode_family_env(backend);
         run_command_live_fail_fast(
             "kilo",
             &[
@@ -1243,7 +1260,7 @@ impl AgentAdapter for KiloCodeAdapter {
                 prompt.to_string(),
             ],
             cwd,
-            backend,
+            &backend.with_extra_env(&env),
             live_output_path,
             timeout,
             cancel,
@@ -1615,6 +1632,34 @@ mod tests {
             env: BTreeMap::new(), secret_env: BTreeMap::new(),
             enabled: true,
         }]
+    }
+
+    #[test]
+    fn opencode_family_env_raises_the_bash_timeout_and_keeps_existing_env() {
+        let mut keys = BTreeMap::new();
+        keys.insert("OPENROUTER_API_KEY".to_string(), "k".to_string());
+        keys.insert("KILO_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS".to_string(), "5".to_string());
+        let env = opencode_family_env(&ExecBackend::host_with_env(None, &keys));
+        assert_eq!(env["OPENROUTER_API_KEY"], "k");
+        assert_eq!(env["KILO_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"], "5");
+        assert_eq!(env["OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"], "600000");
+
+        let env = opencode_family_env(&ExecBackend::host(None));
+        assert_eq!(env["KILO_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"], "600000");
+    }
+
+    #[test]
+    fn with_extra_env_keeps_the_backend_kind_and_home() {
+        let home = std::path::PathBuf::from("/h");
+        let env = BTreeMap::from([("A".to_string(), "1".to_string())]);
+        let b = ExecBackend::host(Some(&home));
+        match b.with_extra_env(&env) {
+            ExecBackend::Host { home: Some(h), extra_env: Some(e) } => {
+                assert_eq!(h, home.as_path());
+                assert_eq!(e["A"], "1");
+            }
+            _ => panic!("expected a host backend with home and env"),
+        }
     }
 
     #[test]
