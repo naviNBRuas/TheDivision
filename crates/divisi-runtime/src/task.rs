@@ -1363,9 +1363,15 @@ fn execute(
     get(conn, id)?.context("task disappeared after finishing")
 }
 
-/// A fallback target is skipped while benched, and while on probation (bench lapsed, no real success
-/// since) with a task already running on it -- one trial at a time, as the scheduler does.
-fn fallback_target_usable(conn: &Connection, agent: &str) -> bool {
+/// A fallback target is skipped when switched off in `disabled_agents`, while benched, and while on
+/// probation (bench lapsed, no real success since) with a task already running on it -- one trial at a
+/// time, as the scheduler does. Live finding (2026-09-25): grok's chain still fell back to the disabled
+/// divisi-nvidia, which failed every request.
+fn fallback_target_usable(ctx: &Context, conn: &Connection, agent: &str) -> bool {
+    let disabled = crate::coordinator::routing::CoordinatorConfig::load(&ctx.dirs).disabled_agents;
+    if disabled.iter().any(|d| *d == divisi_core::agent_names::canonical(agent)) {
+        return false;
+    }
     let now = chrono::Utc::now();
     if crate::agent_cooldown::active(conn, now).is_ok_and(|a| a.contains_key(agent)) {
         return false;
@@ -1418,10 +1424,10 @@ fn maybe_fail_over(conn: &Connection, ctx: &Context, id: i64, opts: &RunTaskOpti
     let mut next = next;
     let next = loop {
         let Some(candidate) = next else { return };
-        if fallback_target_usable(conn, &candidate.agent) {
+        if fallback_target_usable(ctx, conn, &candidate.agent) {
             break candidate;
         }
-        let _ = crate::state::record_event(conn, "task.fallback_skip", &format!("#{id} skipped fallback '{}': benched or on probation", candidate.agent));
+        let _ = crate::state::record_event(conn, "task.fallback_skip", &format!("#{id} skipped fallback '{}': disabled, benched or on probation", candidate.agent));
         next = match divisi_core::fallback::next_after(&fallback_path, &candidate) {
             Ok(n) => n,
             Err(_) => return,
@@ -2339,23 +2345,30 @@ value = "-c"
     }
 
     #[test]
-    fn fallback_skips_benched_targets_and_busy_ones_on_probation() {
+    fn fallback_skips_disabled_benched_and_busy_probation_targets() {
         use chrono::{Duration, Utc};
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = divisi_core::DivisiDirs::from_root(dir.path().to_path_buf());
+        dirs.ensure_created().unwrap();
+        std::fs::write(dirs.coordinator_file(), "disabled_agents = [\"divisi-cerebras\"]\n").unwrap();
+        let ctx = Context { dirs, resolved: divisi_core::ResolvedConfig::default(), registry: divisi_core::builtin_registry() };
         let conn = Connection::open_in_memory().unwrap();
         ensure_schema(&conn).unwrap();
-        assert!(fallback_target_usable(&conn, "opencode"), "no cooldown row: usable");
+        assert!(fallback_target_usable(&ctx, &conn, "opencode"), "no cooldown row: usable");
+        assert!(!fallback_target_usable(&ctx, &conn, "divisi-cerebras"), "disabled: skipped");
+        assert!(!fallback_target_usable(&ctx, &conn, "single-cerebras"), "disabled under its legacy name: skipped");
 
         crate::agent_cooldown::record(&conn, "divisi-nvidia", Utc::now() + Duration::minutes(10), "down").unwrap();
-        assert!(!fallback_target_usable(&conn, "divisi-nvidia"), "benched: skipped");
+        assert!(!fallback_target_usable(&ctx, &conn, "divisi-nvidia"), "benched: skipped");
 
         crate::agent_cooldown::record(&conn, "grok", Utc::now() - Duration::minutes(1), "usage limit").unwrap();
-        assert!(fallback_target_usable(&conn, "grok"), "on probation with nothing running: one trial is fine");
+        assert!(fallback_target_usable(&ctx, &conn, "grok"), "on probation with nothing running: one trial is fine");
         conn.execute(
             "INSERT INTO tasks (id, description, agent, status, timed_out, created_at, updated_at, cwd, workspace_id)
              VALUES (1, 'x', 'grok', 'running', 0, '', '', '', '')",
             [],
         )
         .unwrap();
-        assert!(!fallback_target_usable(&conn, "grok"), "on probation with a trial already running: skipped");
+        assert!(!fallback_target_usable(&ctx, &conn, "grok"), "on probation with a trial already running: skipped");
     }
 }
