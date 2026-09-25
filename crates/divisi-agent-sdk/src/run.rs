@@ -76,8 +76,10 @@ pub fn run_command_live(
     let start = Instant::now();
     let mut cmd = match backend {
         ExecBackend::Host { home, extra_env } => {
-            let mut cmd = Command::new(command);
-            cmd.args(args).current_dir(cwd);
+            // Bubblewrap confinement when DIVISI_CONFINE_ROOTS is set (see `confine`).
+            let (program, argv) = crate::confine::wrap(command, args, cwd);
+            let mut cmd = Command::new(program);
+            cmd.args(argv).current_dir(cwd);
             if let Some(home) = home {
                 cmd.env("HOME", home);
                 pin_real_config_dir(&mut cmd);

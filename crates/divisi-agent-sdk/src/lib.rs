@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod adapters;
 pub mod backend;
 pub mod backup;
+pub mod confine;
 pub mod discover;
 pub mod formats;
 pub mod generic_adapter;
