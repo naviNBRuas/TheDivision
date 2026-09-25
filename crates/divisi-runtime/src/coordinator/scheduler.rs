@@ -349,7 +349,12 @@ fn build_capacity(conn: &Connection, ctx: &Context, cfg: &CoordinatorConfig) -> 
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))?
         .collect::<rusqlite::Result<_>>()?;
     let global_running = per_agent_running.values().sum();
-    let per_agent_cap = agent_caps(ctx.registry.iter().map(|a| (a.name.as_str(), a.max_concurrency.map(|c| c as usize))), cfg);
+    let mut per_agent_cap = agent_caps(ctx.registry.iter().map(|a| (a.name.as_str(), a.max_concurrency.map(|c| c as usize))), cfg);
+    // Half-open breaker: an agent whose bench just lapsed gets one task until a real one completes.
+    for agent in crate::agent_cooldown::on_probation(conn, Utc::now()).unwrap_or_default() {
+        let cap = per_agent_cap.get(&agent).copied().unwrap_or(usize::MAX).min(1);
+        per_agent_cap.insert(agent, cap);
+    }
     Ok(Capacity { global_running, per_agent_running, per_agent_cap })
 }
 
@@ -2102,5 +2107,19 @@ mod tests {
 
         assert_eq!(rec.0.borrow().as_slice(), [healthy.clone()]);
         assert_eq!(goal::get(&conn, &goals[0].id).unwrap().unwrap().status, GoalStatus::Blocked);
+    }
+
+    #[test]
+    fn an_agent_on_probation_gets_one_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(tmp.path());
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+        crate::agent_cooldown::record(&conn, "grok", Utc::now() - chrono::Duration::minutes(1), "usage limit").unwrap();
+
+        let cap = build_capacity(&conn, &ctx, &CoordinatorConfig::default()).unwrap();
+        assert_eq!(cap.agent_headroom("grok"), 1);
+        assert!(cap.agent_headroom("opencode") > 1, "agents not on probation keep their normal cap");
     }
 }

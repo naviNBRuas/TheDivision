@@ -1363,6 +1363,22 @@ fn execute(
     get(conn, id)?.context("task disappeared after finishing")
 }
 
+/// A fallback target is skipped while benched, and while on probation (bench lapsed, no real success
+/// since) with a task already running on it -- one trial at a time, as the scheduler does.
+fn fallback_target_usable(conn: &Connection, agent: &str) -> bool {
+    let now = chrono::Utc::now();
+    if crate::agent_cooldown::active(conn, now).is_ok_and(|a| a.contains_key(agent)) {
+        return false;
+    }
+    if !crate::agent_cooldown::on_probation(conn, now).is_ok_and(|p| p.contains(agent)) {
+        return true;
+    }
+    let running: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tasks WHERE agent = ?1 AND status IN ('created','running')", [agent], |r| r.get(0))
+        .unwrap_or(0);
+    running == 0
+}
+
 /// One hop of `task run --allow-fallback`: if `id`'s failure looks like a
 /// rate limit — `rate_limited` is decided by the caller (`execute`, via
 /// `divisi_core::ratelimit::looks_like_rate_limit` on the output), or the
@@ -1397,7 +1413,20 @@ fn maybe_fail_over(conn: &Connection, ctx: &Context, id: i64, opts: &RunTaskOpti
             return;
         }
     };
-    let Some(next) = next else { return };
+    // Walk past targets that cannot take the work right now. Live finding (2026-09-25): grok's chain
+    // fell back to divisi-nvidia while nvidia failed every request, 15 fallbacks a minute.
+    let mut next = next;
+    let next = loop {
+        let Some(candidate) = next else { return };
+        if fallback_target_usable(conn, &candidate.agent) {
+            break candidate;
+        }
+        let _ = crate::state::record_event(conn, "task.fallback_skip", &format!("#{id} skipped fallback '{}': benched or on probation", candidate.agent));
+        next = match divisi_core::fallback::next_after(&fallback_path, &candidate) {
+            Ok(n) => n,
+            Err(_) => return,
+        };
+    };
     let detected = for_agent_with_custom(&next.agent, &ctx.dirs.agents_dir(), &ctx.registry).is_some_and(|a| a.discover().detected);
     if !detected {
         let _ = crate::state::record_event(conn, "task.fallback_error", &format!("#{id} fallback target '{}' isn't installed", next.agent));
@@ -2305,5 +2334,26 @@ value = "-c"
             "Exhausted must map onto the existing rate-limited terminal shape (Task 14), got summary: {:?}",
             task.summary
         );
+    }
+
+    #[test]
+    fn fallback_skips_benched_targets_and_busy_ones_on_probation() {
+        use chrono::{Duration, Utc};
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        assert!(fallback_target_usable(&conn, "opencode"), "no cooldown row: usable");
+
+        crate::agent_cooldown::record(&conn, "divisi-nvidia", Utc::now() + Duration::minutes(10), "down").unwrap();
+        assert!(!fallback_target_usable(&conn, "divisi-nvidia"), "benched: skipped");
+
+        crate::agent_cooldown::record(&conn, "grok", Utc::now() - Duration::minutes(1), "usage limit").unwrap();
+        assert!(fallback_target_usable(&conn, "grok"), "on probation with nothing running: one trial is fine");
+        conn.execute(
+            "INSERT INTO tasks (id, description, agent, status, timed_out, created_at, updated_at, cwd, workspace_id)
+             VALUES (1, 'x', 'grok', 'running', 0, '', '', '', '')",
+            [],
+        )
+        .unwrap();
+        assert!(!fallback_target_usable(&conn, "grok"), "on probation with a trial already running: skipped");
     }
 }

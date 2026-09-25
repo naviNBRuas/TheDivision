@@ -295,6 +295,33 @@ pub fn active(conn: &Connection, now: DateTime<Utc>) -> Result<BTreeMap<String, 
     Ok(out)
 }
 
+/// Agents whose bench has run out but that have not completed a real task since it was set: they get
+/// one task at a time until one works (a half-open breaker). Live finding (2026-09-25): each time grok's
+/// or nvidia's bench lapsed, 13-15 tasks went out in the same minute and all failed before the first
+/// failure benched it again. A probe answering is not enough -- grok's tiny call works while real work
+/// still hits its usage limit -- so only a completed task in `tasks` ends probation.
+pub fn on_probation(conn: &Connection, now: DateTime<Utc>) -> Result<std::collections::BTreeSet<String>> {
+    ensure_schema(conn)?;
+    let mut stmt = conn.prepare("SELECT agent, until, noted_at FROM agent_cooldowns")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
+    let parse = |s: &str| DateTime::parse_from_rfc3339(s).ok().map(|t| t.with_timezone(&Utc));
+    let mut out = std::collections::BTreeSet::new();
+    for row in rows {
+        let (agent, until, noted) = row?;
+        let (Some(until), Some(noted)) = (parse(&until), parse(&noted)) else { continue };
+        if until > now {
+            continue; // still benched, not half-open
+        }
+        let last_ok: Option<String> = conn
+            .query_row("SELECT MAX(updated_at) FROM tasks WHERE agent = ?1 AND status = 'completed'", [&agent], |r| r.get(0))
+            .unwrap_or(None);
+        if !last_ok.as_deref().and_then(parse).is_some_and(|t| t > noted) {
+            out.insert(agent);
+        }
+    }
+    Ok(out)
+}
+
 /// Forgets an agent's cooldown (for when a parsed time turns out wrong).
 pub fn clear(conn: &Connection, agent: &str) -> Result<bool> {
     ensure_schema(conn)?;
@@ -308,6 +335,44 @@ mod tests {
 
     fn db() -> Connection {
         Connection::open_in_memory().unwrap()
+    }
+
+    fn task_row(conn: &Connection, id: i64, agent: &str, status: &str, at: DateTime<Utc>) {
+        crate::task::ensure_schema(conn).unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, description, agent, status, timed_out, created_at, updated_at, cwd, workspace_id)
+             VALUES (?1, 'x', ?2, ?3, 0, ?4, ?4, '', '')",
+            params![id, agent, status, at.to_rfc3339()],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn an_expired_bench_stays_on_probation_until_a_real_task_completes() {
+        let conn = db();
+        crate::task::ensure_schema(&conn).unwrap();
+        let now = Utc::now();
+        record(&conn, "grok", now - Duration::minutes(1), "usage limit").unwrap();
+        assert!(on_probation(&conn, now).unwrap().contains("grok"));
+
+        // a probe that answered is not enough: the tiny call works while real work still hits the limit
+        mark_verified(&conn, "grok"); // ends the bench at the real current time
+        let later = Utc::now() + Duration::seconds(1);
+        assert!(on_probation(&conn, later).unwrap().contains("grok"));
+
+        task_row(&conn, 1, "grok", "failed", now);
+        assert!(on_probation(&conn, later).unwrap().contains("grok"));
+        task_row(&conn, 2, "grok", "completed", now + Duration::seconds(1));
+        assert!(!on_probation(&conn, now + Duration::seconds(2)).unwrap().contains("grok"));
+    }
+
+    #[test]
+    fn a_bench_still_running_is_not_probation() {
+        let conn = db();
+        crate::task::ensure_schema(&conn).unwrap();
+        let now = Utc::now();
+        record(&conn, "divisi-nvidia", now + Duration::minutes(10), "HTTP request to provider failed").unwrap();
+        assert!(on_probation(&conn, now).unwrap().is_empty());
     }
 
     #[test]
