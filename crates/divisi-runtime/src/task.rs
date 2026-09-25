@@ -748,7 +748,7 @@ pub fn run(conn: &Connection, ctx: &Context, opts: RunTaskOptions) -> Result<Tas
     // non-interactive mode — see registry.rs). Previously this reached
     // `execute` anyway and burned a real subprocess spawn every time,
     // producing an opaque failure instead of the actual reason.
-    if let Some(def) = ctx.registry.iter().find(|a| a.name == opts.agent) {
+    if let Some(def) = ctx.find_agent(opts.agent) {
         if !def.capabilities.non_interactive_run {
             anyhow::bail!(
                 "agent '{}' has no non-interactive run mode; it cannot be dispatched headlessly",
@@ -837,7 +837,7 @@ pub fn run_background(
         );
     }
     // See the identical check in `run` above.
-    if let Some(def) = ctx.registry.iter().find(|a| a.name == opts.agent) {
+    if let Some(def) = ctx.find_agent(&opts.agent) {
         if !def.capabilities.non_interactive_run {
             anyhow::bail!(
                 "agent '{}' has no non-interactive run mode; it cannot be dispatched headlessly",
