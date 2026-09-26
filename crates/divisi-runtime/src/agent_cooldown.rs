@@ -56,7 +56,7 @@ fn strikes_of(conn: &Connection, agent: &str) -> u32 {
 /// earlier or equal time never shortens an existing cooldown.
 pub fn record(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str) -> Result<()> {
     ensure_schema(conn)?;
-    let reason: String = reason.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(200).collect();
+    let reason = clean_reason(reason);
     conn.execute(
         "INSERT INTO agent_cooldowns (agent, until, reason, noted_at) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(agent) DO UPDATE SET
@@ -66,6 +66,42 @@ pub fn record(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str
         params![agent, until.to_rfc3339(), reason, Utc::now().to_rfc3339()],
     )?;
     Ok(())
+}
+
+/// The first meaningful line of an agent's error output, at most 200 chars. Agent CLIs colour their
+/// errors, and a reason that was only `\x1b[0m` told nobody why kilocode was benched for five hours.
+fn clean_reason(raw: &str) -> String {
+    strip_ansi(raw)
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && *l != "--- stderr ---" && *l != "[stderr]")
+        .unwrap_or("")
+        .chars()
+        .take(200)
+        .collect()
+}
+
+/// Drops ANSI escape sequences: CSI (`ESC [ ... letter`) and two-byte `ESC x`.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\x1b' {
+            out.push(c);
+            continue;
+        }
+        if chars.peek() == Some(&'[') {
+            chars.next();
+            for n in chars.by_ref() {
+                if n.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            chars.next();
+        }
+    }
+    out
 }
 
 /// `divisi-pool` is rate limited per key by the pool, not per agent. The other `divisi-*` names are
@@ -136,7 +172,7 @@ fn period_reset(output: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
 
 /// A bench whose end the agent (or its quota period) stated: replaces whatever was there.
 fn record_stated(conn: &Connection, agent: &str, until: DateTime<Utc>, reason: &str, kind: &str) -> Result<()> {
-    let reason: String = reason.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(200).collect();
+    let reason = clean_reason(reason);
     conn.execute(
         "INSERT INTO agent_cooldowns (agent, until, reason, noted_at, kind, stated) VALUES (?1, ?2, ?3, ?4, ?5, 1)
          ON CONFLICT(agent) DO UPDATE SET until = excluded.until, reason = excluded.reason, noted_at = excluded.noted_at,
@@ -330,6 +366,13 @@ pub fn clear(conn: &Connection, agent: &str) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_reason_skips_colour_codes_and_blank_lines() {
+        let raw = "\n--- stderr ---\n\x1b[0m\n\x1b[91m\x1b[1mError: \x1b[0mUpstream idle timeout exceeded\n";
+        assert_eq!(clean_reason(raw), "Error: Upstream idle timeout exceeded");
+        assert_eq!(clean_reason("plain reason"), "plain reason");
+    }
+
     use super::*;
     use chrono::Duration;
 
