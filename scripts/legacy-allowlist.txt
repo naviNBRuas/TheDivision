@@ -1,4 +1,4 @@
-# Files that must keep legacy names. Phase B rows are removed when those files ship.
+# Files that must keep legacy names, each for the reason given. Remove a row when its compatibility path goes (0.26).
 CHANGELOG.md	history
 crates/divisi-core/src/env.rs	SINGLE_* adoption
 crates/divisi-core/src/migrate.rs	old config dir and db
@@ -29,3 +29,4 @@ crates/divisi-cli/src/acp.rs	references the historical Python prototype tools/si
 crates/divisi-runtime/src/coordinator/brain.rs	references the historical Python prototype single-acp
 crates/divisi-runtime/src/coordinator/routing.rs	comment on reading pre-rename agent names
 docs/architecture.md	explains pre-rename branch and release asset names
+crates/divisi-runtime/src/task.rs	test proves an agent disabled under its legacy single-<provider> name is still skipped

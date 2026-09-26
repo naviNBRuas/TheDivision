@@ -21,11 +21,11 @@ STAGE_SKIP = {
     "env": {"crates/divisi-core/src/env.rs"},
 }
 
-# Persisted identifiers that keep their legacy names in 0.24.0 (spec section 4).
+# Persisted identifiers that keep their legacy names (spec section 4). The repository URL is no longer
+# protected: the repo is naviNBRuas/TheDivision since 2026-09-26.
 PROTECT = [
     re.compile(p)
     for p in (
-        r"naviNBRuas/SingleCLI",
         r"single-redact-master-key",
         r'"single_memory"',
     )
