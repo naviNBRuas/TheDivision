@@ -46,17 +46,18 @@ fn print_data(data: ResponseData) {
         ResponseData::Agents(agents) => {
             for agent in agents {
                 let dot = if agent.detected { "●" } else { "○" };
-                let version = agent.version.as_deref().unwrap_or("-");
+                let version = clip(agent.version.as_deref().unwrap_or("-"), 24);
                 let flag = if agent.unverified {
                     " (unverified)"
                 } else {
                     ""
                 };
+                // One row per agent: the install note is long prose and lives in `divisi agent show`.
                 println!(
-                    "{dot} {:<12} {:<20} {}{flag}",
+                    "{dot} {:<12} {:<24} {}{flag}",
                     agent.name,
                     version,
-                    install_summary(&agent.install_method)
+                    install_kind(&agent.install_method)
                 );
             }
         }
@@ -1078,6 +1079,25 @@ fn print_kg_entity(e: &divisi_protocol::KgEntity) {
     println!("  created: {}", e.created_at);
     for o in &e.observations {
         println!("  - {o}");
+    }
+}
+
+/// `s` cut to `max` characters, ending in `…` when anything was dropped.
+fn clip(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max - 1).collect();
+    out.push('…');
+    out
+}
+
+fn install_kind(method: &InstallMethod) -> &'static str {
+    match method {
+        InstallMethod::Native { .. } => "native",
+        InstallMethod::StandaloneBinary { .. } => "standalone",
+        InstallMethod::PackageManager { .. } => "package manager",
+        InstallMethod::Unsupported { .. } => "unsupported",
     }
 }
 
