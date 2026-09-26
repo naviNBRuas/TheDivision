@@ -7,7 +7,8 @@ use crate::run::{run_command_live, run_command_live_fail_fast, run_command_with_
 /// opencode and its fork kilo retry a rate-limited free model silently until the timeout. With
 /// `--print-logs --log-level ERROR` the provider's error reaches stderr, and three of them end the run
 /// early as a rate-limited failure (see `run::FailFast`).
-const OPENCODE_FAMILY_FAIL_FAST: FailFast = FailFast { pattern: "rate limit exceeded", occurrences: 3 };
+const OPENCODE_FAMILY_FAIL_FAST: FailFast =
+    FailFast { pattern: "rate limit exceeded", occurrences: 3, silence_after_match: Some(Duration::from_secs(120)) };
 
 /// opencode and kilo cut each shell command off at 2 minutes. A Go or Rust build/test routinely takes
 /// longer, and kilo's next turn after such a timeout fails with "The messages do not match the

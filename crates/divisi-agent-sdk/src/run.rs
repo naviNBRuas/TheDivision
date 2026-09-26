@@ -84,6 +84,10 @@ pub fn run_command_live(
 pub struct FailFast {
     pub pattern: &'static str,
     pub occurrences: usize,
+    /// Also stop once the pattern has appeared at all and the child then writes nothing for this long.
+    /// Live finding (2026-09-26): opencode logged "Rate limit exceeded" once, then retried silently for
+    /// the full 10 minutes; 64 of its 110 failures in 12 h were such timeouts.
+    pub silence_after_match: Option<Duration>,
 }
 
 /// `run_command_live`, but kills the child early once `fail_fast`'s pattern (case-insensitive) has
@@ -176,6 +180,8 @@ pub fn run_command_live_fail_fast(
 
     let deadline = start + timeout;
     let mut failed_fast = false;
+    let output_len = || stdout_buf.lock().map(|b| b.len()).unwrap_or(0) + stderr_buf.lock().map(|b| b.len()).unwrap_or(0);
+    let (mut last_len, mut last_change) = (0usize, Instant::now());
     let (timed_out, cancelled) = loop {
         match child.try_wait().context("polling child process")? {
             Some(_) => break (false, false),
@@ -189,7 +195,12 @@ pub fn run_command_live_fail_fast(
             }
             None if fail_fast.is_some_and(|f| {
                 let pattern = f.pattern.to_lowercase();
-                stderr_buf.lock().map(|b| b.to_lowercase().matches(&pattern).count() >= f.occurrences).unwrap_or(false)
+                let seen = stderr_buf.lock().map(|b| b.to_lowercase().matches(&pattern).count()).unwrap_or(0);
+                let len = output_len();
+                if len != last_len {
+                    (last_len, last_change) = (len, Instant::now());
+                }
+                seen >= f.occurrences || (seen > 0 && f.silence_after_match.is_some_and(|d| last_change.elapsed() >= d))
             }) =>
             {
                 kill_child(&mut child);
@@ -212,7 +223,7 @@ pub fn run_command_live_fail_fast(
     let stdout = Arc::try_unwrap(stdout_buf).map(|m| m.into_inner().unwrap_or_default()).unwrap_or_default();
     let mut stderr = Arc::try_unwrap(stderr_buf).map(|m| m.into_inner().unwrap_or_default()).unwrap_or_default();
     if let (true, Some(f)) = (failed_fast, fail_fast) {
-        stderr.push_str(&format!("\ndivisi: stopped {command} after {} \"{}\" errors on stderr\n", f.occurrences, f.pattern));
+        stderr.push_str(&format!("\ndivisi: stopped {command} after \"{}\" errors on stderr (rate limited)\n", f.pattern));
     }
 
     Ok(RunOutcome {
@@ -349,7 +360,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let script = "for i in 1 2 3; do echo 'ERROR stream error: Rate limit exceeded' >&2; done; sleep 30".to_string();
         let backend = crate::backend::ExecBackend::Host { home: None, extra_env: None };
-        let ff = Some(super::FailFast { pattern: "rate limit exceeded", occurrences: 3 });
+        let ff = Some(super::FailFast { pattern: "rate limit exceeded", occurrences: 3, silence_after_match: None });
         let t = std::time::Instant::now();
         let out = super::run_command_live_fail_fast("sh", &["-c".to_string(), script], dir.path(), &backend, None, std::time::Duration::from_secs(20), None, ff).unwrap();
         assert!(t.elapsed() < std::time::Duration::from_secs(10), "should stop early, took {:?}", t.elapsed());
@@ -358,6 +369,24 @@ mod tests {
 
         // Fewer occurrences than the threshold: the run finishes normally.
         let script = "echo 'Rate limit exceeded' >&2; echo done".to_string();
+        let out = super::run_command_live_fail_fast("sh", &["-c".to_string(), script], dir.path(), &backend, None, std::time::Duration::from_secs(20), None, ff).unwrap();
+        assert!(out.success && out.stdout.contains("done"), "{out:?}");
+    }
+
+    #[test]
+    fn fail_fast_stops_a_child_that_goes_silent_after_one_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = crate::backend::ExecBackend::Host { home: None, extra_env: None };
+        let ff = Some(super::FailFast { pattern: "rate limit exceeded", occurrences: 3, silence_after_match: Some(std::time::Duration::from_secs(1)) });
+
+        let script = "echo 'ERROR stream error: Rate limit exceeded' >&2; sleep 30".to_string();
+        let t = std::time::Instant::now();
+        let out = super::run_command_live_fail_fast("sh", &["-c".to_string(), script], dir.path(), &backend, None, std::time::Duration::from_secs(20), None, ff).unwrap();
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "should stop early, took {:?}", t.elapsed());
+        assert!(!out.success && !out.timed_out && out.stderr.contains("rate limited"), "{out:?}");
+
+        // Still producing output after the one match: keep running.
+        let script = "echo 'Rate limit exceeded' >&2; for i in 1 2 3; do sleep 0.5; echo working; done; echo done".to_string();
         let out = super::run_command_live_fail_fast("sh", &["-c".to_string(), script], dir.path(), &backend, None, std::time::Duration::from_secs(20), None, ff).unwrap();
         assert!(out.success && out.stdout.contains("done"), "{out:?}");
     }
