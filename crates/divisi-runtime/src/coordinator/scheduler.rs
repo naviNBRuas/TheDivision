@@ -340,11 +340,24 @@ pub fn reconcile(conn: &Connection) -> Result<usize> {
     Ok(touched)
 }
 
-/// counts running coordinator nodes across every goal, per agent and
-/// globally, and derives per-agent caps from the registry's
-/// `max_concurrency`.
+/// counts running work across every goal, per agent and globally, and
+/// derives per-agent caps from the registry's `max_concurrency`. A running
+/// node counts against the agent its task actually runs on (spill-over
+/// and bench rerouting leave `graph_nodes.agent` at the planned one), and
+/// running tasks outside any running node (fallback follow-ups, MCP
+/// `task_run`) hold that agent's slots too.
 fn build_capacity(conn: &Connection, ctx: &Context, cfg: &CoordinatorConfig) -> Result<Capacity> {
-    let mut stmt = conn.prepare("SELECT agent, COUNT(*) FROM graph_nodes WHERE status = 'running' GROUP BY agent")?;
+    let mut stmt = conn.prepare(
+        "SELECT agent, COUNT(*) FROM (
+            SELECT COALESCE(NULLIF(t.agent, ''), g.agent) AS agent
+              FROM graph_nodes g LEFT JOIN tasks t ON t.id = g.task_id
+             WHERE g.status = 'running'
+            UNION ALL
+            SELECT t.agent FROM tasks t
+             WHERE t.status IN ('created', 'running')
+               AND NOT EXISTS (SELECT 1 FROM graph_nodes g WHERE g.task_id = t.id AND g.status = 'running')
+         ) GROUP BY agent",
+    )?;
     let per_agent_running: BTreeMap<String, usize> = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))?
         .collect::<rusqlite::Result<_>>()?;
@@ -2110,6 +2123,41 @@ mod tests {
 
         assert_eq!(rec.0.borrow().as_slice(), [healthy.clone()]);
         assert_eq!(goal::get(&conn, &goals[0].id).unwrap().unwrap().status, GoalStatus::Blocked);
+    }
+
+    #[test]
+    fn capacity_counts_the_agent_a_task_actually_runs_on() {
+        // Live finding (2026-09-26): nodes planned for a benched grok, or unassigned, spilled over to
+        // opencode but still counted as grok/unassigned, so opencode looked idle and took 25 tasks
+        // for its 3 slots while they queued on its slot lock.
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(tmp.path());
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+        let now = Utc::now().to_rfc3339();
+        for (id, agent, status) in [(1, "opencode", "running"), (2, "opencode", "running"), (3, "opencode", "running"), (4, "divisi-pool", "completed")] {
+            conn.execute(
+                "INSERT INTO tasks (id, description, agent, status, timed_out, created_at, updated_at, cwd, workspace_id) VALUES (?1, 'd', ?2, ?3, 0, ?4, ?4, '.', '')",
+                rusqlite::params![id, agent, status, now],
+            )
+            .unwrap();
+        }
+        // Nodes 1 and 2 were planned elsewhere but run on opencode; task 3 is a fallback follow-up
+        // outside the graph; node 4 finished long ago and a fresh node 5 has no task yet.
+        for (id, planned, status, task) in [("n1", "grok", "running", Some(1)), ("n2", "", "running", Some(2)), ("n4", "divisi-pool", "done", Some(4)), ("n5", "divisi-pool", "running", None)] {
+            conn.execute(
+                "INSERT INTO graph_nodes (goal_id, id, desc, kind, effort, agent, status, task_id) VALUES ('g', ?1, 'd', 'code', 'standard', ?2, ?3, ?4)",
+                rusqlite::params![id, planned, status, task],
+            )
+            .unwrap();
+        }
+
+        let cap = build_capacity(&conn, &ctx, &CoordinatorConfig::default()).unwrap();
+        assert_eq!(cap.per_agent_running.get("opencode"), Some(&3));
+        assert_eq!(cap.per_agent_running.get("divisi-pool"), Some(&1), "a node with no task yet counts as its planned agent");
+        assert_eq!(cap.per_agent_running.get("grok"), None);
+        assert_eq!(cap.global_running, 4);
     }
 
     #[test]
