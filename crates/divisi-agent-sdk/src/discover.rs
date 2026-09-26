@@ -193,10 +193,19 @@ pub fn discover(command: &str) -> Discovery {
 
     let version = output_within(Command::new(command).arg("--version"), VERSION_TIMEOUT)
         .filter(|out| out.status.success())
-        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        .filter(|v| !v.is_empty());
+        .and_then(|out| version_line(&String::from_utf8_lossy(&out.stdout)));
 
     Discovery { detected: true, resolved_path: Some(resolved_path), version }
+}
+
+/// The version out of a `--version` answer: its first non-empty line that has a digit in it. Some CLIs add
+/// an update nag on a second line (copilot) or print bootstrap chatter before any version (codebuff).
+pub fn version_line(output: &str) -> Option<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && l.chars().any(|c| c.is_ascii_digit()))
+        .map(str::to_string)
 }
 
 /// Same existence check as `discover()`, but never runs `<command>
@@ -229,6 +238,15 @@ fn resolve_path(command: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn version_line_keeps_only_the_version() {
+        assert_eq!(version_line("GitHub Copilot CLI 1.0.82.\nRun 'copilot update' to check for updates.\n").as_deref(), Some("GitHub Copilot CLI 1.0.82."));
+        assert_eq!(version_line("Download complete! Starting Codebuff...\ncodebuff 1.0.4\n").as_deref(), Some("codebuff 1.0.4"));
+        assert_eq!(version_line("Download complete! Starting Codebuff...\n"), None);
+        assert_eq!(version_line("\n  2.1.283 (Claude Code)  \n").as_deref(), Some("2.1.283 (Claude Code)"));
+    }
+
     use super::*;
 
     #[test]
