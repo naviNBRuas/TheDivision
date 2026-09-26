@@ -6,12 +6,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 pub fn rewrite_unit(text: &str) -> String {
-    // The repository keeps its old name until the first divisi release, so its URL must survive.
-    const REPO: &str = "naviNBRuas/SingleCLI";
-    const KEEP: &str = "\u{0}REPO\u{0}";
-    text.replace(REPO, KEEP)
+    // The repository was renamed to naviNBRuas/TheDivision; rewrite its URL before the product name so it
+    // doesn't become "naviNBRuas/divisi".
+    text.replace("naviNBRuas/SingleCLI", "naviNBRuas/TheDivision")
         .replace("SingleCLI", "divisi")
-        .replace(KEEP, REPO)
         .replace("single-runtimed", "divisid")
         .replace(".config/single", ".config/divisi")
         .replace("SINGLE_", "DIVISI_")
@@ -88,9 +86,9 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_repository_url_until_the_repo_is_renamed() {
+    fn points_the_repository_url_at_the_renamed_repo() {
         let out = rewrite_unit("Description=SingleCLI daemon\nDocumentation=https://github.com/naviNBRuas/SingleCLI\n");
         assert!(out.contains("Description=divisi daemon"), "{out}");
-        assert!(out.contains("Documentation=https://github.com/naviNBRuas/SingleCLI"), "{out}");
+        assert!(out.contains("Documentation=https://github.com/naviNBRuas/TheDivision"), "{out}");
     }
 }

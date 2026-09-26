@@ -750,7 +750,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             },
             bootstrap_install: Some(BootstrapInstall {
                 command: "cargo build --release -p divisi-native-agent".into(),
-                source: "https://github.com/naviNBRuas/SingleCLI".into(),
+                source: "https://github.com/naviNBRuas/TheDivision".into(),
             }),
             unverified: false,
             // divisi-agent has no auth state of its own — it reads API
@@ -799,7 +799,7 @@ pub fn builtin_registry() -> Vec<AgentDefinition> {
             },
             bootstrap_install: Some(BootstrapInstall {
                 command: "cargo build --release -p divisi-runtime".into(),
-                source: "https://github.com/naviNBRuas/SingleCLI".into(),
+                source: "https://github.com/naviNBRuas/TheDivision".into(),
             }),
             unverified: false,
             // No filesystem-based auth at all -- keys live in divisi's

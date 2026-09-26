@@ -1,7 +1,7 @@
 #!/bin/sh
 # divisi installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/naviNBRuas/TheDivision/main/install.sh | sh
 #
 # Downloads the prebuilt divisi binaries (`divisi` CLI/TUI, `divisid` runtime daemon, `divisi-mcp`,
 # `divisi-gateway`, `divisi-agent`, `divisi-lsp`, `divisi-notch`) for your platform from the latest
@@ -14,7 +14,7 @@
 set -eu
 
 # The repository keeps its pre-rename name until it is renamed on GitHub (which redirects).
-REPO="naviNBRuas/SingleCLI"
+REPO="naviNBRuas/TheDivision"
 INSTALL_DIR="${DIVISI_INSTALL_DIR:-${SINGLE_INSTALL_DIR:-$HOME/.local/bin}}"
 VERSION="${DIVISI_VERSION:-${SINGLE_VERSION:-latest}}"
 

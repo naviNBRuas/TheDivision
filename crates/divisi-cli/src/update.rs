@@ -22,7 +22,7 @@ use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::path::PathBuf;
 
-const REPO: &str = "naviNBRuas/SingleCLI";
+const REPO: &str = "naviNBRuas/TheDivision";
 
 #[derive(Debug, Clone)]
 pub struct ReleaseInfo {

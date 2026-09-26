@@ -21,7 +21,7 @@ version = "0.24.0"
 edition = "2021"
 license = "MIT"
 authors = ["Navin B. Ruas <founder@nbr.company>"]
-repository = "https://github.com/naviNBRuas/SingleCLI"
+repository = "https://github.com/naviNBRuas/TheDivision"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
