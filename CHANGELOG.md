@@ -10,10 +10,17 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.25.0]
+
+### Changed
+
+- The repository is now `naviNBRuas/TheDivision` (the old URL redirects). `divisi update`, `install.sh`, the registry sources and the notch metadata use it, and `divisi migrate` rewrites old unit files to it.
+- New README with the divisi identity: an animated obelus generated from the brand crate (`cargo run -p divisi-brand --example animated_mark`), terminal captures and a how-it-works diagram.
+
 ### Added
 
-- Agents that run out of quota or lose their login now leave routing by themselves and come back by themselves. A quota failure with no stated reset time benches the agent for 30 minutes, doubling up to 12 hours per repeat, and a stated reset time is honoured exactly; a login failure benches it for six hours. When the time passes, the self-heal pass makes a tiny real call to confirm the agent works (or benches it again for longer), and a successful run clears the strikes. Provider-backed `single-*` agents are exempt because the pool tracks their keys itself.
-- Per-provider concurrency: each `single-<provider>` agent runs at most 2 nodes at once and `single-pool` at most 8 (`provider_agent_concurrency`, `pool_concurrency`, and per-agent `[agent_concurrency]` overrides in `coordinator.toml`).
+- Agents that run out of quota or lose their login now leave routing by themselves and come back by themselves. A quota failure with no stated reset time benches the agent for 30 minutes, doubling up to 12 hours per repeat, and a stated reset time is honoured exactly; a login failure benches it for six hours. When the time passes, the self-heal pass makes a tiny real call to confirm the agent works (or benches it again for longer), and a successful run clears the strikes. Provider-backed `divisi-*` agents are exempt because the pool tracks their keys itself.
+- Per-provider concurrency: each `divisi-<provider>` agent runs at most 2 nodes at once and `divisi-pool` at most 8 (`provider_agent_concurrency`, `pool_concurrency`, and per-agent `[agent_concurrency]` overrides in `coordinator.toml`).
 - Planner, supervisor and integrator replies that cannot be parsed get one repair pass, asking the same agent to re-emit the JSON, before an attempt is spent.
 - The TUI draws on a graphite ground with brand-coloured panel borders.
 
@@ -27,6 +34,10 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 - The obelus (÷) is now the resting logo everywhere; the working animation is a spinning slash (`/`).
 
 ### Fixed
+
+- A goal whose remaining parts all wait on a failed or blocked part no longer sits `running` forever holding a coordinator slot: it is blocked with the stuck parts named and handed to you (`divisi goal retry-node`, amend or cancel).
+- `divisi agent list` is one row per agent (install kind and a clipped version; the full note stays in `divisi agent show`), and an agent's version is its first `--version` line with a number in it, not an update notice or download chatter.
+- Linux builds and releases work again: the notch, which links xkbcommon, is built against glibc on Ubuntu 22.04 while everything else stays static musl, and the Intel-Mac release build no longer waits on a retired runner.
 
 - The notch's Chat tab now cuts a long reply (over 600 characters or 10 lines) on a word boundary and points to the TUI or Zed for the rest, instead of letting it fill the card. The stored conversation keeps the whole reply.
 - A resolved approval could act as a one-time grant for the next identical request; approvals acted on immediately are now marked used.
@@ -1350,7 +1361,8 @@ Initial public release.
 - Docs: architecture, ADR, and install-methods documentation; README and
   MIT license.
 
-[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.23.0...v0.25.0
 [0.3.3]: https://github.com/naviNBRuas/TheDivision/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/naviNBRuas/TheDivision/compare/v0.3.0...v0.3.2
 [0.3.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.1.29...v0.3.0
