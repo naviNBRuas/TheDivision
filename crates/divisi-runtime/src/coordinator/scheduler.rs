@@ -152,6 +152,11 @@ pub fn tick_pure(
     // in the future) doesn't get re-admitted every tick and spin.
     let mut ready: Vec<_> = graph.ready_set_at(budget.now.timestamp_millis());
     if ready.is_empty() {
+        // Nothing can ever become ready (every remaining node waits on a failed/blocked one): block the goal
+        // so it stops holding a slot as `running` and a person sees why, instead of a silent Noop forever.
+        if let Some(reason) = graph.stall_reason() {
+            return vec![TickAction::Block { reason }];
+        }
         return vec![TickAction::Noop];
     }
 
@@ -1504,6 +1509,54 @@ mod tests {
             TickAction::Block { reason } => assert!(reason.contains("time budget")),
             other => panic!("expected Block, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_graph_stuck_behind_a_blocked_node_blocks_the_goal_for_a_person() {
+        // Live finding (2026-09-26): s5 exhausted its retries and the supervisor blocked it; s6..s8 wait on it.
+        // The goal sat `running` with nothing to dispatch for hours, holding a conductor slot.
+        let mut g = TaskGraph {
+            nodes: vec![
+                node("s4", &[], Effort::Standard, "grok"),
+                node("s5", &["s4"], Effort::Deep, "grok"),
+                node("s6", &["s5"], Effort::Standard, "grok"),
+                node("s7", &["s6"], Effort::Standard, "grok"),
+            ],
+        };
+        g.nodes[0].status = NodeStatus::Done;
+        g.nodes[1].status = NodeStatus::Blocked;
+        let a = tick_pure(&g, &cfg(6), &caps(0, &[], &[]), &budget_ok(), &RoutingTable::default(), &PoolHealth::default());
+        match &a[..] {
+            [TickAction::Block { reason }] => {
+                assert!(reason.contains("s5 (blocked)"), "{reason}");
+                assert_eq!(crate::self_heal::coordinator::classify_block(reason), crate::self_heal::coordinator::BlockKind::NeedsHuman);
+            }
+            other => panic!("expected Block, got {other:?}"),
+        }
+
+        // A failed node stalls it the same way.
+        g.nodes[1].status = NodeStatus::Failed;
+        assert!(matches!(&tick_pure(&g, &cfg(6), &caps(0, &[], &[]), &budget_ok(), &RoutingTable::default(), &PoolHealth::default())[..], [TickAction::Block { reason }] if reason.contains("s5 (failed)")));
+    }
+
+    #[test]
+    fn a_graph_that_can_still_progress_is_not_stalled() {
+        let budget = budget_ok();
+        // a node still running: wait for it.
+        let mut g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok"), node("s2", &["s1"], Effort::Standard, "grok")] };
+        g.nodes[0].status = NodeStatus::Running;
+        assert_eq!(tick_pure(&g, &cfg(6), &caps(1, &[], &[]), &budget, &RoutingTable::default(), &PoolHealth::default()), vec![TickAction::Noop]);
+
+        // a ready node held by a future retry stamp: wait for the stamp.
+        let mut n = node("s1", &[], Effort::Standard, "grok");
+        n.earliest_retry_at_ms = Some(budget.now.timestamp_millis() + 60_000);
+        let g = TaskGraph { nodes: vec![n] };
+        assert_eq!(tick_pure(&g, &cfg(6), &caps(0, &[], &[]), &budget, &RoutingTable::default(), &PoolHealth::default()), vec![TickAction::Noop]);
+
+        // a failed node nothing pending depends on does not stall an independent branch.
+        let mut g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok"), node("s2", &[], Effort::Standard, "grok")] };
+        g.nodes[0].status = NodeStatus::Failed;
+        assert_eq!(dispatched_ids(&tick_pure(&g, &cfg(6), &caps(0, &[], &[]), &budget, &RoutingTable::default(), &PoolHealth::default())), vec!["s2"]);
     }
 
     #[test]

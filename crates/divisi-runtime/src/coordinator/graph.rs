@@ -197,6 +197,26 @@ impl TaskGraph {
         })
     }
 
+    /// Why the graph can never progress on its own, or `None` if it still can: work remains, nothing is
+    /// running, and no node is ready even ignoring retry stamps, because the remaining nodes wait
+    /// (directly or not) on a failed or blocked node. Names those nodes.
+    pub fn stall_reason(&self) -> Option<String> {
+        if self.is_all_terminal() || !self.ready_set().is_empty() || self.nodes.iter().any(|n| n.status == NodeStatus::Running) {
+            return None;
+        }
+        let stuck: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|n| matches!(n.status, NodeStatus::Failed | NodeStatus::Blocked))
+            .map(|n| format!("{} ({})", n.id, n.status.as_str()))
+            .collect();
+        let waiting = self.nodes.iter().filter(|n| matches!(n.status, NodeStatus::Pending | NodeStatus::Ready)).count();
+        Some(format!(
+            "stalled: {waiting} node(s) wait on {}; needs your decision: `divisi goal retry-node` one of them, amend the goal, or cancel it",
+            if stuck.is_empty() { "dependencies that can never finish".to_string() } else { stuck.join(", ") }
+        ))
+    }
+
     pub fn has_failure(&self) -> bool {
         self.nodes.iter().any(|n| n.status == NodeStatus::Failed)
     }

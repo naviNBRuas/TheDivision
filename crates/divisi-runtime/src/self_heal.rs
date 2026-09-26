@@ -266,7 +266,7 @@ fn run_step(conn: &Connection, report: &mut PassReport, category: Category, acti
 mod infra;
 pub use infra::db_backup_dir;
 
-mod coordinator;
+pub(crate) mod coordinator;
 mod agent;
 
 #[cfg(test)]
