@@ -28,10 +28,10 @@ jobs:
       matrix:
         include:
           - target: linux-x86_64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             rust_target: x86_64-unknown-linux-musl
           - target: linux-arm64
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm
             rust_target: aarch64-unknown-linux-musl
           - target: macos-arm64
             os: macos-latest
@@ -46,8 +46,22 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
       - uses: Swatinem/rust-cache@v2
+      # Everything is built static (musl) except the notch: it is a Wayland GUI that links xkbcommon, which a
+      # static musl build cannot provide. It is built against the runner's glibc instead, on Ubuntu 22.04 so it
+      # still starts on Debian 12 (glibc 2.36).
       - name: Build
-        run: cargo build --release --workspace --target ${{ matrix.rust_target }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.rust_target }}" == *musl ]]; then
+            cargo build --release --workspace --exclude divisi-notch --target ${{ matrix.rust_target }}
+          else
+            cargo build --release --workspace --target ${{ matrix.rust_target }}
+          fi
+      - name: Build the notch (Linux, glibc)
+        if: contains(matrix.rust_target, 'musl')
+        run: |
+          sudo apt-get install -y -qq pkg-config libxkbcommon-dev libwayland-dev
+          cargo build --release -p divisi-notch
       - name: Package
         shell: bash
         run: |
@@ -60,18 +74,18 @@ jobs:
           cp target/${{ matrix.rust_target }}/release/divisi-gateway "$out/"
           cp target/${{ matrix.rust_target }}/release/divisi-agent "$out/"
           cp target/${{ matrix.rust_target }}/release/divisi-lsp "$out/"
-          cp target/${{ matrix.rust_target }}/release/divisi-notch "$out/"
+          if [[ "${{ matrix.rust_target }}" == *musl ]]; then cp target/release/divisi-notch "$out/"; else cp target/${{ matrix.rust_target }}/release/divisi-notch "$out/"; fi
           tar -czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@v4
         with:
           name: divisi-${{ matrix.target }}
           path: divisi-${{ matrix.target }}.tar.gz
 
-  # Best-effort: same build, on the slow/scarce runner. Not in `build`'s
-  # matrix and not something `release` waits on, so a long Intel-Mac queue
-  # never delays the other three platforms going live.
+  # Best-effort Intel-Mac build, cross-compiled on an Apple Silicon runner (the Intel `macos-13` image was
+  # retired, and waiting on it held every release run open until the 24 h timeout cancelled it). Not in
+  # `build`'s matrix and not something `release` waits on.
   build-macos-intel:
-    runs-on: macos-13
+    runs-on: macos-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
