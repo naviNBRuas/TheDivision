@@ -1,337 +1,207 @@
-# divisi
+<div align="center">
 
-**The Division of AI agents.** divisi is the orchestration layer for AI
-agents: you state a goal, it splits the work into parts, assigns each to
-whichever agent or model fits, and keeps the score.
+<img src=".github/assets/banner.svg" alt="divisi — the Division. Split the work: one goal, many parts, a section of AI agents." width="100%">
 
-It is a unified control plane and coordinator for heterogeneous AI coding-agent
-CLIs — 24 built-in agents (Claude Code, Codex, OpenCode, Antigravity,
-Cursor CLI, GitHub Copilot CLI, Aider, Goose, Kiro, Cody, Grok, Crush,
-Kilo Code, and more), plus any new agent CLI you describe in a TOML file
-with no recompilation. Configure MCP servers, provider keys, and accounts
-once; every supported agent gets the same configuration synced into its
-own native format.
+<p>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-ff5a1f?style=flat-square&labelColor=16181d"></a>
+  <a href="https://github.com/naviNBRuas/TheDivision/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/naviNBRuas/TheDivision?style=flat-square&color=ff5a1f&labelColor=16181d&label=release"></a>
+  <a href="https://github.com/naviNBRuas/TheDivision/actions/workflows/nightly.yml"><img alt="Nightly build" src="https://img.shields.io/github/actions/workflow/status/naviNBRuas/TheDivision/nightly.yml?branch=main&style=flat-square&labelColor=16181d&label=nightly"></a>
+  <img alt="Written in Rust" src="https://img.shields.io/badge/rust-2021-f2f2f0?style=flat-square&logo=rust&logoColor=f2f2f0&labelColor=16181d">
+  <img alt="Linux and macOS" src="https://img.shields.io/badge/platform-linux%20%C2%B7%20macOS-f2f2f0?style=flat-square&labelColor=16181d">
+  <img alt="24 built-in agents" src="https://img.shields.io/badge/agents-24%20built--in-3ddc97?style=flat-square&labelColor=16181d">
+  <a href="https://agentclientprotocol.com"><img alt="Zed ACP bridge" src="https://img.shields.io/badge/zed-ACP%20bridge-f2f2f0?style=flat-square&labelColor=16181d"></a>
+</p>
 
-Beyond syncing config, divisi's **Coordinator** turns a single goal
-("add tests for the parser and fix whatever they find") into a real
-dependency graph of tasks, dispatches each node to whichever real agent
-or model fits, retries and reroutes around rate limits and cooldowns
-automatically, and reports back — through the CLI, the TUI's own **Goals**
-tab, or Zed's agent panel via a native ACP bridge (`divisi acp`). When
-none of your logged-in agent CLIs have capacity, the **free-provider
-pool** (44 vendored providers, Thompson-sampling bandit routing, real
-per-key cooldown/headroom tracking) dispatches straight over HTTP instead
-of shelling a CLI at all — no agent login required to keep working.
+<p>
+  <a href="#install"><b>Install</b></a> ·
+  <a href="#quickstart"><b>Quickstart</b></a> ·
+  <a href="#how-it-works"><b>How it works</b></a> ·
+  <a href="#whats-in-the-box"><b>What's in the box</b></a> ·
+  <a href="docs/architecture.md"><b>Architecture</b></a> ·
+  <a href="docs/FAQ.md"><b>FAQ</b></a>
+</p>
 
-> **Status: actively developed, well past early scaffolding.** Agent
-> registry, MCP/LSP/tool/provider registries, multi-account concurrency,
-> the Coordinator + goal graph, the free-provider pool, a native Zed ACP
-> bridge, and a full TUI (Agents/Goals/Tasks/MCP/LSP/Plugins/Tools/
-> Providers/Accounts/Usage/Pool/Backup/Memory) are all real and covered
-> by the workspace's own test suite. See "What's implemented" below and
-> `docs/architecture.md` for the full picture, including what's
-> deliberately *not* here yet.
+</div>
+
+**divisi** is the orchestration layer for AI coding agents. You state a goal. It splits the work into parts,
+cues each part to whichever agent or model fits, and keeps the score.
+
+It drives the agent CLIs you already use (Claude Code, Codex, OpenCode, Cursor, Copilot, Grok, Crush, Kilo Code
+and 16 more) and keeps them in time. It gives them one registry for MCP servers, LSPs, provider keys and
+accounts, synced into each tool's native format. When every CLI you're logged into is rate-limited, a built-in
+pool of free LLM providers takes the next part over plain HTTP, so work doesn't stop.
+
+> Six agents, one goal. Nobody plays over anybody.
+
+<table>
+  <tr>
+    <td width="42%" align="center"><img src=".github/assets/terminal-logo.gif" alt="divisi logo --animate: the obelus spins into a working slash and settles back" width="100%"></td>
+    <td width="58%" align="center"><img src=".github/assets/agent-list.png" alt="divisi agent list: 24 agent CLIs with their detected versions and install kind" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The mark: <code>÷</code> at rest, a spinning <code>/</code> while a part runs.</sub></td>
+    <td align="center"><sub><code>divisi agent list</code>: what's installed, found live on your <code>PATH</code>.</sub></td>
+  </tr>
+</table>
 
 ## Why
 
-Every one of these CLIs maintains its own independent config for the same
-underlying capabilities — MCP servers, provider API keys, login
-credentials — each in a different file/format. divisi keeps one
-unified registry for each and syncs it out to whichever CLIs are
-installed, installs the CLIs themselves on a machine that has none of
-them yet, and lets you add a brand-new agent CLI to the whole system by
-writing one TOML file, no recompilation required.
+Every agent CLI keeps its own config for the same things: MCP servers, provider keys, logins. Each uses its
+own file and format. Each also has its own rate limits, and none of them know the others exist.
 
-divisi also doesn't touch your real, ambient `~/.claude`, `~/.codex`,
-etc. on every run. Each agent gets its own divisi-managed home under
-`~/.config/divisi/homes/<agent>/`, bootstrapped from the real one exactly
-once; every `task run`, `install-integrations`, `plugin sync`, `provider
-sync`, and `account capture`/`use` after that operates only inside that
-isolated copy — see `docs/architecture.md`'s "Isolation" section.
+divisi keeps **one registry** for each of those and syncs it out to whatever is installed. It installs missing
+CLIs on a fresh machine, and adds a brand-new agent CLI from **one TOML file**, with no recompiling. It never
+touches your ambient `~/.claude` or `~/.codex` after first run: each agent gets an isolated divisi-managed
+home under `~/.config/divisi/homes/<agent>/`, so two Claude accounts can run side by side.
+
+On top of that sits the **Coordinator**. Hand it "add tests for the parser and fix whatever they find" and it
+plans a real dependency graph, runs independent parts in parallel in their own git worktrees, and reroutes
+around cooldowns. It queues a merge for you when it isn't sure. Branches are never merged on their own.
+
+## How it works
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#16181d", "primaryTextColor": "#f2f2f0", "primaryBorderColor": "#ff5a1f", "lineColor": "#ff5a1f", "secondaryColor": "#1f2229", "tertiaryColor": "#1f2229", "fontFamily": "JetBrains Mono, monospace"}}}%%
+flowchart LR
+    G(["goal: the score"]) --> C["Coordinator<br/>plans a task graph"]
+    C -->|parts| Q{"cueing<br/>routing + failover"}
+    Q --> A["agent CLIs<br/>claude · codex · opencode · …"]
+    Q --> P["divisi-pool<br/>free providers over HTTP"]
+    A --> W["git worktrees<br/>one per part"]
+    P --> W
+    W --> R["review<br/>you confirm merges"]
+    R -.->|next parts| C
+```
+
+| Term | What it is |
+|---|---|
+| **the score** | the goal you submit |
+| **parts** | the task nodes it is split into |
+| **the section** | your agents and models |
+| **cueing** | routing and failover between them |
+| **the bench** | the free-provider pool |
+| **the pit** | `divisid`, the daemon |
+
+## Install
+
+**From a release.** The installer puts `divisi`, `divisid`, `divisi-mcp`, `divisi-gateway`, `divisi-agent`,
+`divisi-lsp` and `divisi-notch` in `~/.local/bin` (override with `DIVISI_INSTALL_DIR`). It's a plain shell
+script: [read it](install.sh) before piping it into `sh`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/naviNBRuas/TheDivision/main/install.sh | sh
+```
+
+Releases published before the rename ship as `singlecli-*` archives; the installer takes either. Every
+release builds Linux (x86_64, arm64) and macOS on Apple Silicon; macOS Intel is built best-effort.
+
+**From source**, anywhere with a Rust toolchain:
+
+```bash
+git clone https://github.com/naviNBRuas/TheDivision && cd TheDivision
+cargo build --release --workspace     # binaries land in target/release/
+```
+
+Stay current with `divisi update --yes`, or follow `main` with `divisi update --channel nightly --yes`.
+
+## Quickstart
+
+```bash
+divisi doctor                 # what's installed, what divisi can manage
+divisi agent list             # the section, detected live
+divisi agent login claude     # log in inside claude's isolated home (real OAuth, real terminal)
+divisi setup --yes            # install missing agent CLIs and sync config into all of them
+divisi                        # the TUI: Agents, Goals, Tasks, MCP, LSP, Providers, Accounts, Pool, ...
+```
+
+Hand it a goal:
+
+```bash
+divisi goal submit "add tests for the parser and fix whatever they find" --mode auto
+divisi coordinator status     # running, queued, blocked and waiting-on-capacity goals
+divisi goal status <goal-id>  # the task graph, part by part
+divisi goal merge list        # merges waiting for your yes
+```
+
+<details>
+<summary><b>More: tasks, orchestration, accounts, providers, registries</b></summary>
+
+```bash
+# one prompt, one agent, any project directory
+divisi task run "add a .gitignore" --agent claude --cwd ~/code/some-project
+
+# several agents: a sequential relay, concurrent sub-tasks, or an explicit graph
+divisi orchestrate "add tests for the parser" --agents claude,codex --worktree
+divisi orchestrate-parallel --task claude:"backend API" --task codex:"frontend UI"
+divisi orchestrate-graph --task 'id=build,agent=codex,desc="build it"' --task 'id=test,agent=claude,desc="test it",depends_on=build'
+
+# multiple accounts of the same agent, running at the same time
+divisi account capture claude work --label work@example.com
+divisi task run "..." --agent claude --account work
+
+# the free-provider pool: no CLI, no login
+divisi provider list-free             # the vendored ~44-provider catalog
+divisi provider add-free groq         # register a key and validate it
+divisi provider key-status            # keyed, valid, cooldown and headroom per provider
+divisi task run --agent divisi-pool "explain this diff"
+
+# paid providers, synced into the agents that take them
+divisi provider add-preset nvidia && divisi provider set-key nvidia nvapi-...
+divisi provider sync nvidia --agents claude --yes
+
+# one MCP/LSP/plugin registry for every agent
+divisi mcp add-preset brave-search
+divisi lsp add-preset clangd
+divisi install-integrations --yes     # writes each agent's native config, with backups
+divisi plugin add my-plugin my-plugin@official && divisi plugin sync my-plugin --agents claude --yes
+
+# shared memory and notes between agents
+divisi memory graph create-entity divisi project
+divisi note leave --from me "parser tests are flaky on CI"   # no --to: any agent on this project
+
+# Zed: point the agent panel at divisi
+divisi acp
+```
+
+Every list and inspect command takes `--json`.
+
+</details>
+
+## What's in the box
+
+| | |
+|---|---|
+| **24 built-in agents** | claude, codex, opencode, agy (Antigravity), cursor, copilot, kiro, cody, qwen-code, amp, droid, codebuff, continue-cli, grok, mistral-vibe, crush, kilocode, aider, goose, openhands, plandex, perplexity, plus divisi's own `divisi-agent` and `divisi-pool`. Add more with a TOML file in `~/.config/divisi/agents/`. |
+| **Coordinator** | goal → dependency graph of `code`/`test`/`research`/`review`/`docs`/`infra` parts; parallel dispatch in isolated worktrees; retries, rerouting and a supervisor; `auto`, `plan`, `careful` and `dry` modes. |
+| **Free-provider pool** | ~44 vendored free-LLM providers; Thompson-sampling routing; real per-key cooldown and headroom tracking; rate-limited or failing keys are benched automatically. |
+| **One config, every agent** | MCP, LSP, tool, provider, plugin and skill registries synced into each agent's native format, with backups. |
+| **Accounts** | capture and switch logins; run several accounts of one agent concurrently in isolated homes. |
+| **Memory** | a shared SQLite knowledge graph, with optional Redis working memory and Qdrant vector search; task failures are recorded as searchable lessons. |
+| **Surfaces** | CLI, a full TUI, a native Zed ACP bridge, and a GNOME Shell notch that shows the mark while work runs. |
+| **Safety** | per-agent isolated homes, deny/ask/allow permissions enforced by `divisi-mcp`, secrets in the OS keychain, encrypted `divisi backup` archives, and merges that always wait for you. |
+
+### Not yet
+
+A real text-to-vector embedding pipeline (Qdrant stores and searches vectors you already have); LSP sync
+into agents other than OpenCode; plugin discovery (installing a named plugin works, browsing doesn't); and
+live per-provider model catalogs for the pool. The full, honest list is in
+[`docs/architecture.md`](docs/architecture.md).
 
 ## Renamed from SingleCLI
 
-divisi was SingleCLI until 0.24.0. What changed:
+divisi was SingleCLI until 0.24.0, and this repository was `naviNBRuas/SingleCLI` (old links redirect).
 
 | Before | Now |
 |---|---|
 | `single`, `single-runtimed` | `divisi`, `divisid` |
 | `singlecli-mcp`, `single-mcp` | `divisi-mcp`, `divisi-gateway` |
-| `single-pool`, `single-<provider>` agents, `single/task-*` branches | `divisi-pool`, `divisi-<provider>`, `divisi/task-*` (old names in configs still work) |
-| `singlecli:<tool>` MCP permission rules | `divisi:<tool>` (old rules still apply) |
-| `SINGLE_*` environment variables | `DIVISI_*` (the old names are still read) |
-| `~/.config/single` | `~/.config/divisi` (moved automatically on first run, with a symlink left behind) |
+| `single-pool`, `single-<provider>`, `single/task-*` | `divisi-pool`, `divisi-<provider>`, `divisi/task-*` (old names still work) |
+| `singlecli:<tool>` permission rules | `divisi:<tool>` (old rules still apply) |
+| `SINGLE_*` environment variables | `DIVISI_*` (old names still read) |
+| `~/.config/single` | `~/.config/divisi` (moved on first run, symlink left behind) |
 
-The old command names remain as aliases that forward to the new ones, and are
-removed in 0.26. Run `divisi migrate` to see what a pre-rename install needs
-(systemd unit, GNOME notch extension); it changes nothing without `--apply`.
-
-## Install
-
-divisi binaries ship with the first divisi release. Until then, build from source.
-
-**From source** (any platform with a Rust toolchain):
-
-```bash
-cargo build --release --workspace
-```
-
-Binaries land in `target/release/`: `divisi` (the CLI/TUI) and
-`divisid` (the headless runtime daemon), plus the `divisi-*` helpers and the
-deprecated `single*` aliases. Put them on `$PATH`.
-
-**Install** (releases published before the rename are named `singlecli-*`; the installer takes either):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/naviNBRuas/SingleCLI/main/install.sh | sh
-```
-
-Downloads the prebuilt divisi binaries (`divisi`, `divisid`, `divisi-mcp`, `divisi-gateway`, `divisi-agent`, `divisi-lsp`, `divisi-notch`) for your
-platform from the latest [release](https://github.com/naviNBRuas/SingleCLI/releases)
-to `~/.local/bin` (override with `DIVISI_INSTALL_DIR`). See
-[`install.sh`](install.sh) — it's a plain shell script, read it before
-piping it into `sh` if you want to know exactly what it does.
-
-## Quickstart
-
-```bash
-divisi doctor          # what's installed, what divisi can manage
-divisi agent list      # the agent registry, live detection status
-divisi agent login claude   # log in to claude's divisi-managed home (real terminal, real OAuth)
-divisi agent login codex    # same for codex, opencode, or perplexity
-divisi mcp list         # the unified MCP registry
-divisi setup --yes       # install missing agent CLIs + sync config
-divisi install-integrations --yes   # sync MCP config into every agent, with backups
-divisi task run "add a .gitignore" --agent claude --cwd ~/code/some-project   # delegate a prompt in any project directory
-divisi orchestrate "add tests for the parser" --agents claude,codex --worktree   # relay across multiple agents
-
-# use an agent, through divisi, to actually set up a fresh machine (real $HOME, not the sandbox):
-divisi task run "install my usual dev tools, set up my dotfiles, configure the desktop" \
-  --agent claude --real-home --timeout-secs 3600
-
-divisi account capture claude work      # snapshot the currently logged-in Claude account
-divisi account use claude personal      # switch to a different captured account
-
-divisi provider presets                             # OpenAI, Anthropic, OpenCode Zen, NVIDIA
-divisi provider add-preset nvidia
-divisi provider set-key nvidia nvapi-...
-divisi provider sync nvidia --agents claude --yes
-
-divisi mcp presets                                  # brave-search, slack, puppeteer, postgres
-divisi mcp add-preset brave-search
-divisi lsp presets                                  # rust-analyzer, pyright, typescript, gopls, dockerfile, clangd, bash, yaml, terraform, json
-divisi lsp add-preset clangd
-
-divisi plugin add my-plugin my-plugin@official       # target used verbatim by claude/codex/agy
-divisi plugin sync my-plugin --agents claude --yes   # runs `claude plugin install my-plugin@official`
-
-divisi account capture claude work --label work@example.com   # snapshot the currently logged-in Claude account
-divisi account use claude personal                             # switch to a different captured account
-divisi account set-status claude work rate_limited             # track usability (manual — no agent exposes a quota API)
-divisi task run "..." --agent claude --account work             # run against an isolated $HOME so multiple
-                                                                  # accounts of the same agent run concurrently
-
-divisi skill install my-skill ./my-skill-dir
-divisi skill sync-claude my-skill       # copies it into ~/.claude/skills/my-skill/
-
-divisi memory graph create-entity divisi project
-divisi memory graph show                # dump the shared knowledge graph
-
-divisi                  # launch the TUI: Agents/Goals/Tasks/MCP/LSP/Plugins/Tools/Providers/Accounts/
-                        # Usage/Pool/Backup/Memory tabs. [i] installs an agent interactively, [n]
-                        # creates a task, [enter] on a task shows its live output (auto-refreshing
-                        # while running); orchestrate runs create one row per agent per step, so each
-                        # agent's own output is one [enter] away. [a] quick-adds into MCP/LSP/Plugins/
-                        # Tools, [d]/[e]/[s] remove/toggle/sync the selection
-
-divisi goal submit "add tests for the parser and fix whatever they find" --mode auto
-divisi coordinator status                    # running/queued/blocked/waiting-on-capacity goals + pool
-divisi goal status <goal-id>                 # that goal's task graph, node-by-node status
-divisi acp                                   # stdio ACP server — point Zed's agent panel at this
-
-divisi task run --agent divisi-pool "explain this diff"   # dispatch straight to the free-provider
-                                                            # pool over HTTP, no agent CLI, no login
-divisi provider list-free                    # the vendored ~44-provider free-LLM catalog
-divisi provider add-free groq                # register + best-effort validate a key
-divisi provider validate                     # re-probe every already-keyed free-pool key on demand
-divisi provider key-status                   # keyed?/valid?/cooldown/headroom, per provider
-
-divisi update --check                       # is a newer stable build available?
-divisi update --yes                         # replace the running binaries in place
-divisi update --channel nightly --yes       # track main instead of tagged releases
-```
-
-Every list/inspect command supports `--json` for scripting.
-
-## What's implemented
-
-- **Phase 1** — a real agent registry for `claude`, `codex`, `opencode`,
-  `agy`, and `perplexity` (`pplx`) with detection/versions/capabilities
-  observed from real config files and `--version` output; a unified MCP
-  registry synced into each agent's native config format with backups;
-  vendor-verified bootstrap installers (`divisi setup`); a headless
-  runtime daemon over a Unix socket with a CLI and TUI client; profiles
-  and config precedence.
-- **Phase 2** — CRUD for the MCP/LSP/tool registries, an OS-keychain
-  secrets abstraction, a deny/ask/allow permission model (data only, not
-  yet enforced), and a local skills directory.
-- **Phase 3** — a SQLite-backed, scoped, provenance-tagged memory store,
-  and a git/project context resolver.
-- **Phase 4** — real divisi-agent task execution: `divisi task run`
-  invokes an agent CLI's actual non-interactive mode (`claude -p`, `codex
-  exec`, `opencode run`, `agy -p`), optionally isolated in a real git
-  worktree, captures the output as an artifact, and records the result.
-- **Phase 5** — declarative custom agents: describe a brand-new CLI agent
-  in `~/.config/divisi/agents/<name>.toml` (command, install command,
-  prompt mode, MCP format) and it gets real detection, MCP sync, and task
-  execution identically to the five built-in agents — no Rust required.
-- **Phase 6 (partial)** — a provider registry (OpenAI, Anthropic, OpenCode
-  Zen, ...) with keys held in the OS keychain, synced into the agents with
-  a verified config slot for them (Claude Code's `env` settings, Codex's
-  `OPENAI_API_KEY`).
-- **Auth** — `divisi account capture/use/list/remove`: snapshot an agent's
-  current login state as a named profile and switch between them later —
-  e.g. two separate Claude Code accounts — with automatic backups and
-  without ever printing token contents.
-- **Memory upgrades** — a shared SQLite knowledge graph (entities,
-  observations, typed relations — `divisi memory graph ...`), plus
-  optional Redis working memory (`divisi memory cache ...`,
-  `DIVISI_REDIS_URL`) and Qdrant vector storage/search for RAG
-  (`divisi memory vector ...`, `DIVISI_QDRANT_URL`) — both built and
-  tested against real local instances. Task failures are automatically
-  recorded as searchable memory ("learn from errors").
-- **Multi-agent orchestration** — `divisi orchestrate "<goal>" --agents
-  a,b,c [--worktree]` runs several agents in sequence on one goal, sharing
-  one git worktree and handing each agent the previous one's real
-  captured output. A sequential relay, not live parallel chat — see
-  `docs/architecture.md` for the honest scope.
-- **Provider presets** — OpenAI, Anthropic, OpenCode Zen, and NVIDIA,
-  configurable from the TUI's Providers tab (`[a]`, masked key entry
-  straight to the OS keychain) or `divisi provider add-preset <name>`.
-- **Richer starter registries** — the default MCP/LSP/tool catalogs ship
-  with real, commonly-used entries (fetch, sequential-thinking,
-  rust-analyzer, pyright, docker, gh, ...) instead of a near-empty list,
-  seeded from this project's own verified working configuration, plus
-  preset catalogs (`divisi mcp/lsp presets`, `add-preset <name>`) to grow
-  either registry without a code change.
-- **Self-update** — `divisi update` checks GitHub Releases and replaces
-  its own binaries in place, on a `stable` (tagged releases) or `nightly`
-  (rebuilt on every push to `main`) channel.
-- **Plugin management** — `divisi plugin add/remove/list/inspect/sync`:
-  installs a named plugin via each agent's own real command (`claude
-  plugin install`, `codex plugin add`, `opencode plugin <module>`, `agy
-  plugin install`). Installation only — no marketplace browsing/discovery.
-- **LSP sync into OpenCode** — `divisi install-integrations` now writes
-  the LSP registry into `opencode.jsonc`'s real `lsp` key alongside MCP
-  (the only agent with a confirmed native LSP config surface).
-- **Skills synced into Claude Code** — `divisi skill sync-claude <name>`
-  copies a locally-installed skill into Claude's real skill directory
-  (`~/.claude/skills/<name>/`), backing up any existing same-named
-  directory first.
-- **Account labels, status, and concurrent multi-account execution** —
-  captured account profiles can carry a human label and a manually-set
-  status (`available`/`rate_limited`/`needs_topup`/`unknown` — never
-  auto-detected, since no agent exposes a verified quota API). `divisi
-  task run --account <name>` runs against a materialized, isolated
-  `$HOME` for that account instead of swapping the live one in place, so
-  multiple accounts of the same agent (two `claude`, three `codex`, ...)
-  can run **concurrently** without clobbering each other.
-- **TUI: full config surface + task creation** — LSP/Plugins/Tools tabs
-  alongside the original Agents/Tasks/MCP/Providers/Accounts/Memory/Help;
-  a quick-add flow for MCP/LSP/Plugins/Tools, remove/toggle/sync
-  keybindings, and an in-TUI task-creation flow (description → workspace
-  path → pick one or more agents).
-- **`--real-home` for system-configuration tasks** — `divisi task run
-  --agent claude --real-home "set up my dotfiles, install my usual
-  tools, make this look nice"` runs against your actual `$HOME`, not the
-  isolated sandbox every other task uses. Off by default (prints a
-  warning when used) since it gives the agent real credentials/file
-  access — for the one legitimate case where that's the point: using an
-  agent through `divisi` to actually configure your machine. Also a
-  `[g]` toggle in the TUI's task-creation flow.
-- **Live task output in the TUI** — press `Enter` on any row in the Tasks
-  tab to see that task's real output, tailed as it's produced while the
-  task is still running (auto-refreshing) and switching to the full
-  final output once it finishes. Since an `orchestrate` run creates a
-  separate task row per agent per step, this is how you watch each agent
-  in a multi-agent run individually.
-- **Isolated agent homes + `divisi agent login`** — every agent runs
-  against a divisi-managed home under `~/.config/divisi/homes/<agent>/`
-  (bootstrapped from the real one exactly once), never the real, ambient
-  `~/.claude`/`~/.codex`/etc. after that. `divisi agent login <name>` runs
-  that agent's own real interactive login command (`claude auth login`,
-  `codex login`, `opencode auth login`, `pplx auth login`,
-  `cursor-agent login`, `goose configure`) attached to your terminal so
-  credentials land in the isolated home directly.
-- **Cursor CLI, Aider, and Goose** — three more built-in agents.
-  Cursor gets full parity with claude/codex/opencode (MCP sync into
-  `~/.cursor/mcp.json`, non-interactive runs, login); Goose gets MCP sync
-  into its YAML config (`~/.config/goose/config.yaml`) plus non-interactive
-  runs and its `configure` wizard wired as login; Aider gets
-  non-interactive runs only — it has no MCP support and authenticates via
-  API-key flags/env vars, not an interactive login.
-- **GitHub Copilot CLI, Kiro CLI, and Cody** — 11 of the current 24 built-in agents; the registry has since grown to also include qwen-code, amp, openhands, droid, codebuff, plandex, continue-cli, grok, mistral-vibe, crush, kilocode, and `divisi-pool`/`divisi-agent` (divisi's own native, MCP-only agents — see "Coordinator, goals, and the free-provider pool" below).
-  Copilot gets full parity too (MCP sync into `~/.copilot/mcp-config.json`,
-  non-interactive runs, login, plugin install). Kiro gets non-interactive
-  runs and login (both confirmed by running it directly), but MCP stays
-  unsupported since its real `mcp add` command requires being logged in
-  to run, and this project won't authenticate a real account just to
-  check a file format. Cody was the one agent verified from vendor docs
-  alone (not installed on the reference machine) — non-interactive runs
-  and login only. **Windsurf was investigated and left out**: there's no
-  standalone Windsurf agent CLI anymore (it was folded into Devin
-  Desktop) — see `docs/install-methods.md` for the full reasoning.
-
-## Coordinator, goals, and the free-provider pool
-
-Everything above is the config/registry layer. On top of it, the
-**Coordinator** (`divisi goal`/`divisi coordinator`) is a second, higher
-level of the tool: submit one goal in plain text, and it plans a real
-dependency graph (`code`/`test`/`research`/`review`/`docs`/`infra`
-nodes), dispatches each ready node to whichever agent fits, runs
-independent nodes in parallel (each in its own git worktree when the node
-kind calls for isolation), retries around failures and rate limits, and
-supervises the result — auto-continuing on success, queuing a
-human-confirmed merge when it isn't sure, per `--mode auto/plan/careful/
-dry`. `divisi goal status <id>` shows the graph node-by-node; the TUI's
-**Goals** tab and `divisi coordinator status` show everything running/
-queued/blocked at once.
-
-Two more pieces plug into this:
-
-- **The free-provider pool (E28)** — `divisi-pool` is a built-in agent
-  that never shells a CLI at all: it picks a `(provider, model, key)` via
-  a Thompson-sampling bandit over a vendored ~44-provider free-LLM
-  catalog (`divisi provider list-free`) and dispatches straight to that
-  provider's HTTP API, benching whatever's rate-limited/failing and
-  retrying the next candidate before you ever see a failure. `divisi
-  provider add-free <id>` keys a provider; `divisi provider validate`
-  re-probes existing keys on demand; `divisi provider key-status` shows
-  keyed/valid/cooldown/headroom per provider — real, live state, not a
-  placeholder.
-- **A native Zed ACP bridge (`divisi acp`)** — a stdio [Agent Client
-  Protocol](https://agentclientprotocol.com) server: every prompt from
-  Zed's agent panel becomes a coordinator goal, with progress streamed
-  back as it runs. `/goals` in the panel shows active goals plus recent
-  failures by default (`/goals all` for the full history); `/status`
-  folds in provider auth/exhaustion state since Zed has no native
-  status-bar API for that.
-
-## What's not (yet)
-
-A real text-to-vector embeddings pipeline (Qdrant integration
-stores/searches vectors you already have), LSP syncing into agents other
-than OpenCode, a plugin marketplace/discovery layer (installing a named
-plugin is real; browsing what's available is not), and full generic
-model/provider abstraction beyond the free-pool's own dispatch (live
-model-catalog discovery per provider — each free-pool provider is
-currently treated as offering one nominal model) are later work. The
-Coordinator's parallel task graph and `divisi-mcp`'s permission
-enforcement, both listed as future work in earlier revisions of this
-README, are real and shipped — see "Coordinator, goals, and the
-free-provider pool" above and `divisi-core::preferences`/`permissions`.
-See `docs/architecture.md`'s "Not in Phase 1-6" section for
-the full, honest list.
+The old command names forward to the new ones until 0.26. `divisi migrate` shows what an older install
+needs (systemd unit, notch extension) and changes nothing without `--apply`.
 
 ## Development
 
@@ -340,29 +210,33 @@ cargo build --workspace
 cargo test --workspace
 ```
 
-No API keys are required to build, test, or run `doctor`/`agent list`.
-`divisi setup --yes`, `divisi install-integrations --yes`, `divisi account
-use`, and `divisi provider sync --yes` touch real files/run real
-installers — everything else is read-only or operates in a temp directory
-during tests. The Redis and Qdrant backends are optional (unset
-`DIVISI_REDIS_URL`/`DIVISI_QDRANT_URL` and their commands just report "not
-configured"); their tests skip cleanly, rather than fail, when no such
-service is reachable — to actually exercise them locally:
+No API keys are needed to build, test, or run `doctor` and `agent list`. `setup --yes`,
+`install-integrations --yes`, `account use` and `provider sync --yes` touch real files; everything else is
+read-only or runs in a temp directory under test. Redis and Qdrant are optional; their tests skip when no
+service is reachable:
 
 ```bash
-docker run -d -p 6379:6379 redis:7-alpine
-docker run -d -p 6333:6333 qdrant/qdrant
+docker run -d -p 6379:6379 redis:7-alpine && docker run -d -p 6333:6333 qdrant/qdrant
 DIVISI_REDIS_URL=redis://127.0.0.1:6379 DIVISI_QDRANT_URL=http://127.0.0.1:6333 cargo test --workspace
 ```
 
+The README art is generated from the brand crate, so it moves exactly like the TUI and the notch:
+`cargo run -q -p divisi-brand --example animated_mark -- 128 > .github/assets/mark-animated.svg`.
+
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — crate layout, data flow, and every phase's honest scope/limitations.
-- [`docs/adr/0001-tech-stack.md`](docs/adr/0001-tech-stack.md) — why Rust/Unix-socket/SQLite, and what was considered instead.
-- [`docs/install-methods.md`](docs/install-methods.md) — verified install commands and sources for every agent CLI.
+- [Architecture](docs/architecture.md): crates, data flow, and each phase's scope and limits.
+- [Tech stack ADR](docs/adr/0001-tech-stack.md): why Rust, a Unix socket and SQLite.
+- [Install methods](docs/install-methods.md): verified install commands for every agent CLI.
+- [Config format](docs/config-format.md) · [FAQ](docs/FAQ.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Support](SUPPORT.md)
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE).
 
-An independent project, endorsed by NBR Company. Built by Navin B. Ruas ([naviNBRuas](https://github.com/naviNBRuas)).
+<div align="center">
+<br>
+<img src=".github/assets/mark-animated.svg" alt="" width="40">
+<br>
+<sub>An independent project, endorsed by NBR Company. Built by Navin B. Ruas (<a href="https://github.com/naviNBRuas">naviNBRuas</a>).</sub>
+</div>
