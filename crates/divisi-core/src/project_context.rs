@@ -58,8 +58,8 @@ pub fn stable_workspace_id(cwd: &Path) -> String {
 }
 
 /// Human-readable label for a workspace: the final path component of
-/// wherever it currently lives on disk, e.g. `"divisi"` for
-/// `/home/.../Repositories/naviNBRuas/SingleCLI`. Falls back to the whole
+/// wherever it currently lives on disk, e.g. `"TheDivision"` for
+/// `/home/.../Repositories/naviNBRuas/TheDivision`. Falls back to the whole
 /// string for identities that aren't paths (a remote URL, a commit hash).
 pub fn workspace_display_name(path: &str) -> String {
     Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.to_string())
