@@ -10,6 +10,12 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.26.2]
+
+### Fixed
+
+- Restarting the daemon (an update, a reboot) no longer counts as a failure for the parts it interrupted: they go back to pending without spending a retry, instead of piling up as failed parts and stalled goals.
+
 ## [0.26.1]
 
 ### Fixed
@@ -1397,7 +1403,8 @@ Initial public release.
 - Docs: architecture, ADR, and install-methods documentation; README and
   MIT license.
 
-[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.2...HEAD
+[0.26.2]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.1...v0.26.2
 [0.26.1]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.3...v0.26.0
 [0.25.3]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.2...v0.25.3
