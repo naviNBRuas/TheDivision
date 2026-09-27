@@ -10,6 +10,12 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.26.1]
+
+### Fixed
+
+- The daemon's scheduler no longer scans whole tables for every goal on every tick: the coordinator's hot tables are indexed (the capacity query went from 147 ms to 6 ms on a 450 MB database).
+
 ## [0.26.0]
 
 ### Added
@@ -1391,7 +1397,8 @@ Initial public release.
 - Docs: architecture, ADR, and install-methods documentation; README and
   MIT license.
 
-[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.1...HEAD
+[0.26.1]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.3...v0.26.0
 [0.25.3]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.1...v0.25.2
