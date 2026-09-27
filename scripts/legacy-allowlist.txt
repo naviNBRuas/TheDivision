@@ -2,8 +2,6 @@
 CHANGELOG.md	history
 crates/divisi-core/src/env.rs	SINGLE_* adoption
 crates/divisi-core/src/migrate.rs	old config dir and db
-crates/divisi-core/src/shim.rs	deprecation shims
-crates/divisi-cli/src/bin/*	single* shim binaries
 crates/divisi-cli/src/migrate_cmd.rs	pre-rename install migration
 crates/divisi-cli/src/notch_proc.rs	legacy notch UUID
 crates/divisi-core/src/mcp.rs	legacy MCP server names removed on sync
@@ -19,8 +17,6 @@ crates/divisi-cli/tests/bounded_latency.rs	clears the legacy config env var so t
 crates/divisi-core/src/agent_names.rs	maps pre-rename agent names (single-pool, single-<provider>) onto divisi names
 crates/divisi-core/src/permissions.rs	reads pre-rename singlecli:<tool> permission rules as divisi:<tool>
 crates/divisi-core/src/preferences.rs	migrates learned singlecli:<tool> preferences to divisi:<tool>
-crates/divisi-cli/src/update.rs	falls back to pre-rename singlecli-<target> release assets
-install.sh	falls back to pre-rename singlecli-<target> release assets and SINGLE_* install variables
 crates/divisi-agent-sdk/src/formats/opencode.rs	recognises provider keys written under the pre-rename single- namespace
 crates/divisi-mcp/src/server.rs	references a historical spec filename
 crates/divisi-runtime/src/self_heal/infra.rs	sweeps task branches created before the rename

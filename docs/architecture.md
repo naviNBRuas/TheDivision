@@ -466,7 +466,7 @@ stable|nightly] [--check] [--yes]`, mirroring the real `claude update`/
   rather than colliding on asset names). There's no meaningful semver to
   diff for a rolling tag, so this channel is always reported as "an
   update is available" rather than silently claiming it's current.
-- Applying an update downloads the same `divisi-<target>.tar.gz` asset (falling back to a pre-rename `singlecli-<target>.tar.gz`)
+- Applying an update downloads the same `divisi-<target>.tar.gz` asset
   shape `install.sh`/`release.yml` already use, extracts it, and
   atomically replaces `divisi`/`divisid` next to whichever binary
   is currently running (`std::env::current_exe()`'s directory) — not a

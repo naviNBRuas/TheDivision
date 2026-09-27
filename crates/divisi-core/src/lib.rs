@@ -1,5 +1,4 @@
 pub mod agent_names;
-pub mod shim;
 pub mod migrate;
 pub mod env;
 pub mod account;

@@ -14,7 +14,7 @@
 //!   when already current just re-downloads the same build, which is
 //!   harmless, not silently wrong.
 //!
-//! Platform detection and the `divisi-<target>.tar.gz` asset naming (`singlecli-` before the rename)
+//! Platform detection and the `divisi-<target>.tar.gz` asset naming
 //! exactly mirror `install.sh`, so both stay consistent with the same
 //! release artifacts.
 
@@ -79,12 +79,12 @@ pub fn check_latest(channel: &str) -> Result<ReleaseInfo> {
         .context("parsing GitHub releases response")?;
 
     let target = detect_target()?;
-    // Releases before the rename shipped `singlecli-<target>`; newer ones ship `divisi-<target>`.
-    let names = [format!("divisi-{target}.tar.gz"), format!("singlecli-{target}.tar.gz")];
-    let asset = names
+    let name = format!("divisi-{target}.tar.gz");
+    let asset = release
+        .assets
         .iter()
-        .find_map(|n| release.assets.iter().find(|a| &a.name == n))
-        .with_context(|| format!("no asset named {} in release {}", names[0], release.tag_name))?;
+        .find(|a| a.name == name)
+        .with_context(|| format!("no asset named {name} in release {}", release.tag_name))?;
 
     Ok(ReleaseInfo { tag: release.tag_name, asset_url: asset.browser_download_url.clone() })
 }
@@ -152,11 +152,7 @@ pub fn apply(release: &ReleaseInfo) -> Result<PathBuf> {
     }
 
     let target = detect_target()?;
-    let extracted_dir = [format!("divisi-{target}"), format!("singlecli-{target}")]
-        .iter()
-        .map(|d| tmp_dir.path().join(d))
-        .find(|p| p.exists())
-        .unwrap_or_else(|| tmp_dir.path().join(format!("divisi-{target}")));
+    let extracted_dir = tmp_dir.path().join(format!("divisi-{target}"));
     let mut replaced = Vec::new();
     for binary in ["divisi", "divisid", "divisi-mcp", "divisi-gateway", "divisi-agent", "divisi-lsp", "divisi-notch"] {
         let src = extracted_dir.join(binary);
@@ -187,7 +183,7 @@ pub fn apply(release: &ReleaseInfo) -> Result<PathBuf> {
         replaced.push(binary);
     }
     if replaced.is_empty() {
-        bail!("update archive for {target} didn't contain single or divisid");
+        bail!("update archive for {target} didn't contain divisi or divisid");
     }
 
     Ok(install_dir)

@@ -15,8 +15,8 @@ set -eu
 
 # The repository keeps its pre-rename name until it is renamed on GitHub (which redirects).
 REPO="naviNBRuas/TheDivision"
-INSTALL_DIR="${DIVISI_INSTALL_DIR:-${SINGLE_INSTALL_DIR:-$HOME/.local/bin}}"
-VERSION="${DIVISI_VERSION:-${SINGLE_VERSION:-latest}}"
+INSTALL_DIR="${DIVISI_INSTALL_DIR:-$HOME/.local/bin}"
+VERSION="${DIVISI_VERSION:-latest}"
 
 info() { printf '>> %s\n' "$1"; }
 error() { printf 'error: %s\n' "$1" >&2; exit 1; }
@@ -56,16 +56,10 @@ main() {
   work_dir="$(mktemp -d)"
   trap 'rm -rf "$work_dir"' EXIT
 
-  # Releases before the rename shipped `singlecli-<target>.tar.gz`.
-  asset=""
-  for name in "divisi-$target" "singlecli-$target"; do
-    info "Downloading $base/$name.tar.gz"
-    if curl -fsSL "$base/$name.tar.gz" -o "$work_dir/divisi.tar.gz"; then
-      asset="$name"
-      break
-    fi
-  done
-  [ -n "$asset" ] || error "download failed — is there a release for $target yet? See https://github.com/$REPO/releases"
+  asset="divisi-$target"
+  info "Downloading $base/$asset.tar.gz"
+  curl -fsSL "$base/$asset.tar.gz" -o "$work_dir/divisi.tar.gz" \
+    || error "download failed — is there a release for $target yet? See https://github.com/$REPO/releases"
 
   tar -xzf "$work_dir/divisi.tar.gz" -C "$work_dir"
 

@@ -200,7 +200,7 @@ divisi was SingleCLI until 0.24.0, and this repository was `naviNBRuas/SingleCLI
 | `SINGLE_*` environment variables | `DIVISI_*` (old names still read) |
 | `~/.config/single` | `~/.config/divisi` (moved on first run, symlink left behind) |
 
-The old command names forward to the new ones until 0.26. `divisi migrate` shows what an older install
+The old command names were removed in 0.26.0. `divisi migrate` shows what an older install
 needs (systemd unit, notch extension) and changes nothing without `--apply`.
 
 ## Development
