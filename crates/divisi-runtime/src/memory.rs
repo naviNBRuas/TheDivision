@@ -95,6 +95,9 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         )",
         (),
     )?;
+    // Hot lookups (the scheduler tick queries these per goal every few seconds); without them each was a full scan.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories (scope, created_at)", ())?;
+
     Ok(())
 }
 

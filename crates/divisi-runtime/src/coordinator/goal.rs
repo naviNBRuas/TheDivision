@@ -102,6 +102,10 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         )",
         (),
     )?;
+    // Hot lookups (the scheduler tick queries these per goal every few seconds); without them each was a full scan.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_nodes_status ON graph_nodes (status)", ())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_nodes_task ON graph_nodes (task_id)", ())?;
+
     // E28 spec §8/§12 (Part D, auto-continue): additive columns, via
     // `add_column_if_missing` per the plan (same helper `task.rs`'s
     // `tasks` table migrations use) — no rewrite of either table.

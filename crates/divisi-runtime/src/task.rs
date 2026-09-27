@@ -89,6 +89,11 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         )",
         (),
     )?;
+    // Hot lookups (the scheduler tick queries these per goal every few seconds); without them each was a full scan.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)", ())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_agent_status ON tasks (agent, status)", ())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks (updated_at)", ())?;
+
     // Added for workspace-scoped tasks: a task predating this migration
     // gets '' for both (never NULL — `TaskRecord::cwd`/`workspace_id` are
     // plain `String`s, not `Option`), which the TUI shows as an explicit

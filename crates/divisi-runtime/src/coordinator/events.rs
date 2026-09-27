@@ -109,6 +109,10 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         )",
         (),
     )?;
+    // Hot lookups (the scheduler tick queries these per goal every few seconds); without them each was a full scan.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_coordinator_events_goal ON coordinator_events (goal_id, id)", ())?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_coordinator_events_session_kind ON coordinator_events (session_id, kind)", ())?;
+
     Ok(())
 }
 
