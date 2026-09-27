@@ -296,6 +296,13 @@ fn reset_node_for_retry(conn: &mut Connection, goal_id: &str, node_id: &str, age
     // (past whatever agent it was stuck on) instead of retrying the same one.
     node.agent = agent.unwrap_or("").to_string();
     goal::save_graph(conn, goal_id, &graph)?;
+    // A retried part only runs if its goal is ticked, and the scheduler ticks active goals only. A goal
+    // stopped for this part (blocked, waiting for you, failed, paused) goes back to running; a cancelled
+    // or finished goal stays as it is.
+    use graph::GoalStatus::*;
+    if matches!(g.status, Blocked | WaitingInput | Failed | Paused) {
+        goal::resume_status(conn, goal_id)?;
+    }
 
     let pin_note = agent.map(|a| format!(", pinned to {a}")).unwrap_or_default();
     events::append(
@@ -543,6 +550,30 @@ mod tests {
     /// re-tick that, given any usable agent, immediately re-admits and
     /// dispatches the node for real -- correct production behavior, but
     /// not what this test is isolating).
+    #[test]
+    fn retry_node_puts_a_stopped_goal_back_to_running() {
+        // Live finding (2026-09-26): the node was reset but its goal stayed `waiting_input`, which the
+        // scheduler never ticks, so the retried part never ran.
+        for stopped in [graph::GoalStatus::WaitingInput, graph::GoalStatus::Blocked, graph::GoalStatus::Failed] {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut conn = test_conn();
+            let s = session::new_session(&conn, tmp.path()).unwrap();
+            let g = goal::create(&conn, &s.id, "g", graph::GoalMode::Auto, 25, 60).unwrap();
+            let mut node = graph::Node {
+                id: "s1".into(), desc: "do it".into(), kind: graph::NodeKind::Code, effort: graph::Effort::Standard,
+                agent: String::new(), depends_on: vec![], status: graph::NodeStatus::Failed, task_id: Some(1),
+                attempts: 3, worktree: false, output_ref: None, earliest_retry_at_ms: None,
+            };
+            node.status = graph::NodeStatus::Failed;
+            goal::save_graph(&mut conn, &g.id, &graph::TaskGraph { nodes: vec![node] }).unwrap();
+            goal::set_status(&conn, &g.id, stopped).unwrap();
+
+            reset_node_for_retry(&mut conn, &g.id, "s1", Some("kilocode")).unwrap();
+
+            assert_eq!(goal::get(&conn, &g.id).unwrap().unwrap().status, graph::GoalStatus::Running, "from {stopped:?}");
+        }
+    }
+
     #[test]
     fn retry_node_resets_a_blocked_node_back_to_pending() {
         let tmp = tempfile::tempdir().unwrap();
