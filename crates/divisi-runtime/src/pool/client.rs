@@ -312,43 +312,53 @@ pub fn dispatch_with_retry(
     let budget = Duration::from_millis(retry_budget_ms());
     let deadline = Instant::now() + budget;
     let abort = Arc::new(AtomicBool::new(false));
+    let result = retry_until(
+        deadline,
+        provider.timeout,
+        |timeout| dispatch_openai_compat(client, req, provider, key, timeout, &abort),
+        Instant::now,
+        std::thread::sleep,
+    );
+    abort.store(true, Ordering::Relaxed);
+    result
+}
 
-    // Attempt 0 always runs regardless of remaining budget.
-    let remaining = deadline.saturating_duration_since(Instant::now());
-    let per_attempt_timeout = provider.timeout.min(remaining.max(Duration::from_millis(1)));
-    match dispatch_openai_compat(client, req, provider, key, per_attempt_timeout, &abort) {
-        Ok(resp) => {
-            abort.store(true, Ordering::Relaxed); // disarm on first byte / success
-            return Ok(resp);
-        }
-        Err(PoolError::RateLimited { .. } | PoolError::PaymentRequired | PoolError::TierGate | PoolError::AuthFailed | PoolError::ToolsUnsupported) => {
-            // these are not retryable within the same provider/key.
-            return dispatch_openai_compat(client, req, provider, key, per_attempt_timeout, &abort);
-        }
-        Err(_transport_or_other) => {}
-    }
+/// First wait between retries of a transport error; doubles up to `RETRY_BACKOFF_MAX`.
+const RETRY_BACKOFF_START: Duration = Duration::from_millis(250);
+const RETRY_BACKOFF_MAX: Duration = Duration::from_secs(4);
 
-    // First failover always runs too (spec: "attempt 0 and the first
-    // failover always run"), then subsequent retries are budget-gated.
+/// The retry policy behind `dispatch_with_retry`, with the clock and sleep injected for tests.
+/// Attempt 0 always runs. A rate limit, payment, tier, auth or tool-support error is final: retrying the same
+/// key would only repeat it. Anything else (a transport error, a 5xx) is retried with exponential backoff
+/// until `deadline`; without the wait, an instantly failing provider was retried in a tight loop for the whole
+/// budget, burning a core per dispatch.
+fn retry_until<T>(
+    deadline: Instant,
+    max_attempt_timeout: Duration,
+    mut attempt: impl FnMut(Duration) -> Result<T, PoolError>,
+    mut now: impl FnMut() -> Instant,
+    mut sleep: impl FnMut(Duration),
+) -> Result<T, PoolError> {
+    let mut backoff = RETRY_BACKOFF_START;
+    let mut first = true;
     loop {
-        let now = Instant::now();
-        if now >= deadline {
-            abort.store(true, Ordering::Relaxed);
+        let remaining = deadline.saturating_duration_since(now());
+        if !first && remaining.is_zero() {
             return Err(PoolError::HedgeAbort);
         }
-        let remaining = deadline - now;
-        let per_attempt_timeout = provider.timeout.min(remaining);
-        match dispatch_openai_compat(client, req, provider, key, per_attempt_timeout, &abort) {
-            Ok(resp) => return Ok(resp),
-            Err(PoolError::HedgeAbort) => return Err(PoolError::HedgeAbort),
-            Err(e @ (PoolError::RateLimited { .. } | PoolError::PaymentRequired | PoolError::TierGate | PoolError::AuthFailed | PoolError::ToolsUnsupported)) => {
-                return Err(e);
+        let timeout = max_attempt_timeout.min(remaining.max(Duration::from_millis(1)));
+        match attempt(timeout) {
+            Ok(v) => return Ok(v),
+            Err(e @ (PoolError::HedgeAbort | PoolError::RateLimited { .. } | PoolError::PaymentRequired | PoolError::TierGate | PoolError::AuthFailed | PoolError::ToolsUnsupported)) => return Err(e),
+            Err(_) => {
+                first = false;
+                let remaining = deadline.saturating_duration_since(now());
+                if remaining.is_zero() {
+                    return Err(PoolError::HedgeAbort);
+                }
+                sleep(backoff.min(remaining));
+                backoff = (backoff * 2).min(RETRY_BACKOFF_MAX);
             }
-            Err(_) if Instant::now() >= deadline => {
-                abort.store(true, Ordering::Relaxed);
-                return Err(PoolError::HedgeAbort);
-            }
-            Err(_) => continue,
         }
     }
 }
@@ -475,6 +485,46 @@ pub(crate) mod test_server {
 mod tests {
     use super::test_server::MockServer;
     use super::*;
+
+    struct FakeClock(std::cell::Cell<Instant>);
+
+    #[test]
+    fn a_final_error_is_not_retried() {
+        for final_err in [PoolError::RateLimited { retry: None }, PoolError::PaymentRequired, PoolError::AuthFailed, PoolError::TierGate, PoolError::ToolsUnsupported] {
+            let start = Instant::now();
+            let mut calls = 0;
+            let r: Result<(), _> = retry_until(start + Duration::from_secs(45), Duration::from_secs(30), |_| { calls += 1; Err(match &final_err { PoolError::RateLimited { .. } => PoolError::RateLimited { retry: None }, PoolError::PaymentRequired => PoolError::PaymentRequired, PoolError::AuthFailed => PoolError::AuthFailed, PoolError::TierGate => PoolError::TierGate, _ => PoolError::ToolsUnsupported }) }, Instant::now, |_| panic!("must not wait"));
+            assert!(r.is_err());
+            assert_eq!(calls, 1, "{:?} must be tried exactly once", r.err());
+        }
+    }
+
+    #[test]
+    fn transport_errors_back_off_until_the_deadline() {
+        let clock = FakeClock(std::cell::Cell::new(Instant::now()));
+        let deadline = clock.0.get() + Duration::from_secs(10);
+        let mut calls = 0;
+        let mut waits = Vec::new();
+        let r: Result<(), _> = retry_until(
+            deadline,
+            Duration::from_secs(30),
+            |_| { calls += 1; Err(PoolError::Transport("connection refused".into())) },
+            || clock.0.get(),
+            |d| { waits.push(d); clock.0.set(clock.0.get() + d); },
+        );
+        assert!(matches!(r, Err(PoolError::HedgeAbort)));
+        assert_eq!(waits[..4], [Duration::from_millis(250), Duration::from_millis(500), Duration::from_secs(1), Duration::from_secs(2)]);
+        assert!(waits.iter().all(|w| *w <= Duration::from_secs(4)), "backoff caps at 4 s: {waits:?}");
+        assert!(calls <= 8, "a 10 s budget allows a handful of attempts, not a tight loop: {calls}");
+    }
+
+    #[test]
+    fn a_retry_that_succeeds_returns_the_response() {
+        let mut calls = 0;
+        let r = retry_until(Instant::now() + Duration::from_secs(45), Duration::from_secs(30), |_| { calls += 1; if calls < 3 { Err(PoolError::Transport("reset".into())) } else { Ok(42) } }, Instant::now, |_| {});
+        assert_eq!(r.ok(), Some(42));
+        assert_eq!(calls, 3);
+    }
     use divisi_core::free_pool::{Limits, Wire};
     use std::thread;
 
