@@ -1300,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-agent-sdk"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1315,11 +1315,11 @@ dependencies = [
 
 [[package]]
 name = "divisi-brand"
-version = "0.25.0"
+version = "0.25.1"
 
 [[package]]
 name = "divisi-cli"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "age",
  "anyhow",
@@ -1346,7 +1346,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-core"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "age",
  "anyhow",
@@ -1366,7 +1366,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-gateway"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "divisi-core",
@@ -1380,7 +1380,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-lsp"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "divisi-core",
@@ -1391,7 +1391,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-mcp"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "divisi-core",
@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-native-agent"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-notch"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "divisi-core",
@@ -1434,7 +1434,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-protocol"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1442,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-runtime"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1465,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-tui"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "age",
  "anyhow",
@@ -1479,7 +1479,7 @@ dependencies = [
 
 [[package]]
 name = "divisi-web"
-version = "0.25.0"
+version = "0.25.1"
 dependencies = [
  "anyhow",
  "serde",

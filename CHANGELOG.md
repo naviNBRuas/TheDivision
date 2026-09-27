@@ -10,6 +10,12 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.25.1]
+
+### Fixed
+
+- `divisi goal retry-node` and `divisi goal resume` return in seconds: they tick only the goal they changed instead of every active goal.
+
 ## [0.25.0]
 
 ### Changed
@@ -1361,7 +1367,8 @@ Initial public release.
 - Docs: architecture, ADR, and install-methods documentation; README and
   MIT license.
 
-[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.23.0...v0.25.0
 [0.3.3]: https://github.com/naviNBRuas/TheDivision/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/naviNBRuas/TheDivision/compare/v0.3.0...v0.3.2
