@@ -311,16 +311,32 @@ pub fn reconcile(conn: &Connection) -> Result<usize> {
 
     let mut touched = 0;
     for (goal_id, node_id, task_id, attempts) in rows {
-        let task_status: Option<String> = match task_id {
+        let task: Option<(String, Option<String>)> = match task_id {
             Some(tid) => conn
-                .query_row("SELECT status FROM tasks WHERE id = ?1", [tid], |r| r.get(0))
+                .query_row("SELECT status, summary FROM tasks WHERE id = ?1", [tid], |r| Ok((r.get(0)?, r.get(1)?)))
                 .ok(),
             None => None,
         };
-        match task_status.as_deref() {
+        let task_status = task.as_ref().map(|(status, _)| status.as_str());
+        let killed_by_restart = task.as_ref().and_then(|(_, summary)| summary.as_deref()) == Some(crate::task::INTERRUPTED_BY_RESTART);
+        match task_status {
             Some("running") | Some("created") => continue, // genuinely still live
             Some("completed") => {
                 goal::update_node(conn, &goal_id, &node_id, NodeStatus::Done, None, None, None)?;
+            }
+            // The daemon was stopped under it (an update, a reboot): not the part's failure, so it goes back to
+            // pending with its attempts unchanged.
+            _ if killed_by_restart => {
+                goal::update_node(conn, &goal_id, &node_id, NodeStatus::Pending, None, None, Some(attempts))?;
+                if let Ok(Some(g)) = goal::get(conn, &goal_id) {
+                    let _ = events::append(
+                        conn,
+                        &g.session_id,
+                        Some(&goal_id),
+                        events::EventKind::SessionResumed,
+                        &format!("{node_id}: interrupted by a daemon restart, rescheduled without spending an attempt"),
+                    );
+                }
             }
             _ => match retry_decision(attempts, false) {
                 RetryDecision::RetrySameNextAgent => {
@@ -1685,6 +1701,36 @@ mod tests {
         assert_eq!(reloaded.find("s1").unwrap().attempts, 1);
         assert_eq!(reloaded.find("s2").unwrap().status, NodeStatus::Running);
         assert_eq!(reloaded.find("s3").unwrap().status, NodeStatus::Done);
+    }
+
+    #[test]
+    fn a_part_killed_by_a_daemon_restart_keeps_its_retry_budget() {
+        // Live finding (2026-09-27): each divisid restart for an update marked every in-flight part failed and
+        // spent a retry; parts at the cap were failed outright and their goals stalled waiting for a person.
+        use crate::coordinator::goal;
+        use crate::coordinator::graph::GoalMode;
+
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+        let s = crate::coordinator::session::new_session(&conn, std::path::Path::new("/tmp/p")).unwrap();
+        let g = goal::create(&conn, &s.id, "g", GoalMode::Auto, 25, 60).unwrap();
+        goal::save_graph(&mut conn, &g.id, &TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] }).unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, description, agent, status, timed_out, created_at, updated_at, cwd, workspace_id)
+             VALUES (20, 'x', 'grok', 'running', 0, '', '', '', '')",
+            [],
+        )
+        .unwrap();
+        // Already at the retry cap: a genuine failure here would fail the part for good.
+        goal::update_node(&conn, &g.id, "s1", NodeStatus::Running, Some(20), None, Some(2)).unwrap();
+
+        crate::task::reconcile_orphaned_tasks(&conn).unwrap();
+        reconcile(&conn).unwrap();
+
+        let n = goal::load_graph(&conn, &g.id).unwrap().find("s1").unwrap().clone();
+        assert_eq!(n.status, NodeStatus::Pending, "a restart is not the part's failure");
+        assert_eq!(n.attempts, 2, "and it costs no attempt");
     }
 
     #[test]

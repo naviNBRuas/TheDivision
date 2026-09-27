@@ -513,9 +513,13 @@ fn set_status(conn: &Connection, id: i64, status: TaskStatus) -> Result<()> {
 /// zombies. Mark them `Failed` with an "interrupted" summary and return
 /// the count. Best-effort at the call site — a failure here must not stop
 /// the daemon coming up.
+/// Summary of a task the daemon found still in flight at startup; `coordinator::scheduler::reconcile` retries its
+/// part without charging an attempt.
+pub const INTERRUPTED_BY_RESTART: &str = "interrupted: divisid restarted while this task was in flight";
+
 pub fn reconcile_orphaned_tasks(conn: &Connection) -> Result<usize> {
     let now = chrono::Utc::now().to_rfc3339();
-    let summary = "interrupted: divisid restarted while this task was in flight";
+    let summary = INTERRUPTED_BY_RESTART;
     let affected = conn.execute(
         "UPDATE tasks SET status = ?1, summary = ?2, updated_at = ?3 \
          WHERE status IN ('created', 'running')",
