@@ -10,6 +10,13 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.25.3]
+
+### Fixed
+
+- The daemon no longer burns CPU on failing providers: pool retries of a transport error or 5xx back off from 250 ms to 4 s instead of spinning for the whole 45 s budget, and a rate-limit, payment, tier, auth or tool-support error is not sent a second time.
+- An agent's stderr is scanned for rate-limit errors incrementally instead of re-reading all of it every 100 ms, and output keeps draining past invalid UTF-8 instead of leaving the agent blocked on a full pipe until its timeout.
+
 ## [0.25.2]
 
 ### Fixed
@@ -1373,7 +1380,8 @@ Initial public release.
 - Docs: architecture, ADR, and install-methods documentation; README and
   MIT license.
 
-[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.2...HEAD
+[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.3...HEAD
+[0.25.3]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.23.0...v0.25.0
