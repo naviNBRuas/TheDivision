@@ -182,6 +182,7 @@ pub fn run_command_live_fail_fast(
     let mut failed_fast = false;
     let output_len = || stdout_buf.lock().map(|b| b.len()).unwrap_or(0) + stderr_buf.lock().map(|b| b.len()).unwrap_or(0);
     let (mut last_len, mut last_change) = (0usize, Instant::now());
+    let mut matches = fail_fast.map(|f| MatchCounter::new(f.pattern));
     let (timed_out, cancelled) = loop {
         match child.try_wait().context("polling child process")? {
             Some(_) => break (false, false),
@@ -194,8 +195,10 @@ pub fn run_command_live_fail_fast(
                 break (false, true);
             }
             None if fail_fast.is_some_and(|f| {
-                let pattern = f.pattern.to_lowercase();
-                let seen = stderr_buf.lock().map(|b| b.to_lowercase().matches(&pattern).count()).unwrap_or(0);
+                let seen = match (matches.as_mut(), stderr_buf.lock()) {
+                    (Some(m), Ok(b)) => m.update(&b),
+                    _ => 0,
+                };
                 let len = output_len();
                 if len != last_len {
                     (last_len, last_change) = (len, Instant::now());
@@ -236,6 +239,42 @@ pub fn run_command_live_fail_fast(
         duration_ms: start.elapsed().as_millis(),
         usage: None,
     })
+}
+
+/// Counts case-insensitive matches of a pattern in a growing buffer, looking only at what was appended
+/// since the last call. The fail-fast check runs every 100 ms; re-lowercasing and re-scanning the whole
+/// stderr each time cost a core per long-running agent once its log reached megabytes.
+pub(crate) struct MatchCounter {
+    pattern: String,
+    scanned: usize,
+    count: usize,
+}
+
+impl MatchCounter {
+    pub(crate) fn new(pattern: &str) -> Self {
+        Self { pattern: pattern.to_lowercase(), scanned: 0, count: 0 }
+    }
+
+    /// Total matches in `buf` so far. `buf` only ever grows. The window restarts `pattern.len() - 1` bytes
+    /// before the old end, so a match split across two reads is found, and any match in the window ends
+    /// after the old end, so none is counted twice.
+    pub(crate) fn update(&mut self, buf: &str) -> usize {
+        if buf.len() <= self.scanned || self.pattern.is_empty() {
+            return self.count;
+        }
+        let mut from = self.scanned.saturating_sub(self.pattern.len() - 1);
+        while !buf.is_char_boundary(from) {
+            from -= 1;
+        }
+        let window = buf[from..].to_lowercase();
+        let old_end_in_window = self.scanned - from;
+        self.count += window
+            .match_indices(&self.pattern)
+            .filter(|(i, m)| i + m.len() > old_end_in_window)
+            .count();
+        self.scanned = buf.len();
+        self.count
+    }
 }
 
 /// When a child's `$HOME` is overridden for isolation, its own view of
@@ -337,9 +376,18 @@ fn share_toolchain_caches_from(cmd: &mut Command, real_home: &Path, already_set:
 /// set — appending each line to the shared file immediately (flushed, so
 /// a concurrent reader of that file sees it right away).
 fn drain_into(pipe: impl Read, buf: Arc<Mutex<String>>, tee: Option<Arc<Mutex<std::fs::File>>>) {
-    let reader = BufReader::new(pipe);
-    for line in reader.lines() {
-        let Ok(line) = line else { break };
+    // Bytes, not `lines()`: `lines()` stops at the first invalid UTF-8 byte, after which nothing drains the
+    // pipe, the child blocks writing to it, and the run hangs until its timeout.
+    let mut reader = BufReader::new(pipe);
+    let mut raw = Vec::new();
+    loop {
+        raw.clear();
+        match reader.read_until(b'\n', &mut raw) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let text = String::from_utf8_lossy(&raw);
+        let line = text.trim_end_matches(['\n', '\r']);
         if let Some(tee) = &tee {
             if let Ok(mut f) = tee.lock() {
                 let _ = writeln!(f, "{line}");
@@ -347,7 +395,7 @@ fn drain_into(pipe: impl Read, buf: Arc<Mutex<String>>, tee: Option<Arc<Mutex<st
             }
         }
         if let Ok(mut b) = buf.lock() {
-            b.push_str(&line);
+            b.push_str(line);
             b.push('\n');
         }
     }
@@ -355,6 +403,27 @@ fn drain_into(pipe: impl Read, buf: Arc<Mutex<String>>, tee: Option<Arc<Mutex<st
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn match_counter_scans_only_new_output_and_counts_each_match_once() {
+        let mut c = super::MatchCounter::new("Rate Limit");
+        let mut buf = String::from("rate lim");
+        assert_eq!(c.update(&buf), 0);
+        buf.push_str("it hit\nRATE LIMIT again, ");
+        assert_eq!(c.update(&buf), 2, "a match split across two reads counts once");
+        assert_eq!(c.update(&buf), 2, "re-reading the same buffer adds nothing");
+        buf.push_str("é rate limit");
+        assert_eq!(c.update(&buf), 3, "multi-byte text before a match is handled");
+    }
+
+    #[test]
+    fn drain_keeps_reading_past_invalid_utf8() {
+        let data: &[u8] = b"ok line\n\xff\xfe broken bytes\nafter\n";
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        super::drain_into(data, std::sync::Arc::clone(&buf), None);
+        let got = buf.lock().unwrap().clone();
+        assert!(got.contains("ok line") && got.contains("after"), "{got:?}");
+    }
+
     #[test]
     fn fail_fast_kills_a_child_that_keeps_logging_a_fatal_error() {
         let dir = tempfile::tempdir().unwrap();
