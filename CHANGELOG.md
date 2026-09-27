@@ -10,6 +10,17 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.26.0]
+
+### Added
+
+- The coordinator starts no new parts while the machine's available memory is under `min_available_memory_mb` (`coordinator.toml`, default 2048; 0 turns it off). Parts already running continue.
+
+### Removed
+
+- The `single`, `single-runtimed`, `single-mcp`, `singlecli-mcp`, `single-lsp`, `single-notch` and `single-agent` command aliases, as announced for 0.26. Use the `divisi*` names.
+- `divisi update` and `install.sh` no longer fall back to pre-rename `singlecli-<target>` release assets, and `install.sh` no longer reads `SINGLE_INSTALL_DIR` or `SINGLE_VERSION`. `divisi migrate` and the `SINGLE_*` and `~/.config/single` fallbacks for existing installs stay.
+
 ## [0.25.3]
 
 ### Fixed
@@ -1380,7 +1391,8 @@ Initial public release.
 - Docs: architecture, ADR, and install-methods documentation; README and
   MIT license.
 
-[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.3...HEAD
+[Unreleased]: https://github.com/naviNBRuas/TheDivision/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.3...v0.26.0
 [0.25.3]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/naviNBRuas/TheDivision/compare/v0.25.0...v0.25.1
