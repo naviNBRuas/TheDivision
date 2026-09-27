@@ -909,7 +909,9 @@ fn run_supervisor_or_block(
         .and_then(|n| n.output_ref.clone())
         .and_then(|p| std::fs::read_to_string(p).ok())
         .unwrap_or_default();
-    let cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
+    // The supervisor's agent may use tools, so it runs where the goal's nodes run, never in the shared checkout.
+    let session_cwd = std::path::PathBuf::from(load_session_cwd(conn, &goal.session_id)?);
+    let (cwd, _) = goal_workdir(ctx, &CoordinatorConfig::load(&ctx.dirs), &goal.id, &session_cwd)?;
 
     match crate::coordinator::brain::supervise(
         conn, ctx, &cwd, &graph, failing_node_id, &failing_output, table, health,

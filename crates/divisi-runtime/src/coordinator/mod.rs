@@ -69,9 +69,15 @@ pub fn plan_goal(
         return Ok(());
     }
     let (cfg, table, health) = load_env(ctx, conn);
-    let cwd = session::get(conn, &goal.session_id)?
+    let session_cwd = session::get(conn, &goal.session_id)?
         .map(|s| s.cwd)
         .unwrap_or_else(|| ".".into());
+    // The planner's agent may use tools, so it runs in the goal's own worktree (created here if this is the goal's
+    // first step), never in the shared checkout: planners there have written code into the person's tree.
+    let cwd = scheduler::goal_workdir(ctx, &cfg, goal_id, std::path::Path::new(&session_cwd))?
+        .0
+        .to_string_lossy()
+        .into_owned();
 
     let graph = if goal.mode == graph::GoalMode::Careful {
         let pinned = agent
