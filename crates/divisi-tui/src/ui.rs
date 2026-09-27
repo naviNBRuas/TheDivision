@@ -117,15 +117,66 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             }
         })
         .collect();
+    // With many tabs a narrow terminal cannot show them all: show a window that always holds the active tab,
+    // with "…" on the side(s) cut off.
+    let widths: Vec<u16> = titles.iter().map(|t| t.width() as u16).collect();
+    let selected = Tab::ALL.iter().position(|t| *t == app.tab).unwrap_or(0);
+    let (start, end) = tab_window(&widths, selected, area.width.saturating_sub(2));
     let mut spans = Vec::new();
-    for (i, span) in titles.into_iter().enumerate() {
-        if i > 0 {
+    if start > 0 {
+        spans.push(Span::styled("… ", Style::default().fg(MUTED)));
+    }
+    for (i, span) in titles.into_iter().enumerate().take(end).skip(start) {
+        if i > start {
             spans.push(Span::raw("  "));
         }
         spans.push(span);
     }
+    if end < widths.len() {
+        spans.push(Span::styled(" …", Style::default().fg(MUTED)));
+    }
     let tabs = Paragraph::new(Line::from(spans)).block(panel().border_style(Style::default().fg(BORDER)));
     frame.render_widget(tabs, area);
+}
+
+/// Which tabs `[start, end)` fit in `avail` columns: from the first tab when that already includes
+/// `selected`, otherwise a window grown around `selected`. Tabs are 2 columns apart and a cut side needs 2
+/// columns for its "…". The selected tab is always in the window, even when it alone is too wide.
+fn tab_window(widths: &[u16], selected: usize, avail: u16) -> (usize, usize) {
+    let n = widths.len();
+    if n == 0 {
+        return (0, 0);
+    }
+    let selected = selected.min(n - 1);
+    let avail = u32::from(avail);
+    let cost = |s: usize, e: usize| -> u32 {
+        let tabs: u32 = widths[s..e].iter().map(|&w| u32::from(w)).sum();
+        let gaps = 2 * (e - s - 1) as u32;
+        let markers = if s > 0 { 2 } else { 0 } + if e < n { 2 } else { 0 };
+        tabs + gaps + markers
+    };
+    let mut end = 1;
+    while end < n && cost(0, end + 1) <= avail {
+        end += 1;
+    }
+    if selected < end && cost(0, end) <= avail {
+        return (0, end);
+    }
+    let (mut start, mut end) = (selected, selected + 1);
+    loop {
+        let mut grew = false;
+        if start > 0 && cost(start - 1, end) <= avail {
+            start -= 1;
+            grew = true;
+        }
+        if end < n && cost(start, end + 1) <= avail {
+            end += 1;
+            grew = true;
+        }
+        if !grew {
+            return (start, end);
+        }
+    }
 }
 
 /// Shown in place of every tab while the first `refresh()` is still in
@@ -1288,3 +1339,31 @@ mod mark_tests {
         assert_eq!(mark_text(false, 2.0, false, false), "÷");
     }
 }
+
+#[cfg(test)]
+mod tab_window_tests {
+    use super::tab_window;
+
+    #[test]
+    fn everything_shows_when_it_fits() {
+        assert_eq!(tab_window(&[5, 5, 5], 2, 40), (0, 3));
+    }
+
+    #[test]
+    fn the_selected_tab_is_always_in_view() {
+        // widths 8 each with a 2-space gap: 4 tabs need 38 columns; leave room for "…" markers.
+        let w = [8, 8, 8, 8, 8, 8];
+        for sel in 0..w.len() {
+            let (start, end) = tab_window(&w, sel, 30);
+            assert!(start <= sel && sel < end, "selected {sel} out of window {start}..{end}");
+        }
+        assert_eq!(tab_window(&w, 0, 30).0, 0, "starts at the first tab while the first is selected");
+        assert_eq!(tab_window(&w, 5, 30).1, 6, "ends at the last tab while the last is selected");
+    }
+
+    #[test]
+    fn a_tab_wider_than_the_bar_still_shows_alone() {
+        assert_eq!(tab_window(&[5, 50, 5], 1, 20), (1, 2));
+    }
+}
+
