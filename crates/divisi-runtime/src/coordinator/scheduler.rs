@@ -444,6 +444,24 @@ pub fn tick(
 }
 
 /// One goal's share of a scheduling pass: admit ready nodes, block, fail or integrate.
+/// Ticks one goal only, for callers that changed a single goal (`retry-node`, `goal resume`) and want its
+/// freed parts admitted now. The periodic `tick` still drives every goal and settles finished tasks.
+pub fn tick_one(
+    ctx: &Context,
+    conn: &mut Connection,
+    cfg: &CoordinatorConfig,
+    table: &RoutingTable,
+    health: &PoolHealth,
+    dispatcher: &dyn Dispatcher,
+    goal_id: &str,
+) -> Result<()> {
+    // Same notion of "active" as the periodic tick (planning, running, queued, waiting on capacity).
+    match goal::active(conn)?.into_iter().find(|g| g.id == goal_id) {
+        Some(g) => tick_goal(ctx, conn, cfg, table, health, dispatcher, &g),
+        None => Ok(()),
+    }
+}
+
 fn tick_goal(
     ctx: &Context,
     conn: &mut Connection,
@@ -2176,6 +2194,40 @@ mod tests {
 
         assert_eq!(rec.0.borrow().as_slice(), [healthy.clone()]);
         assert_eq!(goal::get(&conn, &goals[0].id).unwrap().unwrap().status, GoalStatus::Blocked);
+    }
+
+    /// Live finding (2026-09-26): `divisi goal retry-node` re-ticked every active goal (planning ones make real model
+    /// calls), so each call took minutes. Ticking one goal must dispatch that goal's parts only.
+    #[test]
+    fn tick_one_dispatches_only_the_named_goal() {
+        use crate::coordinator::{goal, graph::GoalMode, session};
+        struct Recording(std::cell::RefCell<Vec<std::path::PathBuf>>);
+        impl Dispatcher for Recording {
+            fn dispatch(&self, opts: crate::task::OwnedRunTaskOptions) -> Result<i64> {
+                self.0.borrow_mut().push(opts.cwd.clone());
+                Ok(6000 + self.0.borrow().len() as i64)
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(&tmp.path().join("home"));
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::coordinator::ensure_coordinator_schema(&conn).unwrap();
+        crate::task::ensure_schema(&conn).unwrap();
+
+        let mut goals = Vec::new();
+        for name in ["one", "two"] {
+            let dir = tmp.path().join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            let s = session::new_session(&conn, &dir).unwrap();
+            let g = goal::create(&mut conn, &s.id, "g", GoalMode::Auto, 25, 60).unwrap();
+            goal::save_graph(&mut conn, &g.id, &TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] }).unwrap();
+            goals.push((g, dir));
+        }
+
+        let rec = Recording(Default::default());
+        tick_one(&ctx, &mut conn, &CoordinatorConfig::default(), &RoutingTable::default(), &PoolHealth::default(), &rec, &goals[1].0.id).unwrap();
+
+        assert_eq!(rec.0.borrow().as_slice(), [goals[1].1.clone()]);
     }
 
     #[test]

@@ -1890,7 +1890,7 @@ fn dispatch(
         Request::GoalResume { goal_id } => {
             let mut conn = coordinator_db(ctx)?;
             crate::coordinator::resume_goal(ctx, &mut conn, &goal_id)?;
-            let _ = crate::coordinator::drive(ctx, &mut conn, registry);
+            let _ = crate::coordinator::drive_goal(ctx, &mut conn, registry, &goal_id);
             Ok(ResponseData::Empty)
         }
         Request::GoalRetryNode { goal_id, node_id, agent } => {

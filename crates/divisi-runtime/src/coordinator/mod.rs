@@ -128,6 +128,15 @@ pub fn drive(ctx: &Context, conn: &mut Connection, registry: &crate::registry::T
     scheduler::tick(ctx, conn, &cfg, &table, &health, &dispatcher)
 }
 
+/// `drive` for one goal: admits that goal's ready parts without re-ticking every other goal, whose planners
+/// can make real model calls and take minutes.
+pub fn drive_goal(ctx: &Context, conn: &mut Connection, registry: &crate::registry::TaskRegistry, goal_id: &str) -> Result<()> {
+    ensure_coordinator_schema(conn)?;
+    let (cfg, table, health) = load_env(ctx, conn);
+    let dispatcher = scheduler::RealDispatcher { ctx, registry: registry.clone() };
+    scheduler::tick_one(ctx, conn, &cfg, &table, &health, &dispatcher, goal_id)
+}
+
 /// E28 spec §10 (Part F): called once from `server.rs`'s startup block,
 /// after the existing `scheduler::reconcile` (which already turns a
 /// `graph_nodes.status = 'running'` row with a dead backing task into
@@ -260,8 +269,8 @@ pub fn resume_goal(ctx: &Context, conn: &mut Connection, goal_id: &str) -> Resul
 pub fn retry_node(ctx: &Context, conn: &mut Connection, registry: &crate::registry::TaskRegistry, goal_id: &str, node_id: &str, agent: Option<&str>) -> Result<()> {
     reset_node_for_retry(conn, goal_id, node_id, agent)?;
     // give the reset node an immediate chance at admission rather than
-    // waiting for the next periodic timer tick.
-    drive(ctx, conn, registry)
+    // waiting for the next periodic timer tick; only this goal is ticked.
+    drive_goal(ctx, conn, registry, goal_id)
 }
 
 /// The pure DB-mutation half of `retry_node`, split out so it's testable
