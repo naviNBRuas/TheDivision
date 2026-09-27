@@ -10,7 +10,14 @@ patch version (`0.0.x`) carries fixes, per [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
-## [0.26.2]
+## [0.26.3]
+
+### Fixed
+
+- A goal's planner and supervisor now run in the goal's own worktree. Their agents can use tools, and run in the session's directory they wrote code straight into the shared checkout.
+- Goal worktrees and merges refuse a checkout on a detached HEAD, instead of starting new work from a stale commit and landing a confirmed merge on no branch.
+- A resumed goal whose worktree was cleaned up reattaches its existing branch, keeping the earlier work, instead of failing because the branch already exists.
+- Work a goal's agents left uncommitted is committed under the sprint's title rather than a generic "goal work" subject.
 
 ### Fixed
 
