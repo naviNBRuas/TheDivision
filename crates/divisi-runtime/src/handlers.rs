@@ -2932,11 +2932,10 @@ mod tests {
 
     #[test]
     fn provider_sync_real_home_writes_the_actual_home() {
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
         let real_home = tempfile::tempdir().unwrap();
-        std::env::set_var("HOME", real_home.path());
+        let _home = crate::TempHome::set(real_home.path());
 
         let store = divisi_core::secrets::SecretTool;
         divisi_core::secrets::SecretStore::set(&store, "test-provider-key", "sk-test").unwrap();
@@ -2953,7 +2952,6 @@ mod tests {
         assert!(real_home.path().join(".claude/settings.json").exists());
         assert!(!dir.path().join("homes").join("claude").join(".claude/settings.json").exists());
 
-        std::env::remove_var("HOME");
     }
 
     #[test]
@@ -2966,11 +2964,10 @@ mod tests {
         // subprocess call itself succeeds (it won't in this sandbox, since
         // no real `claude` binary is on PATH — that's fine, the backup must
         // still have happened).
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
         let real_home = tempfile::tempdir().unwrap();
-        std::env::set_var("HOME", real_home.path());
+        let _home = crate::TempHome::set(real_home.path());
 
         let settings_path = real_home.path().join(".claude").join("settings.json");
         std::fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
@@ -2997,7 +2994,6 @@ mod tests {
         assert_eq!(backups.len(), 1, "expected exactly one backup snapshot of settings.json before install_plugin ran");
         assert_eq!(std::fs::read_to_string(backups[0].path()).unwrap(), r#"{"pre_existing": true}"#);
 
-        std::env::remove_var("HOME");
     }
 
     #[test]
@@ -3005,11 +3001,10 @@ mod tests {
         // A fresh install (no prior settings.json) has nothing to back up —
         // `backup_before_write` returns `None` rather than erroring, and
         // `PluginSync` must not fail because of it.
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
         let real_home = tempfile::tempdir().unwrap();
-        std::env::set_var("HOME", real_home.path());
+        let _home = crate::TempHome::set(real_home.path());
 
         divisi_core::plugins::add(
             &ctx.dirs.plugins_registry_file(),
@@ -3021,7 +3016,6 @@ mod tests {
         assert!(matches!(response, Response::Ok { .. }));
         assert!(!real_home.path().join(".claude").join("settings.json").exists());
 
-        std::env::remove_var("HOME");
     }
 
     #[test]

@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn switching_gateway_mode_replaces_rather_than_accumulates_mcp_entries() {
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
+        let _guard = crate::home_env_lock();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
 
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn uninstall_removes_the_gateway_entry_even_when_gateway_mode_is_off() {
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
+        let _guard = crate::home_env_lock();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
 
@@ -152,11 +152,10 @@ mod tests {
 
     #[test]
     fn real_home_writes_the_actual_home_not_the_isolated_copy() {
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
         let real_home = tempfile::tempdir().unwrap();
-        std::env::set_var("HOME", real_home.path());
+        let _home = crate::TempHome::set(real_home.path());
 
         install_all(&ctx, false, true).unwrap();
 
@@ -165,12 +164,11 @@ mod tests {
         let isolated_claude_json = dir.path().join("homes").join("claude").join(".claude.json");
         assert!(!isolated_claude_json.exists(), "--real-home must not also bootstrap/write the isolated home");
 
-        std::env::remove_var("HOME");
     }
 
     #[test]
     fn without_real_home_still_writes_the_isolated_copy_only() {
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
+        let _guard = crate::home_env_lock();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
         install_all(&ctx, false, false).unwrap();
@@ -179,7 +177,7 @@ mod tests {
 
     #[test]
     fn divisi_mcp_is_always_included_regardless_of_gateway_mode() {
-        let _guard = crate::HOME_ENV_LOCK.lock().unwrap();
+        let _guard = crate::home_env_lock();
         let dir = tempfile::tempdir().unwrap();
         let ctx = test_ctx(dir.path());
 
