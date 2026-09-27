@@ -1007,7 +1007,13 @@ fn branch_gate_gaps(ctx: &Context, goal: &Goal, session_cwd: &std::path::Path) -
 /// A one-line commit subject for a goal: its conductor tag when it has one, else its first words.
 fn commit_subject(text: &str) -> String {
     if let Some(tag) = text.strip_prefix("[conductor:").and_then(|t| t.split_once(']')).map(|(t, _)| t) {
-        return format!("goal work for {tag}");
+        // Conductor goals embed the sprint file, whose first heading names the work ("# E06/02-2a — Forms builder").
+        let title = text
+            .split_once("# ")
+            .map(|(_, rest)| rest.split(['\n', '*']).next().unwrap_or("").trim())
+            .filter(|t| !t.is_empty());
+        let title: String = title.unwrap_or(tag).chars().take(72).collect();
+        return format!("complete {}", title.trim_end());
     }
     let first = text.lines().next().unwrap_or("").trim();
     first.chars().take(60).collect::<String>().trim_end().to_string()
@@ -1938,7 +1944,12 @@ mod tests {
 
     #[test]
     fn commit_subject_uses_the_conductor_tag_or_the_first_words() {
-        assert_eq!(commit_subject("[conductor:E02/03-storage] [E02 / 03.md] # Sprint"), "goal work for E02/03-storage");
+        // Live finding (2026-09-27): "goal work for E07/02-5-..." commits said nothing about the work.
+        assert_eq!(
+            commit_subject("[conductor:E06/02-2a-forms-builder] [E06 / 02-2a.md] # E06/02-2a — Forms builder **Repo:** nbr-office"),
+            "complete E06/02-2a — Forms builder"
+        );
+        assert_eq!(commit_subject("[conductor:E02/03-storage] [E02 / 03.md] no heading here"), "complete E02/03-storage");
         assert_eq!(commit_subject("add tests for the parser\nmore"), "add tests for the parser");
     }
 
