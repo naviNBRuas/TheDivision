@@ -73,6 +73,13 @@ pub struct CoordinatorConfig {
     /// private worktree per goal, see `scheduler::goal_workdir`.
     #[serde(default)]
     pub shared_checkouts: Vec<String>,
+    /// Start no new parts while the machine has less available memory than this (MiB); 0 turns it off.
+    #[serde(default = "default_min_available_memory_mb")]
+    pub min_available_memory_mb: u64,
+}
+
+fn default_min_available_memory_mb() -> u64 {
+    2048
 }
 
 fn default_provider_agent_concurrency() -> usize {
@@ -106,6 +113,7 @@ impl Default for CoordinatorConfig {
             agent_concurrency: Default::default(),
             disabled_agents: Vec::new(),
             shared_checkouts: Vec::new(),
+            min_available_memory_mb: default_min_available_memory_mb(),
         }
     }
 }

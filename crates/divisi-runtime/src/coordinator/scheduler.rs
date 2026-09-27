@@ -24,6 +24,8 @@ pub struct Capacity {
     /// `min(registry.max_concurrency, routing cap)` per agent; a missing
     /// entry means "no specific cap" and only the global limit applies.
     pub per_agent_cap: BTreeMap<String, usize>,
+    /// Available memory is under `min_available_memory_mb`: start nothing new until it recovers.
+    pub memory_low: bool,
 }
 
 impl Capacity {
@@ -170,9 +172,10 @@ pub fn tick_pure(
             .then(a.id.cmp(&b.id))
     });
 
-    // step 3 + 4: admit up to global headroom and per-agent headroom.
+    // step 3 + 4: admit up to global headroom and per-agent headroom. A machine short of memory admits
+    // nothing: every new part starts an agent process, and running ones keep going.
     let global_headroom = cfg.max_parallel.saturating_sub(cap.global_running);
-    if global_headroom == 0 {
+    if global_headroom == 0 || cap.memory_low {
         return vec![TickAction::Noop];
     }
 
@@ -373,7 +376,24 @@ fn build_capacity(conn: &Connection, ctx: &Context, cfg: &CoordinatorConfig) -> 
         let cap = per_agent_cap.get(&agent).copied().unwrap_or(usize::MAX).min(1);
         per_agent_cap.insert(agent, cap);
     }
-    Ok(Capacity { global_running, per_agent_running, per_agent_cap })
+    let memory_low = cfg.min_available_memory_mb > 0
+        && std::fs::read_to_string("/proc/meminfo")
+            .ok()
+            .and_then(|m| mem_available_mb(&m))
+            .is_some_and(|mb| mb < cfg.min_available_memory_mb);
+    if memory_low {
+        tracing::warn!(min_mb = cfg.min_available_memory_mb, "available memory is low; not starting new parts");
+    }
+    Ok(Capacity { global_running, per_agent_running, per_agent_cap, memory_low })
+}
+
+/// `MemAvailable` from a `/proc/meminfo` text, in MiB.
+pub(crate) fn mem_available_mb(meminfo: &str) -> Option<u64> {
+    meminfo
+        .lines()
+        .find_map(|l| l.strip_prefix("MemAvailable:"))
+        .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+        .map(|kb| kb / 1024)
 }
 
 /// Concurrency cap per agent: the registry's own cap, else a default for provider-backed `divisi-*` agents
@@ -1324,6 +1344,7 @@ mod tests {
             global_running,
             per_agent_cap: agent_caps.iter().map(|(a, c)| (a.to_string(), *c)).collect(),
             per_agent_running: agent_running.iter().map(|(a, c)| (a.to_string(), *c)).collect(),
+            memory_low: false,
         }
     }
 
@@ -1465,6 +1486,26 @@ mod tests {
         let g2 = TaskGraph { nodes: vec![node("s4", &[], Effort::Deep, "grok"), node("s5", &[], Effort::Quick, "grok")] };
         let a2 = tick_pure(&g2, &cfg(1), &caps(0, &[], &[]), &budget_ok(), &RoutingTable::default(), &PoolHealth::default());
         assert_eq!(dispatched_ids(&a2), vec!["s5"]);
+    }
+
+    #[test]
+    fn starts_nothing_new_while_memory_is_low() {
+        // Live finding (2026-09-27): 27 goals on a 14 GB machine drove it into swap and the OOM reaper.
+        let g = TaskGraph { nodes: vec![node("s1", &[], Effort::Standard, "grok")] };
+        let mut cap = caps(0, &[], &[]);
+        cap.memory_low = true;
+        let a = tick_pure(&g, &cfg(6), &cap, &budget_ok(), &RoutingTable::default(), &PoolHealth::default());
+        assert_eq!(a, vec![TickAction::Noop]);
+        cap.memory_low = false;
+        let a = tick_pure(&g, &cfg(6), &cap, &budget_ok(), &RoutingTable::default(), &PoolHealth::default());
+        assert_eq!(dispatched_ids(&a), vec!["s1"]);
+    }
+
+    #[test]
+    fn mem_available_is_read_from_meminfo() {
+        let meminfo = "MemTotal:       15700000 kB\nMemFree:         2100000 kB\nMemAvailable:    1800000 kB\n";
+        assert_eq!(super::mem_available_mb(meminfo), Some(1757));
+        assert_eq!(super::mem_available_mb("MemTotal: 1 kB\n"), None);
     }
 
     #[test]
