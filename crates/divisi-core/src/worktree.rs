@@ -18,6 +18,7 @@ pub fn add(repo_root: &Path, worktree_path: &Path, branch_name: &str) -> Result<
     if !is_git_repo(repo_root) {
         bail!("{} is not a git repository", repo_root.display());
     }
+    refuse_detached_head(repo_root)?;
     // A branch left by an earlier run (its worktree directory since removed) is reattached, keeping that work;
     // `-b` would refuse because the branch exists. Pruning first drops the removed directory's stale entry.
     let branch_exists = Command::new("git")
@@ -250,6 +251,7 @@ pub fn commit_pending(worktree: &Path, message: &str, author: Option<&str>) -> R
 /// (see `diff` above, meant to be called first), it does not decide FOR
 /// the caller.
 pub fn merge(repo_root: &Path, branch: &str) -> Result<String> {
+    refuse_detached_head(repo_root)?;
     let output = Command::new("git")
         .current_dir(repo_root)
         .args(["merge", "--no-ff", branch, "-m", &format!("Merge branch '{branch}'")])
@@ -282,6 +284,23 @@ pub fn merge(repo_root: &Path, branch: &str) -> Result<String> {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     ))
+}
+
+/// A worktree branches from the checkout's HEAD and a merge lands on it. On a detached HEAD (left by a
+/// `git submodule update`, say) new work would start from a stale commit and merges would land on no branch,
+/// so both refuse until a branch is checked out.
+fn refuse_detached_head(repo_root: &Path) -> Result<()> {
+    let attached = Command::new("git")
+        .current_dir(repo_root)
+        .args(["symbolic-ref", "--quiet", "HEAD"])
+        .output()
+        .context("spawning git symbolic-ref")?
+        .status
+        .success();
+    if !attached {
+        bail!("{} is on a detached HEAD; check out its branch (e.g. `git checkout main`) first", repo_root.display());
+    }
+    Ok(())
 }
 
 fn is_git_repo(path: &Path) -> bool {
@@ -328,6 +347,20 @@ mod tests {
         add(repo.path(), &wt, "divisi/goal-1").unwrap();
 
         assert_eq!(std::fs::read_to_string(wt.join("work.txt")).unwrap(), "earlier attempt", "the earlier work is kept");
+    }
+
+    #[test]
+    fn add_and_merge_refuse_a_detached_checkout() {
+        // Live finding (2026-09-27): shared checkouts left detached 36-170 commits behind main started goals from
+        // stale code, and a goal merged into one landed on no branch.
+        let repo = tempfile::tempdir().unwrap();
+        init_repo(repo.path());
+        assert!(Command::new("git").args(["checkout", "-q", "--detach"]).current_dir(repo.path()).status().unwrap().success());
+        let parent = tempfile::tempdir().unwrap();
+
+        let err = add(repo.path(), &parent.path().join("goal-1"), "divisi/goal-1").unwrap_err();
+        assert!(err.to_string().contains("detached HEAD"), "{err:#}");
+        assert!(merge(repo.path(), "divisi/goal-1").unwrap_err().to_string().contains("detached HEAD"));
     }
 
     fn last_commit(dir: &Path) -> String {
