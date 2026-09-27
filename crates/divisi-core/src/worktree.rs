@@ -18,12 +18,22 @@ pub fn add(repo_root: &Path, worktree_path: &Path, branch_name: &str) -> Result<
     if !is_git_repo(repo_root) {
         bail!("{} is not a git repository", repo_root.display());
     }
-    let output = Command::new("git")
+    // A branch left by an earlier run (its worktree directory since removed) is reattached, keeping that work;
+    // `-b` would refuse because the branch exists. Pruning first drops the removed directory's stale entry.
+    let branch_exists = Command::new("git")
         .current_dir(repo_root)
-        .args(["worktree", "add", "-b", branch_name])
-        .arg(worktree_path)
+        .args(["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch_name}")])
         .output()
-        .context("spawning git worktree add")?;
+        .is_ok_and(|o| o.status.success());
+    let mut cmd = Command::new("git");
+    cmd.current_dir(repo_root);
+    if branch_exists {
+        let _ = Command::new("git").current_dir(repo_root).args(["worktree", "prune"]).output();
+        cmd.args(["worktree", "add"]).arg(worktree_path).arg(branch_name);
+    } else {
+        cmd.args(["worktree", "add", "-b", branch_name]).arg(worktree_path);
+    }
+    let output = cmd.output().context("spawning git worktree add")?;
     if !output.status.success() {
         bail!("git worktree add failed: {}", String::from_utf8_lossy(&output.stderr));
     }
@@ -298,6 +308,26 @@ mod tests {
         std::fs::write(dir.join("README.md"), "hi").unwrap();
         run(&["add", "."]);
         run(&["commit", "-q", "-m", "initial"]);
+    }
+
+    #[test]
+    fn add_reattaches_an_existing_branch_whose_worktree_was_removed() {
+        // Live finding (2026-09-27): a resumed goal's worktree directory had been cleaned up but its branch
+        // (holding the earlier work) was kept, and `git worktree add -b` refused: the branch already exists.
+        let repo = tempfile::tempdir().unwrap();
+        init_repo(repo.path());
+        let parent = tempfile::tempdir().unwrap();
+        let wt = parent.path().join("goal-1");
+        add(repo.path(), &wt, "divisi/goal-1").unwrap();
+        std::fs::write(wt.join("work.txt"), "earlier attempt").unwrap();
+        for args in [&["add", "work.txt"][..], &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "work"]] {
+            assert!(Command::new("git").args(args).current_dir(&wt).status().unwrap().success());
+        }
+        std::fs::remove_dir_all(&wt).unwrap();
+
+        add(repo.path(), &wt, "divisi/goal-1").unwrap();
+
+        assert_eq!(std::fs::read_to_string(wt.join("work.txt")).unwrap(), "earlier attempt", "the earlier work is kept");
     }
 
     fn last_commit(dir: &Path) -> String {
